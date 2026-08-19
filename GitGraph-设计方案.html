@@ -66,10 +66,10 @@
   .mk-item .behind{color:#f85149;font-size:11px}
   .mk-caret{color:#8b949e;margin-right:3px}
   .mk-main{flex:1;display:flex;flex-direction:column;min-width:0}
-  .mk-cols{display:grid;grid-template-columns:190px 1fr 110px 78px 130px;height:28px;line-height:28px;background:#161b22;border-bottom:1px solid #30363d;color:#8b949e;font-size:11.5px;padding:0 0 0 0}
+  .mk-cols{display:grid;grid-template-columns:190px 1fr 110px 78px 150px;height:28px;line-height:28px;background:#161b22;border-bottom:1px solid #30363d;color:#8b949e;font-size:11.5px;padding:0 0 0 0}
   .mk-cols span{padding:0 10px;border-right:1px solid #21262d}
   .mk-rows{position:relative;flex:1;overflow:hidden;background:#0d1117}
-  .mk-row{display:grid;grid-template-columns:190px 1fr 110px 78px 130px;height:24px;line-height:24px;border-bottom:1px solid #161b2288}
+  .mk-row{display:grid;grid-template-columns:190px 1fr 110px 78px 150px;height:24px;line-height:24px;border-bottom:1px solid #161b2288}
   .mk-row.sel{background:#093568}
   .mk-row span{padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#c9d1d9;font-size:12px}
   .mk-row .dim{color:#8b949e;font-family:Consolas,monospace;font-size:11.5px}
@@ -180,7 +180,7 @@
 <tr><th style="width:70px">编号</th><th style="width:640px">功能描述</th><th>优先级</th></tr>
 <tr><td>FR-01</td><td>打开提交图视图（编辑器标签页形式）；多仓库工作区下可通过侧栏/下拉切换仓库</td><td><span class="prio p0">P0</span></td></tr>
 <tr><td>FR-02</td><td>提交图渲染：图形列以彩色线条与节点表达分支/合并拓扑（支持交叉、八爪合并、多根仓库）</td><td><span class="prio p0">P0</span></td></tr>
-<tr><td>FR-03</td><td>提交列表列：图形 | 提交说明 | 作者 | 短 SHA | 时间（相对时间/绝对时间可切换）</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-03</td><td>提交列表列：图形 | 提交说明 | 作者 | 短 SHA | 时间（默认 YYYY-MM-DD HH:mm:ss 24 小时制，可切换相对时间）</td><td><span class="prio p0">P0</span></td></tr>
 <tr><td>FR-04</td><td>Ref 徽标：HEAD→分支、本地分支、远程分支、Tag，以彩色 chip 显示在对应提交行</td><td><span class="prio p0">P0</span></td></tr>
 <tr><td>FR-05</td><td>点击提交行 → 底部详情面板：完整 SHA（可复制）、作者/提交者及邮箱、作者时间/提交时间、完整 Commit Comment（标题+正文）、变更文件列表（状态 A/M/D/R、±行数、路径）</td><td><span class="prio p0">P0</span></td></tr>
 <tr><td>FR-06</td><td>文件级操作：打开工作区文件、以只读方式打开某历史版本、在系统文件管理器中显示（Reveal）、复制路径</td><td><span class="prio p0">P0</span></td></tr>
@@ -398,13 +398,13 @@
             <rect x="56" y="126" width="52" height="15" rx="7.5" fill="#8957e555"/><text x="62" y="137" fill="#d2a8ff">v0.1.0</text>
           </g>
         </svg>
-        <div class="mk-row sel"><span></span><span>修复：虚拟滚动边界行重复渲染</span><span class="dim">Emon</span><span class="dim">a3f8e21</span><span class="dim">2 小时前</span></div>
-        <div class="mk-row"><span></span><span>重构 lane 分配算法为增量计算</span><span class="dim">Emon</span><span class="dim">b7c92d4</span><span class="dim">昨天 14:02</span></div>
-        <div class="mk-row"><span></span><span>新增仓库发现与 .git 监视器</span><span class="dim">Lin</span><span class="dim">c41a07f</span><span class="dim">8月14日</span></div>
-        <div class="mk-row"><span></span><span>feature: 图形列 Canvas 分层绘制</span><span class="dim">Lin</span><span class="dim">d9e5b83</span><span class="dim">8月13日</span></div>
-        <div class="mk-row"><span></span><span>perf: 大仓库分页加载与 LRU 缓存</span><span class="dim">Emon</span><span class="dim">e02c91a</span><span class="dim">8月12日</span></div>
-        <div class="mk-row"><span></span><span>Merge branch 'graph-refine' into main</span><span class="dim">Emon</span><span class="dim">f5a3d27</span><span class="dim">8月11日</span></div>
-        <div class="mk-row"><span></span><span>chore: 初始化项目脚手架</span><span class="dim">Emon</span><span class="dim">1a0b3c9</span><span class="dim">8月10日</span></div>
+        <div class="mk-row sel"><span></span><span>修复：虚拟滚动边界行重复渲染</span><span class="dim">Emon</span><span class="dim">a3f8e21</span><span class="dim">2026-08-19 20:15:32</span></div>
+        <div class="mk-row"><span></span><span>重构 lane 分配算法为增量计算</span><span class="dim">Emon</span><span class="dim">b7c92d4</span><span class="dim">2026-08-18 14:02:10</span></div>
+        <div class="mk-row"><span></span><span>新增仓库发现与 .git 监视器</span><span class="dim">Lin</span><span class="dim">c41a07f</span><span class="dim">2026-08-14 11:20:45</span></div>
+        <div class="mk-row"><span></span><span>feature: 图形列 Canvas 分层绘制</span><span class="dim">Lin</span><span class="dim">d9e5b83</span><span class="dim">2026-08-13 16:41:08</span></div>
+        <div class="mk-row"><span></span><span>perf: 大仓库分页加载与 LRU 缓存</span><span class="dim">Emon</span><span class="dim">e02c91a</span><span class="dim">2026-08-12 09:55:21</span></div>
+        <div class="mk-row"><span></span><span>Merge branch 'graph-refine' into main</span><span class="dim">Emon</span><span class="dim">f5a3d27</span><span class="dim">2026-08-11 21:30:14</span></div>
+        <div class="mk-row"><span></span><span>chore: 初始化项目脚手架</span><span class="dim">Emon</span><span class="dim">1a0b3c9</span><span class="dim">2026-08-10 10:02:57</span></div>
       </div>
       <div class="mk-detail">
         <div class="mk-detail-left">
@@ -459,9 +459,9 @@
 <h3 id="ui-list">4.4 提交图主区（规格）</h3>
 <table class="tbl">
 <tr><th style="width:170px">项</th><th>规格</th></tr>
-<tr><td>列布局</td><td>图形 180px（可配置 120–260）｜提交说明 1fr（min 260px）｜作者 130px｜短 SHA 84px（等宽字体）｜时间 130px</td></tr>
+<tr><td>列布局</td><td>图形 180px（可配置 120–260）｜提交说明 1fr（min 260px）｜作者 130px｜短 SHA 84px（等宽字体）｜时间 150px（容纳 YYYY-MM-DD HH:mm:ss）</td></tr>
 <tr><td>行高</td><td>默认 24px；设置项 紧凑 20px / 舒适 28px</td></tr>
-<tr><td>行内容</td><td>说明列：Subject + 其后的 ref chips（HEAD→main / origin/main / tag）；作者列显示作者名（悬浮显示邮箱）；时间默认相对时间（"3 小时前"），悬浮 tooltip 显示完整本地时间</td></tr>
+<tr><td>行内容</td><td>说明列：Subject + 其后的 ref chips（HEAD→main / origin/main / tag）；作者列显示作者名（悬浮显示邮箱）；时间列固定格式 <code class="inline">YYYY-MM-DD HH:mm:ss</code>（24 小时制，跟随系统时区；等宽字体右对齐保证纵向可扫读）；设置切换为相对时间时悬浮 tooltip 显示完整时间</td></tr>
 <tr><td>选中态</td><td>单击选中（高亮背景 + 左侧 accent 条），联动底部详情面板；↑/↓ 键移动选中</td></tr>
 <tr><td>加载指示</td><td>列表底部：自动加载中 spinner；达到 maxAutoLoad 上限后显示"继续加载更多"按钮与已加载数</td></tr>
 <tr><td>图形列</td><td>Canvas 绘制（见第 5 节）；节点与 chip 的点击命中检测在 Canvas 上层用透明 DOM 覆盖或按 x 坐标判定，chip 可点击（弹出对应 ref 菜单）</td></tr>
@@ -470,7 +470,7 @@
 <h3 id="ui-detail">4.5 详情面板（规格）</h3>
 <ul>
 <li><b>位置</b>：默认底部（SourceTree 同款），设置可改右侧；高度可拖拽（140–60% 视高）、双击分隔条折叠/展开。</li>
-<li><b>概要区</b>：完整 SHA（点击复制，悬浮提示）、短 SHA、作者/提交者（姓名 + 邮箱）、作者时间/提交时间（完整格式）、完整提交注释（Subject 加粗 + body 等宽/正常混排，长文本区域内滚动）。</li>
+<li><b>概要区</b>：完整 SHA（点击复制，悬浮提示）、短 SHA、作者/提交者（姓名 + 邮箱）、作者时间/提交时间（<code class="inline">YYYY-MM-DD HH:mm:ss</code>）、完整提交注释（Subject 加粗 + body 等宽/正常混排，长文本区域内滚动）。</li>
 <li><b>文件列表</b>：状态字母（A 绿 / M 黄 / D 红 / R 蓝，R 显示 old → new 路径）、±行数、路径；按目录可分组折叠（P1）。合计行数显示在标题。右键文件：打开工作区文件 / 查看此版本（只读）/ 在文件管理器中显示 / 复制路径 / 复制相对路径。</li>
 <li><b>内联 diff</b>：单选文件即在右侧渲染 unified diff（行号 + 增删着色 + hunk 折叠 P1）；超过 5,000 行提示改用内置差异编辑器。<b>双击文件 = 打开 VS Code 内置差异编辑器</b>（old=父提交版本，new=该提交版本；工作区 diff 则 new=工作区）。</li>
 <li><b>合并提交</b>：文件列表口径 = first-parent diff（假设 A5），提供"切换为组合差异"P1。</li>
@@ -824,8 +824,9 @@ interface UnifiedDiff { path: string; hunks: DiffHunk[]; truncated: boolean }</c
         "gitgraph.fetchPrune":     { "type": "boolean", "default": true },
         "gitgraph.defaultPullStrategy": { "type": "string", "default": "merge",
           "enum": ["merge", "rebase", "ff-only"] },
-        "gitgraph.dateFormat":     { "type": "string", "default": "relative",
-          "enum": ["relative", "iso", "isoStrict"] },
+        "gitgraph.dateFormat":     { "type": "string", "default": "datetime",
+          "enum": ["datetime", "relative", "iso"],
+          "enumDescriptions": ["YYYY-MM-DD HH:mm:ss（24 小时制）", "相对时间（如 3 小时前）", "ISO 8601 含时区"] },
         "gitgraph.rowHeight":      { "type": "string", "default": "default",
           "enum": ["compact", "default", "loose"] },
         "gitgraph.graphStyle":     { "type": "string", "default": "curved",
@@ -849,7 +850,7 @@ interface UnifiedDiff { path: string; hunks: DiffHunk[]; truncated: boolean }</c
 <ul>
 <li>运行时文案：键值表 <code class="inline">i18n/zh-cn.ts</code>、<code class="inline">i18n/en.ts</code>，接口 <code class="inline">t(key, params)</code>；语言解析：设置 <code class="inline">gitgraph.language</code> = auto 时跟随 <code class="inline">vscode.env.language</code>。</li>
 <li>清单文案：package.nls 机制（VS Code 原生）。</li>
-<li>时间/数字本地化：Intl.DateTimeFormat / NumberFormat；相对时间自实现（"3 分钟前"），避免引入库。</li>
+<li>时间/数字本地化：默认时间格式 <code class="inline">YYYY-MM-DD HH:mm:ss</code>（24 小时制，用 <code class="inline">Intl.DateTimeFormat</code> 以 <code class="inline">hour12:false</code> 拼装，跟随系统时区）；相对时间（"3 分钟前"）自实现、作为可选设置；数字用 Intl.NumberFormat。不引入日期库。</li>
 </ul>
 
 <hr class="sect">
