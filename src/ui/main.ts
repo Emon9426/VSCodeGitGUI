@@ -34,16 +34,25 @@ const app: App = {
   },
   selectCommit(sha) {
     S.selectedSha = sha;
+    S.detailLoading = sha;
     list.selectionChanged();
+    detail.update();
     void rpc('commitDetail', { sha })
       .then(d => {
-        if (S.selectedSha !== sha) return;
+        if (S.selectedSha !== sha) return;   // 已切换到其他提交，丢弃过期响应
+        S.detailLoading = undefined;
         S.detail = d;
         S.selectedFile = undefined;
         S.diff = undefined;
         detail.update();
       })
-      .catch(showErr);
+      .catch(e => {
+        if (S.selectedSha === sha) {
+          S.detailLoading = undefined;
+          detail.update();
+        }
+        showErr(e);
+      });
   },
   loadMore() {
     void rpc('loadMore', { offset: S.commits.length })
@@ -119,7 +128,7 @@ const app: App = {
   requestDiff(sha, path) {
     void rpc('diff', { mode: 'commit', sha, path })
       .then(p => {
-        if (S.selectedFile === path) {
+        if (S.selectedFile === path && S.detail?.sha === sha) {
           S.diff = p;
           detail.update();
         }
@@ -156,6 +165,13 @@ function applyLayout(): void {
 }
 applyLayout();
 
+function applyColWidths(w: { graph?: number; msg?: number; author?: number; sha?: number }): void {
+  for (const key of ['graph', 'msg', 'author', 'sha'] as const) {
+    const v = w[key];
+    if (typeof v === 'number' && v >= 40) S.colWidths[key] = Math.round(v);
+  }
+}
+
 // ---------- 事件处理 ----------
 
 window.addEventListener('message', e => {
@@ -168,6 +184,8 @@ window.addEventListener('message', e => {
       S.lang = (m.language === 'en' ? 'en' : 'zh-CN') as Lang;
       S.t = createT(S.lang);
       S.repos = m.repos;
+      if (m.colWidths) applyColWidths(m.colWidths);
+      list.configChanged();
       toolbar.update();
       sidebar.update();
       detail.update();
@@ -195,6 +213,10 @@ window.addEventListener('message', e => {
       sidebar.update();
       toolbar.update();
       detail.update();
+      // 刷新后选中仍在但详情缺失（如请求曾被刷新打断）：自动补拉
+      if (S.selectedSha && !S.detailLoading && S.detail?.sha !== S.selectedSha) {
+        app.selectCommit(S.selectedSha);
+      }
       break;
     }
     case 'commitsAppend': {

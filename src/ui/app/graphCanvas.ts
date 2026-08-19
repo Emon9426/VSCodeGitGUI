@@ -5,8 +5,8 @@
 import type { Curve } from '../../graph/lanes';
 import { S } from '../state';
 
-const PADDING = 10;
-const LANE_W = 14;
+const PADDING = 8;
+const LANE_W = 11;
 
 const PALETTE_VARS = [
   '--vscode-charts-blue', '--vscode-charts-orange', '--vscode-charts-green',
@@ -21,6 +21,8 @@ export class GraphCanvas {
   private colors: string[] = [];
   private lastWidth = 0;
   private lastHeight = 0;
+  private laneCount = 1;
+  private userGraphWidth = 0;
 
   constructor() {
     this.canvas.className = 'gg-graph-canvas';
@@ -37,8 +39,20 @@ export class GraphCanvas {
       const list = this.curvesByRow.get(c.row);
       if (list) list.push(c); else this.curvesByRow.set(c.row, [c]);
     }
-    const need = PADDING * 2 + Math.max(1, laneCount) * LANE_W;
-    this.lastWidth = Math.max(S.config.graphColumnWidth, need);
+    this.laneCount = Math.max(1, laneCount);
+    this.recomputeWidth();
+  }
+
+  /** 用户拖拽图形列宽后调用 */
+  setUserGraphWidth(w: number): void {
+    if (this.userGraphWidth === w) return;
+    this.userGraphWidth = w;
+    this.recomputeWidth();
+  }
+
+  private recomputeWidth(): void {
+    const need = PADDING * 2 + this.laneCount * LANE_W;
+    this.lastWidth = Math.max(this.userGraphWidth || S.config.graphColumnWidth, need);
   }
 
   get graphWidth(): number {
@@ -144,13 +158,13 @@ export class GraphCanvas {
       const cx = x(c.lane ?? 0);
       const isHead = c.refs.some(ref => ref.isHead);
       const isMerge = c.parents.length > 1;
-      const radius = Math.max(3, Math.min(5, R * 0.17));
+      const radius = Math.max(2.5, Math.min(4.5, R * 0.16));
       const color = laneColor(c.lane ?? 0);
       if (isMerge) {
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(cx, y0, radius + 2.5, 0, Math.PI * 2);
+        ctx.arc(cx, y0, radius + 2, 0, Math.PI * 2);
         ctx.stroke();
       }
       ctx.fillStyle = color;

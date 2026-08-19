@@ -46,6 +46,10 @@ export const S = {
   detail: undefined as CommitDetail | undefined,
   selectedFile: undefined as string | undefined,
   diff: undefined as DiffPayload | undefined,
+  /** 列宽（图形/说明/作者/SHA，时间列自适应剩余空间）；ready 时由扩展侧持久化值覆盖 */
+  colWidths: { graph: 150, msg: 460, author: 120, sha: 90 } as Record<'graph' | 'msg' | 'author' | 'sha', number>,
+  /** 详情请求在途的提交 sha（面板置灰提示） */
+  detailLoading: undefined as string | undefined,
   /** 进行中的操作（opId → 最近进度） */
   activeOps: new Map<number, { kind: string; text: string; pct?: number }>(),
 

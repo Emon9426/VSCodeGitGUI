@@ -40,8 +40,16 @@ export interface OpResult {
   outputTail?: string;   // 失败时的 stderr/stdout 尾部
 }
 
+/** 用户自定义列宽（持久化于 globalState，时间为自适应剩余列不持久化） */
+export interface ColWidths {
+  graph: number;
+  msg: number;
+  author: number;
+  sha: number;
+}
+
 export type ExtEvent =
-  | { t: 'ready'; config: ConfigDto; repos: RepoMeta[]; language: string }
+  | { t: 'ready'; config: ConfigDto; repos: RepoMeta[]; language: string; colWidths?: ColWidths }
   | { t: 'repoState'; state: RepoState }
   | { t: 'commitsAppend'; repoId: string; offset: number; commits: Commit[]; hasMore: boolean }
   | OpProgress
@@ -85,6 +93,7 @@ export type WVCommand =
   | 'ui:openDiffEditor'     // { sha, path, base?, worktree? }
   | 'ui:revealInFM'         // { path }
   | 'ui:copy'               // { text }
+  | 'ui:saveColWidths'      // { widths: ColWidths }
   | 'ui:openSettings';
 
 export interface Pending {

@@ -1,8 +1,9 @@
 /**
- * 提交图主区：虚拟滚动列表 + Canvas 线条层（设计方案 5.3）。
+ * 提交图主区：虚拟滚动列表 + Canvas 线条层 + 列宽拖拽（持久化经 ui:saveColWidths）。
  * DOM 行节点恒定（可视行 + 缓冲 10），Canvas 只绘视口。
  */
 import type { Commit } from '../../common/models';
+import { rpc } from '../rpc';
 import { S, type App } from '../state';
 import { el, formatTime } from '../util';
 import { GraphCanvas } from './graphCanvas';
@@ -18,17 +19,24 @@ export interface CommitList {
   appended(): void;
   /** 选中高亮变化（不动滚动） */
   selectionChanged(): void;
-  /** 行高/列宽等配置变化 */
+  /** 行高/列宽/语言等配置变化 */
   configChanged(): void;
 }
+
+type ColKey = 'graph' | 'msg' | 'author' | 'sha';
+const MIN_W: Record<ColKey, number> = { graph: 60, msg: 220, author: 70, sha: 60 };
+const TIME_MIN = 150;
+const COL_LABELS: ColKey[] = ['graph', 'msg', 'author', 'sha'];
 
 export function createCommitList(app: App): CommitList {
   const canvas = new GraphCanvas();
   const wrap = el('div', 'gg-list-wrap');
   const header = el('div', 'gg-list-header');
-  for (const key of ['colGraph', 'colMessage', 'colAuthor', 'colSha', 'colTime']) {
-    header.appendChild(el('span', 'gg-col-h', S.t(key)));
-  }
+  const headCells: HTMLElement[] = [];
+  const colKeys = ['colGraph', 'colMessage', 'colAuthor', 'colSha', 'colTime'];
+  for (const key of colKeys) headCells.push(el('span', 'gg-col-h', S.t(key)));
+  header.append(...headCells);
+
   const body = el('div', 'gg-list-body');
   const scroll = el('div', 'gg-list');
   scroll.tabIndex = 0;
@@ -51,12 +59,51 @@ export function createCommitList(app: App): CommitList {
   const rowHeight = () => S.config.rowHeightPx;
   const total = () => S.commits.length * rowHeight() + (S.commits.length ? FOOTER_H : 0);
 
+  function applyWidths(): void {
+    canvas.setUserGraphWidth(S.colWidths.graph);
+    wrap.style.setProperty('--c-graph', `${canvas.graphWidth}px`);
+    wrap.style.setProperty('--c-msg', `${S.colWidths.msg}px`);
+    wrap.style.setProperty('--c-author', `${S.colWidths.author}px`);
+    wrap.style.setProperty('--c-sha', `${S.colWidths.sha}px`);
+    wrap.style.setProperty('--c-time-min', `${TIME_MIN}px`);
+  }
+
+  // 表头拖拽调宽（前四列右缘手柄；时间列自适应剩余空间）
+  for (let i = 0; i < COL_LABELS.length; i++) {
+    const col = COL_LABELS[i];
+    const handle = el('div', 'gg-col-resizer');
+    handle.title = '';
+    headCells[i].appendChild(handle);
+    handle.addEventListener('pointerdown', e => startResize(e, col));
+  }
+
+  function startResize(e: PointerEvent, col: ColKey): void {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = S.colWidths[col];
+    const move = (ev: PointerEvent) => {
+      const w = Math.max(MIN_W[col], Math.round(startW + ev.clientX - startX));
+      if (w !== S.colWidths[col]) {
+        S.colWidths[col] = w;
+        applyWidths();
+        scheduleSync();
+      }
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      void rpc('ui:saveColWidths', { widths: { ...S.colWidths } }).catch(() => undefined);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
   function metrics(): void {
     if (S.graph && S.graph !== lastGraph) {
       lastGraph = S.graph;
       canvas.onGraphChanged(S.graph.laneCount, S.graph.curves);
     }
-    wrap.style.setProperty('--graphW', `${canvas.graphWidth}px`);
+    applyWidths();
     sizer.style.height = `${total()}px`;
     const showEmpty = !!S.state && S.commits.length === 0;
     empty.classList.toggle('show', showEmpty);
@@ -71,13 +118,14 @@ export function createCommitList(app: App): CommitList {
     const time = el('span', 'gg-cell time');
     row.append(graphCell, msg, author, sha, time);
     row.addEventListener('click', () => {
-      const idx = (row as any)._idx;
-      if (typeof idx === 'number' && S.commits[idx]) app.selectCommit(S.commits[idx].sha);
+      // 用行上记录的 sha，而不是池化索引——避免刷新替换数组后的索引错位竞态
+      const sha2 = row.dataset.sha;
+      if (sha2) app.selectCommit(sha2);
     });
     row.addEventListener('contextmenu', e => {
       e.preventDefault();
-      const idx = (row as any)._idx;
-      const c = typeof idx === 'number' ? S.commits[idx] : undefined;
+      const sha2 = row.dataset.sha;
+      const c = sha2 ? S.commits.find(x => x.sha === sha2) : undefined;
       if (c) commitMenu(c, e.clientX, e.clientY);
     });
     return row;
@@ -138,7 +186,7 @@ export function createCommitList(app: App): CommitList {
     const vh = scroll.clientHeight;
     const n = S.commits.length;
     if (n === 0) {
-      for (const r of pool) { r.style.display = 'none'; (r as any)._idx = -1; }
+      for (const r of pool) { r.style.display = 'none'; (r as any)._idx = -1; delete r.dataset.sha; }
       canvas.redraw();
       return;
     }
@@ -153,7 +201,7 @@ export function createCommitList(app: App): CommitList {
     for (let i = 0; i < pool.length; i++) {
       const row = pool[i];
       if (i >= need) {
-        if ((row as any)._idx !== -1) { row.style.display = 'none'; (row as any)._idx = -1; }
+        if ((row as any)._idx !== -1) { row.style.display = 'none'; (row as any)._idx = -1; delete row.dataset.sha; }
         continue;
       }
       const idx = firstB + i;
@@ -161,9 +209,9 @@ export function createCommitList(app: App): CommitList {
       row.style.height = `${R}px`;
       row.style.transform = `translateY(${idx * R}px)`;
       if ((row as any)._idx !== idx) fill(row, idx);
+      else row.classList.toggle('selected', row.dataset.sha === S.selectedSha);
     }
 
-    // 页脚：加载中 spinner / 达到上限后的手动加载按钮
     footer.style.transform = `translateY(${n * R}px)`;
     footer.style.height = `${FOOTER_H}px`;
     footer.textContent = '';
@@ -180,7 +228,6 @@ export function createCommitList(app: App): CommitList {
       footer.appendChild(el('span', 'gg-footer-count', S.t('loadedCount', { n })));
     }
 
-    // 自动加载更多
     if (!loadingMore && S.state?.hasMore && lastB >= n - 8 && n < S.config.maxAutoLoad) {
       loadingMore = true;
       app.loadMore();
@@ -224,13 +271,19 @@ export function createCommitList(app: App): CommitList {
     appended() { loadingMore = false; refreshCommon(); },
     selectionChanged() {
       for (const row of pool) {
-        const idx = (row as any)._idx;
-        if (typeof idx === 'number' && idx >= 0) {
-          row.classList.toggle('selected', S.commits[idx]?.sha === S.selectedSha);
-        }
+        row.classList.toggle('selected', row.dataset.sha === S.selectedSha);
       }
       canvas.redraw();
     },
-    configChanged() { lastGraph = undefined; refreshCommon(); },
+    configChanged() {
+      lastGraph = undefined;
+      for (let i = 0; i < colKeys.length; i++) {
+        headCells[i].firstChild!.textContent = S.t(colKeys[i]);
+      }
+      empty.textContent = '';
+      empty.appendChild(el('div', 'gg-empty-title', S.t('noCommits')));
+      empty.appendChild(el('div', 'gg-empty-hint', S.t('noCommitsHint')));
+      refreshCommon();
+    },
   };
 }

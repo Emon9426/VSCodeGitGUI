@@ -128,16 +128,42 @@ button.danger:hover { background: #c62121; }
 /* ---------------- 提交列表 ---------------- */
 
 .gg-list-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.gg-list-header,
+.gg-row {
+  display: grid;
+  grid-template-columns:
+    var(--c-graph, 150px)
+    var(--c-msg, 460px)
+    var(--c-author, 120px)
+    var(--c-sha, 90px)
+    minmax(var(--c-time-min, 150px), 1fr);
+}
 .gg-list-header {
   flex: none;
-  display: grid;
-  grid-template-columns: var(--graphW, 180px) minmax(220px, 1fr) 120px 84px 150px;
   height: 28px;
   line-height: 28px;
   border-bottom: 1px solid var(--vscode-panel-border, #333);
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
 }
-.gg-col-h { padding: 0 8px; font-size: 11.5px; color: var(--vscode-descriptionForeground); overflow: hidden; }
+.gg-col-h {
+  position: relative;
+  padding: 0 8px;
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+}
+.gg-col-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 2;
+}
+.gg-col-resizer:hover {
+  background: color-mix(in srgb, var(--vscode-focusBorder) 55%, transparent);
+}
 .gg-list-body { flex: 1; position: relative; min-height: 0; }
 .gg-list { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; outline: none; }
 .gg-list-sizer { position: relative; width: 100%; }
@@ -164,8 +190,6 @@ button.danger:hover { background: #c62121; }
 .gg-row {
   position: absolute;
   top: 0; left: 0; right: 0;
-  display: grid;
-  grid-template-columns: var(--graphW, 180px) minmax(220px, 1fr) 120px 84px 150px;
   align-items: center;
   cursor: default;
 }
@@ -222,6 +246,7 @@ button.danger:hover { background: #c62121; }
   min-height: 0;
 }
 .gg-detail.hidden { display: none; }
+.gg-detail.stale { opacity: 0.55; transition: opacity 0.15s ease; }
 .gg-detail.collapsed { height: 30px !important; }
 .gg-detail.collapsed .gg-detail-body { display: none; }
 .gg-detail-handle { flex: none; height: 4px; cursor: row-resize; background: transparent; }

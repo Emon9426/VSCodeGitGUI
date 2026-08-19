@@ -6,7 +6,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { createT, resolveLang, type Lang, type Translate } from '../common/i18n';
 import type { Commit, RepoMeta, RepoState } from '../common/models';
-import type { ConfigDto, ExtEvent, ExtResponse, WVRequest } from '../common/protocol';
+import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, WVRequest } from '../common/protocol';
 import { GitError, GitExecutor } from '../git/executor';
 import { discoverRepos, repoIdOf } from '../git/discovery';
 import { GitService, EMPTY_TREE } from '../git/service';
@@ -247,6 +247,9 @@ export class GraphPanel {
       case 'ui:copy':
         await vscode.env.clipboard.writeText(String(args.text));
         return null;
+      case 'ui:saveColWidths':
+        await this.context.globalState.update('gitgraph.colWidths', this.sanitizeColWidths(args.widths));
+        return null;
       case 'ui:openSettings':
         await vscode.commands.executeCommand('workbench.action.openSettings', 'gitgraph');
         return null;
@@ -264,7 +267,7 @@ export class GraphPanel {
         this.executor = await GitExecutor.detect(configured, builtinGitPath());
       } catch (e) {
         this.ready = true;
-        this.post({ t: 'ready', config: this.config, repos: [], language: this.lang });
+        this.post({ t: 'ready', config: this.config, repos: [], language: this.lang, colWidths: this.readColWidths() });
         this.post({ t: 'notify', level: 'error', message: `${this.t('gitNotFound')} — ${this.t('gitNotFoundHint')}` });
         return;
       }
@@ -273,7 +276,7 @@ export class GraphPanel {
     }
     this.repos = await discoverRepos(this.executor, vscode.workspace.workspaceFolders ?? []);
     for (const r of this.repos) this.roots.set(r.id, r.root);
-    this.post({ t: 'ready', config: this.config, repos: this.repos, language: this.lang });
+    this.post({ t: 'ready', config: this.config, repos: this.repos, language: this.lang, colWidths: this.readColWidths() });
     this.ready = true;
     if (this.pendingRepoId && this.repos.some(r => r.id === this.pendingRepoId)) {
       const id = this.pendingRepoId;
@@ -433,6 +436,22 @@ export class GraphPanel {
       throw new Error(`path escapes repository root: ${rel}`);   // E_PATH_OUTSIDE
     }
     return resolved;
+  }
+
+  private readColWidths(): ColWidths | undefined {
+    const w = this.context.globalState.get<Partial<ColWidths>>('gitgraph.colWidths');
+    return w ? this.sanitizeColWidths(w) : undefined;
+  }
+
+  private sanitizeColWidths(w: any): ColWidths {
+    const clamp = (v: unknown, def: number, min: number, max: number) =>
+      typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, Math.round(v))) : def;
+    return {
+      graph: clamp(w?.graph, 150, 60, 400),
+      msg: clamp(w?.msg, 460, 220, 2000),
+      author: clamp(w?.author, 120, 70, 400),
+      sha: clamp(w?.sha, 90, 60, 200),
+    };
   }
 
   private updateStatusBar(): void {

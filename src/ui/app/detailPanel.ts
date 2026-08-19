@@ -70,7 +70,8 @@ export function createDetailPanel(app: App): DetailPanel {
   });
 
   function update(): void {
-    root.classList.toggle('hidden', !S.detail);
+    root.classList.toggle('hidden', !S.detail && !S.detailLoading);
+    root.classList.toggle('stale', !!S.detailLoading);
     const d = S.detail;
     if (!d) return;
     root.classList.toggle('right', S.config.detailPanelPosition === 'right');
