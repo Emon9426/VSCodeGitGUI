@@ -201,6 +201,7 @@ window.addEventListener('message', e => {
       S.lang = (m.language === 'en' ? 'en' : 'zh-CN') as Lang;
       S.t = createT(S.lang);
       S.repos = m.repos;
+      S.version = m.version ?? '';
       if (m.colWidths) applyColWidths(m.colWidths);
       restoreSha = m.selectedSha;
       applyThemeKind();

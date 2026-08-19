@@ -35,18 +35,24 @@ export function createDetailPanel(app: App): DetailPanel {
   left.append(summary, msgBlock, filesHead, filesList);
   const diffHead = el('div', 'gg-diff-head');
   const diffPath = el('span', 'gg-diff-path');
+  const diffRevealBtn = el('button', 'gg-btn small', '📂');
   const diffModeBtn = el('button', 'gg-btn small');
   const diffOpenBtn = el('button', 'gg-btn small');
   const diffBox = el('div', 'gg-diff-box');
   right.append(diffHead, diffBox);
-  diffHead.append(diffPath, diffModeBtn, diffOpenBtn);
+  diffHead.append(diffPath, diffRevealBtn, diffModeBtn, diffOpenBtn);
   body.append(left, right);
   root.append(handle, head, body);
 
   /** 紧凑差异（默认）：只显示增删行，无差异段落折叠为 ⋯ */
   let compactDiff = true;
 
+  diffRevealBtn.addEventListener('click', () => {
+    if (S.selectedFile) app.revealInFM(S.selectedFile);
+  });
+
   function renderDiffNow(): void {
+    diffRevealBtn.title = S.t('revealInFM');
     diffModeBtn.textContent = compactDiff ? S.t('diffContext') : S.t('diffCompact');
     diffModeBtn.title = S.t('diffModeTitle');
     diffOpenBtn.textContent = S.t('openInDiffEditor');

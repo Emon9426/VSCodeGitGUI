@@ -40,6 +40,7 @@ export const S = {
   lang: 'zh-CN' as Lang,
   t: createT('zh-CN') as Translate,
   repos: [] as RepoMeta[],
+  version: '',   // 扩展版本（工具栏显示，便于确认当前构建）
   repoId: undefined as string | undefined,
   state: undefined as RepoState | undefined,
   commits: [] as Commit[],

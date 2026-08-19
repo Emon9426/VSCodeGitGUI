@@ -266,7 +266,8 @@ export class GraphPanel {
         const target = this.safeJoin(root, rel);
         if (fs.existsSync(target)) {
           await this.revealInFileManager(target);
-          this.post({ t: 'notify', level: 'info', message: `${this.t('revealed')}: ${rel}` });
+          // 用 VS Code 原生通知，绝无遗漏
+          void vscode.window.showInformationMessage(`${this.t('revealed')}: ${rel}`);
           return null;
         }
         // 文件已不在工作区（如浏览历史提交时已被删除）：回退到最近仍存在的父目录
@@ -274,10 +275,11 @@ export class GraphPanel {
         while (dir !== root && !fs.existsSync(dir)) dir = path.dirname(dir);
         if (fs.existsSync(dir)) {
           await this.revealInFileManager(dir);
-          this.post({ t: 'notify', level: 'info', message: this.t('revealParent') });
+          void vscode.window.showWarningMessage(this.t('revealParent'));
           return null;
         }
-        throw new Error(this.t('fileNotFound', { path: rel }));
+        void vscode.window.showWarningMessage(this.t('fileNotFound', { path: rel }));
+        return null;
       }
       case 'ui:copy':
         await vscode.env.clipboard.writeText(String(args.text));
@@ -311,7 +313,8 @@ export class GraphPanel {
     }
     this.repos = await discoverRepos(this.executor, vscode.workspace.workspaceFolders ?? []);
     for (const r of this.repos) this.roots.set(r.id, r.root);
-    this.post({ t: 'ready', config: this.config, repos: this.repos, language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha });
+    const version = String((this.context.extension.packageJSON as any).version ?? '');
+    this.post({ t: 'ready', config: this.config, repos: this.repos, language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha, version });
     this.ready = true;
     if (this.pendingRepoId && this.repos.some(r => r.id === this.pendingRepoId)) {
       const id = this.pendingRepoId;

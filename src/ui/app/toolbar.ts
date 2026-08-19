@@ -70,6 +70,7 @@ export function createToolbar(app: App): Toolbar {
   refreshBtn.title = S.t('refresh');
   const gearBtn = mkBtn('⚙', () => app.openSettings());
   gearBtn.title = S.t('settings');
+  const versionLabel = el('span', 'gg-version-label', '');
 
   const progress = el('div', 'gg-progress');
   const progressText = el('span', 'gg-progress-text');
@@ -83,7 +84,7 @@ export function createToolbar(app: App): Toolbar {
   const left = el('div', 'gg-toolbar-left');
   left.append(repoSel, branchLabel, filterSel, filterBox);
   const right = el('div', 'gg-toolbar-right');
-  right.append(fetchBtn, pullBtn, pushBtn, refreshBtn, gearBtn, progress);
+  right.append(fetchBtn, pullBtn, pushBtn, refreshBtn, gearBtn, versionLabel, progress);
   root.append(left, right);
 
   function mkBtn(label: string, run: () => void): HTMLButtonElement {
@@ -93,6 +94,7 @@ export function createToolbar(app: App): Toolbar {
   }
 
   function update(): void {
+    versionLabel.textContent = S.version ? `v${S.version}` : '';
     // 仓库下拉
     const multi = S.repos.length > 1;
     repoSel.classList.toggle('hidden', !multi);
