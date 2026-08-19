@@ -1,18 +1,18 @@
 /**
- * gitmap: 只读文档提供者（设计方案 7.1）—— 复用 VS Code 内置差异编辑器。
- * URI 格式：gitmap://<repoId>/<encodeURIComponent(fileName)>?ref=<ref>&path=<repo 相对路径>
+ * gitboard: 只读文档提供者（设计方案 7.1）—— 复用 VS Code 内置差异编辑器。
+ * URI 格式：gitboard://<repoId>/<encodeURIComponent(fileName)>?ref=<ref>&path=<repo 相对路径>
  * 文件名放在 path 段以获得 languageId 推断（语法高亮）。
  */
 import * as vscode from 'vscode';
 import type { GitService } from '../git/service';
 
-export const GITMAP_SCHEME = 'gitmap';
+export const GITBOARD_SCHEME = 'gitboard';
 export const EMPTY_REF = '__empty__';
 
-export function gitmapUri(repoId: string, fileName: string, ref: string, path: string): vscode.Uri {
+export function gitboardUri(repoId: string, fileName: string, ref: string, path: string): vscode.Uri {
   const enc = encodeURIComponent;
   return vscode.Uri.parse(
-    `${GITMAP_SCHEME}://${repoId}/${enc(fileName)}?ref=${enc(ref)}&path=${enc(path)}`,
+    `${GITBOARD_SCHEME}://${repoId}/${enc(fileName)}?ref=${enc(ref)}&path=${enc(path)}`,
   );
 }
 

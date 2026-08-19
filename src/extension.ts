@@ -1,5 +1,5 @@
 /**
- * GitMap 扩展入口。
+ * GitBoard 扩展入口。
  * 活动栏图标行为：视图可见（用户点击图标）时直接打开主界面并收起侧栏。
  */
 import * as vscode from 'vscode';
@@ -8,7 +8,7 @@ import { ReposTreeProvider } from './webview/reposTree';
 
 export function activate(context: vscode.ExtensionContext): void {
   const tree = new ReposTreeProvider();
-  const treeView = vscode.window.createTreeView('gitmap.repos', { treeDataProvider: tree });
+  const treeView = vscode.window.createTreeView('gitboard.repos', { treeDataProvider: tree });
 
   context.subscriptions.push(
     treeView,
@@ -20,12 +20,12 @@ export function activate(context: vscode.ExtensionContext): void {
         .executeCommand('workbench.action.closeSidebar')
         .then(undefined, () => vscode.commands.executeCommand('workbench.action.toggleSidebarVisibility'));
     }),
-    vscode.commands.registerCommand('gitmap.open', () => GraphPanel.show(context)),
-    vscode.commands.registerCommand('gitmap.openRepo', (repoId: string) => GraphPanel.show(context, repoId)),
-    vscode.commands.registerCommand('gitmap.refreshTree', () => tree.refresh()),
-    vscode.commands.registerCommand('gitmap.fetch', () => GraphPanel.show(context).quickOp('fetch')),
-    vscode.commands.registerCommand('gitmap.pull', () => GraphPanel.show(context).quickOp('pull')),
-    vscode.commands.registerCommand('gitmap.push', () => GraphPanel.show(context).quickOp('push')),
+    vscode.commands.registerCommand('gitboard.open', () => GraphPanel.show(context)),
+    vscode.commands.registerCommand('gitboard.openRepo', (repoId: string) => GraphPanel.show(context, repoId)),
+    vscode.commands.registerCommand('gitboard.refreshTree', () => tree.refresh()),
+    vscode.commands.registerCommand('gitboard.fetch', () => GraphPanel.show(context).quickOp('fetch')),
+    vscode.commands.registerCommand('gitboard.pull', () => GraphPanel.show(context).quickOp('pull')),
+    vscode.commands.registerCommand('gitboard.push', () => GraphPanel.show(context).quickOp('push')),
     GraphPanel.onDidState(() => tree.refresh()),
     vscode.workspace.onDidChangeWorkspaceFolders(() => tree.refresh()),
   );

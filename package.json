@@ -1,5 +1,5 @@
 {
-  "name": "gitmap",
+  "name": "gitboard",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
   "version": "0.6.0",
@@ -27,55 +27,55 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "gitmap",
+          "id": "gitboard",
           "title": "%viewContainer.name%",
-          "icon": "media/gitmap.svg"
+          "icon": "media/gitboard.svg"
         }
       ]
     },
     "views": {
-      "gitmap": [
+      "gitboard": [
         {
-          "id": "gitmap.repos",
+          "id": "gitboard.repos",
           "name": "%view.repos%"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "gitmap.repos",
+        "view": "gitboard.repos",
         "contents": "%welcome.noRepos%"
       }
     ],
     "commands": [
       {
-        "command": "gitmap.open",
+        "command": "gitboard.open",
         "title": "%cmd.open%"
       },
       {
-        "command": "gitmap.openRepo",
+        "command": "gitboard.openRepo",
         "title": "%cmd.openRepo%"
       },
       {
-        "command": "gitmap.refreshTree",
+        "command": "gitboard.refreshTree",
         "title": "%cmd.refreshTree%"
       },
       {
-        "command": "gitmap.fetch",
+        "command": "gitboard.fetch",
         "title": "%cmd.fetch%"
       },
       {
-        "command": "gitmap.pull",
+        "command": "gitboard.pull",
         "title": "%cmd.pull%"
       },
       {
-        "command": "gitmap.push",
+        "command": "gitboard.push",
         "title": "%cmd.push%"
       }
     ],
     "keybindings": [
       {
-        "command": "gitmap.open",
+        "command": "gitboard.open",
         "key": "ctrl+alt+g",
         "mac": "cmd+alt+g"
       }
@@ -83,65 +83,65 @@
     "menus": {
       "commandPalette": [
         {
-          "command": "gitmap.openRepo",
+          "command": "gitboard.openRepo",
           "when": "false"
         },
         {
-          "command": "gitmap.refreshTree",
+          "command": "gitboard.refreshTree",
           "when": "false"
         }
       ],
       "view/title": [
         {
-          "command": "gitmap.open",
-          "when": "view == gitmap.repos",
+          "command": "gitboard.open",
+          "when": "view == gitboard.repos",
           "group": "navigation"
         },
         {
-          "command": "gitmap.refreshTree",
-          "when": "view == gitmap.repos",
+          "command": "gitboard.refreshTree",
+          "when": "view == gitboard.repos",
           "group": "navigation"
         }
       ],
       "scm/title": [
         {
-          "command": "gitmap.open",
+          "command": "gitboard.open",
           "group": "navigation",
           "when": "scmProvider == git"
         }
       ]
     },
     "configuration": {
-      "title": "GitMap",
+      "title": "GitBoard",
       "properties": {
-        "gitmap.gitPath": {
+        "gitboard.gitPath": {
           "type": "string",
           "default": "",
           "markdownDescription": "%cfg.gitPath%"
         },
-        "gitmap.commitPageSize": {
+        "gitboard.commitPageSize": {
           "type": "number",
           "default": 500,
           "minimum": 100,
           "maximum": 5000,
           "description": "%cfg.commitPageSize%"
         },
-        "gitmap.maxAutoLoad": {
+        "gitboard.maxAutoLoad": {
           "type": "number",
           "default": 20000,
           "description": "%cfg.maxAutoLoad%"
         },
-        "gitmap.fetchOnOpen": {
+        "gitboard.fetchOnOpen": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.fetchOnOpen%"
         },
-        "gitmap.fetchPrune": {
+        "gitboard.fetchPrune": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.fetchPrune%"
         },
-        "gitmap.defaultPullStrategy": {
+        "gitboard.defaultPullStrategy": {
           "type": "string",
           "default": "merge",
           "enum": [
@@ -151,7 +151,7 @@
           ],
           "description": "%cfg.defaultPullStrategy%"
         },
-        "gitmap.dateFormat": {
+        "gitboard.dateFormat": {
           "type": "string",
           "default": "datetime",
           "enum": [
@@ -166,7 +166,7 @@
           ],
           "description": "%cfg.dateFormat%"
         },
-        "gitmap.rowHeight": {
+        "gitboard.rowHeight": {
           "type": "string",
           "default": "default",
           "enum": [
@@ -176,7 +176,7 @@
           ],
           "description": "%cfg.rowHeight%"
         },
-        "gitmap.graphStyle": {
+        "gitboard.graphStyle": {
           "type": "string",
           "default": "curved",
           "enum": [
@@ -185,24 +185,24 @@
           ],
           "description": "%cfg.graphStyle%"
         },
-        "gitmap.graphColumnWidth": {
+        "gitboard.graphColumnWidth": {
           "type": "number",
           "default": 180,
           "minimum": 120,
           "maximum": 260,
           "description": "%cfg.graphColumnWidth%"
         },
-        "gitmap.showRemoteChips": {
+        "gitboard.showRemoteChips": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.showRemoteChips%"
         },
-        "gitmap.maxTagChips": {
+        "gitboard.maxTagChips": {
           "type": "number",
           "default": 2,
           "description": "%cfg.maxTagChips%"
         },
-        "gitmap.detailPanelPosition": {
+        "gitboard.detailPanelPosition": {
           "type": "string",
           "default": "bottom",
           "enum": [
@@ -211,7 +211,7 @@
           ],
           "description": "%cfg.detailPanelPosition%"
         },
-        "gitmap.language": {
+        "gitboard.language": {
           "type": "string",
           "default": "auto",
           "enum": [
@@ -221,7 +221,7 @@
           ],
           "description": "%cfg.language%"
         },
-        "gitmap.showStatusBarItem": {
+        "gitboard.showStatusBarItem": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.showStatusBarItem%"
