@@ -1,0 +1,409 @@
+/* GitGraph Webview 样式 —— 全部消费 VS Code 主题变量（设计方案 4.7） */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--vscode-font-family);
+  font-size: 13px;
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+}
+
+#app.root {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+button, select, input {
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-widget-border, #666));
+  border-radius: 4px;
+  padding: 3px 10px;
+}
+button { cursor: pointer; background: var(--vscode-button-secondaryBackground); border-color: transparent; color: var(--vscode-button-secondaryForeground); }
+button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+button.primary:hover { background: var(--vscode-button-hoverBackground); }
+button.danger { background: #ad0707; color: #fff; }
+button.danger:hover { background: #c62121; }
+
+.hidden { display: none !important; }
+
+/* ---------------- 工具栏 ---------------- */
+
+.gg-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+}
+.gg-toolbar-left, .gg-toolbar-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gg-toolbar-right { margin-left: auto; }
+.gg-select { max-width: 200px; }
+.gg-branch-label { color: var(--vscode-charts-green); white-space: nowrap; }
+.gg-dirty-badge { margin-left: 6px; color: var(--vscode-charts-yellow); font-size: 11px; }
+.gg-tb-btn { min-width: 34px; font-size: 14px; line-height: 1; padding: 4px 8px; }
+.gg-icon-btn { min-width: 24px; padding: 2px 6px; }
+
+.gg-progress { display: none; align-items: center; gap: 6px; max-width: 380px; }
+.gg-progress.show { display: flex; }
+.gg-progress-text {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* ---------------- 整体 ---------------- */
+
+.gg-body { flex: 1; display: flex; min-height: 0; }
+.gg-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.gg-main.detail-right { flex-direction: row; }
+.gg-main.detail-right .gg-detail {
+  width: 46%;
+  height: auto !important;
+  border-top: none;
+  border-left: 1px solid var(--vscode-panel-border, #333);
+}
+
+/* ---------------- 侧栏 ---------------- */
+
+.gg-side {
+  width: 220px;
+  min-width: 220px;
+  overflow-y: auto;
+  border-right: 1px solid var(--vscode-panel-border, #333);
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  padding-bottom: 20px;
+}
+.gg-side-h {
+  padding: 10px 12px 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+}
+.gg-side-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.gg-side-item:hover { background: var(--vscode-list-hoverBackground); }
+.gg-side-item.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.gg-side-item.filtered { background: var(--vscode-list-inactiveSelectionBackground); }
+.gg-side-item.group { color: var(--vscode-descriptionForeground); }
+.gg-side-item.repo .gg-side-sub { color: var(--vscode-charts-green); font-size: 11px; }
+.gg-side-item.branch.head .gg-side-name { font-weight: 600; }
+.gg-side-item.branch { padding-left: 14px; }
+.gg-side-item.remote { padding-left: 26px; }
+.gg-side-item.tag { padding-left: 14px; }
+.gg-side-name { overflow: hidden; text-overflow: ellipsis; }
+.gg-side-sub { font-size: 11px; color: var(--vscode-descriptionForeground); margin-left: auto; }
+.gg-side-empty { padding: 6px 12px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+.gg-dot { width: 7px; height: 7px; min-width: 7px; border-radius: 50%; background: var(--vscode-charts-green); }
+.gg-ab { margin-left: auto; font-size: 11px; }
+.gg-ab b { font-weight: 400; }
+.gg-ab b.a { color: var(--vscode-charts-green); }
+.gg-ab b.d { color: var(--vscode-charts-red); }
+
+/* ---------------- 提交列表 ---------------- */
+
+.gg-list-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.gg-list-header {
+  flex: none;
+  display: grid;
+  grid-template-columns: var(--graphW, 180px) minmax(220px, 1fr) 120px 84px 150px;
+  height: 28px;
+  line-height: 28px;
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+}
+.gg-col-h { padding: 0 8px; font-size: 11.5px; color: var(--vscode-descriptionForeground); overflow: hidden; }
+.gg-list-body { flex: 1; position: relative; min-height: 0; }
+.gg-list { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; outline: none; }
+.gg-list-sizer { position: relative; width: 100%; }
+.gg-list-footer {
+  position: absolute;
+  left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+.gg-footer-count { padding-top: 8px; }
+.gg-spinner {
+  width: 12px; height: 12px;
+  border: 2px solid var(--vscode-descriptionForeground);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: gg-spin 0.8s linear infinite;
+}
+@keyframes gg-spin { to { transform: rotate(360deg); } }
+
+.gg-row {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: grid;
+  grid-template-columns: var(--graphW, 180px) minmax(220px, 1fr) 120px 84px 150px;
+  align-items: center;
+  cursor: default;
+}
+.gg-row:hover { background: var(--vscode-list-hoverBackground); }
+.gg-row.selected {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+  box-shadow: inset 3px 0 0 var(--vscode-focusBorder);
+}
+.gg-cell { padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.gg-cell.msg { display: flex; align-items: center; gap: 6px; }
+.gg-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.gg-cell.sha, .gg-cell.time { font-family: var(--vscode-editor-font-family); font-size: 12px; color: var(--vscode-descriptionForeground); }
+.gg-row.selected .gg-cell.sha, .gg-row.selected .gg-cell.time, .gg-row.selected .gg-cell.author { color: inherit; }
+.gg-cell.time { text-align: right; }
+.gg-cell.author { color: var(--vscode-descriptionForeground); }
+
+.gg-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 7px;
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 1;
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 1px solid transparent;
+}
+.gg-chip.head { color: var(--vscode-charts-green); background: color-mix(in srgb, var(--vscode-charts-green) 18%, transparent); }
+.gg-chip.remote { color: var(--vscode-charts-purple); background: color-mix(in srgb, var(--vscode-charts-purple) 18%, transparent); }
+.gg-chip.tag { color: var(--vscode-charts-yellow); background: color-mix(in srgb, var(--vscode-charts-yellow) 18%, transparent); }
+.gg-chip.more { opacity: 0.8; }
+
+.gg-graph-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+
+.gg-empty { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.gg-empty.show { display: flex; }
+.gg-empty-title { font-size: 15px; font-weight: 600; color: var(--vscode-descriptionForeground); }
+.gg-empty-hint { font-size: 12px; color: var(--vscode-descriptionForeground); opacity: 0.8; }
+
+/* ---------------- 详情面板 ---------------- */
+
+.gg-detail {
+  flex: none;
+  height: var(--gg-detail-h, 220px);
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--vscode-panel-border, #333);
+  background: var(--vscode-editor-background);
+  min-height: 0;
+}
+.gg-detail.hidden { display: none; }
+.gg-detail.collapsed { height: 30px !important; }
+.gg-detail.collapsed .gg-detail-body { display: none; }
+.gg-detail-handle { flex: none; height: 4px; cursor: row-resize; background: transparent; }
+.gg-detail-handle:hover { background: var(--vscode-focusBorder); }
+.gg-detail-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+}
+.gg-detail-sha { font-family: var(--vscode-editor-font-family); font-size: 12px; color: var(--vscode-charts-blue); }
+.gg-detail-head .gg-icon-btn { margin-left: auto; }
+.gg-detail-body { flex: 1; display: flex; min-height: 0; }
+.gg-detail-left {
+  width: 46%;
+  min-width: 320px;
+  overflow-y: auto;
+  border-right: 1px solid var(--vscode-panel-border, #333);
+  padding: 8px 10px;
+}
+.gg-detail-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.gg-summary { display: flex; flex-direction: column; gap: 2px; }
+.gg-sum-row { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+.gg-sum-label { flex: none; width: 72px; color: var(--vscode-descriptionForeground); }
+.gg-sum-value { font-family: var(--vscode-editor-font-family); word-break: break-all; }
+.gg-mini-btn { flex: none; margin-left: auto; padding: 0 6px; font-size: 11px; }
+
+.gg-message {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--vscode-charts-blue);
+  background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.08));
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  max-height: 96px;
+  overflow-y: auto;
+}
+.gg-merge-note { margin-top: 6px; font-size: 11px; color: var(--vscode-descriptionForeground); }
+
+.gg-files-head {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+  padding: 2px 0;
+}
+.gg-files { display: flex; flex-direction: column; }
+.gg-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gg-file:hover { background: var(--vscode-list-hoverBackground); }
+.gg-file.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.gg-st { flex: none; width: 14px; font-weight: 700; text-align: center; }
+.gg-st.M, .gg-st.T { color: var(--vscode-charts-yellow); }
+.gg-st.A, .gg-st.C { color: var(--vscode-charts-green); }
+.gg-st.D { color: var(--vscode-charts-red); }
+.gg-st.R { color: var(--vscode-charts-blue); }
+.gg-num { flex: none; width: 84px; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.gg-num b { font-weight: 400; }
+.gg-num b.a { color: var(--vscode-charts-green); }
+.gg-num b.d { color: var(--vscode-charts-red); }
+.gg-file-path { overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+
+.gg-diff-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+}
+.gg-diff-path {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gg-diff-head .gg-btn { margin-left: auto; flex: none; }
+.gg-btn.small { padding: 2px 8px; font-size: 11.5px; }
+
+.gg-diff-box {
+  flex: 1;
+  overflow: auto;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  line-height: 1.5;
+  padding-bottom: 12px;
+}
+.gg-diff-note { padding: 12px; color: var(--vscode-descriptionForeground); }
+.gg-dl { display: flex; white-space: pre; }
+.gg-dl .gg-ln { flex: none; width: 44px; text-align: right; padding-right: 8px; color: var(--vscode-descriptionForeground); opacity: 0.7; user-select: none; }
+.gg-dl .gg-mark { flex: none; width: 14px; user-select: none; }
+.gg-dl.hunk { background: var(--vscode-editorWidget-background, rgba(128,128,128,0.1)); color: var(--vscode-descriptionForeground); padding: 2px 0; }
+.gg-dl.add { background: var(--vscode-diffEditor-insertedTextBackground); }
+.gg-dl.add .gg-mark { color: var(--vscode-charts-green); }
+.gg-dl.del { background: var(--vscode-diffEditor-removedTextBackground); }
+.gg-dl.del .gg-mark { color: var(--vscode-charts-red); }
+
+/* ---------------- 菜单 / 对话框 / Toast ---------------- */
+
+.gg-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, #444));
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.gg-menu-item { padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12.5px; }
+.gg-menu-item:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground)); color: var(--vscode-menu-selectionForeground, inherit); }
+.gg-menu-item.danger { color: var(--vscode-charts-red); }
+.gg-menu-item.disabled { opacity: 0.45; pointer-events: none; }
+.gg-menu-sep { height: 1px; margin: 4px 8px; background: var(--vscode-menu-separatorBackground, rgba(128,128,128,0.35)); }
+
+.gg-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gg-modal {
+  min-width: 380px;
+  max-width: 560px;
+  max-height: 70vh;
+  overflow: auto;
+  background: var(--vscode-editorWidget-background, #222);
+  border: 1px solid var(--vscode-widget-border, #444);
+  border-radius: 8px;
+  padding: 14px 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.gg-modal-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+.gg-modal-text { font-size: 12.5px; white-space: pre-wrap; word-break: break-word; margin-bottom: 6px; }
+.gg-modal-label { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.gg-input { padding: 5px 8px; }
+.gg-radio-row { display: flex; align-items: center; gap: 8px; padding: 5px 2px; font-size: 12.5px; }
+.gg-modal-warn { display: none; margin-top: 8px; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
+.gg-modal-warn.show { display: block; color: var(--vscode-charts-red); background: color-mix(in srgb, var(--vscode-charts-red) 12%, transparent); border: 1px solid color-mix(in srgb, var(--vscode-charts-red) 40%, transparent); }
+.gg-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+.gg-toasts { position: fixed; right: 14px; bottom: 14px; z-index: 1200; display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
+.gg-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  background: var(--vscode-editorWidget-background, #222);
+  border: 1px solid var(--vscode-widget-border, #444);
+  border-left: 3px solid var(--vscode-charts-blue);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+  opacity: 1;
+  transition: opacity 1.6s ease 5s;
+}
+.gg-toast.fade { opacity: 0; }
+.gg-toast.warn { border-left-color: var(--vscode-charts-yellow); }
+.gg-toast.error { border-left-color: var(--vscode-charts-red); }
+.gg-toast-text { word-break: break-word; }
+.gg-toast-btn { flex: none; padding: 2px 8px; font-size: 11.5px; }
+.gg-toast-x { flex: none; min-width: 20px; padding: 0 4px; background: transparent; color: inherit; border: none; }
+
+/* 滚动条（贴近 VS Code 观感） */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: rgba(121,121,121,0.4); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(121,121,121,0.6); }
+::-webkit-scrollbar-track { background: transparent; }

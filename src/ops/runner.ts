@@ -1,0 +1,145 @@
+/**
+ * 操作执行器（设计方案 6.4 / 6.5）：
+ * 每仓库写操作串行队列、进度流式转发、可取消。
+ */
+import type { ChildProcess } from 'child_process';
+import { GitError, type GitExecutor } from '../git/executor';
+
+export type ResetMode = 'soft' | 'mixed' | 'hard';
+export type PullStrategy = 'merge' | 'rebase' | 'ff-only';
+
+export interface OpSpec {
+  kind: 'fetch' | 'pull' | 'push' | 'reset' | 'checkout';
+  /** 依 kind 不同 */
+  all?: boolean;               // fetch
+  remote?: string;
+  branch?: string;
+  prune?: boolean;             // fetch
+  strategy?: PullStrategy;     // pull
+  autostash?: boolean;         // pull
+  setUpstream?: boolean;       // push
+  sha?: string;                // reset / checkout(detached)
+  mode?: ResetMode;            // reset
+  ref?: string;                // checkout
+  detached?: boolean;          // checkout
+  trackFrom?: { name: string; remoteBranch: string };  // checkout 远程分支为本地
+}
+
+export interface OpOutcome {
+  ok: boolean;
+  message?: string;
+  outputTail?: string;
+}
+
+const PCT_RE = /(\d+)%/;
+
+export class OpRunner {
+  private readonly queues = new Map<string, Promise<void>>();
+  private readonly children = new Map<number, ChildProcess>();
+  private readonly cancelled = new Set<number>();
+
+  constructor(
+    private readonly exec: GitExecutor,
+    /** 队列空隙时的回调（用于 UI 释放"进行中"状态） */
+    private readonly onIdle?: () => void,
+  ) {}
+
+  cancel(opId: number): void {
+    this.cancelled.add(opId);
+    this.children.get(opId)?.kill();
+  }
+
+  /** 串行入队并执行；onProgress 收到本地化文本与可选百分比 */
+  async run(
+    root: string,
+    spec: OpSpec,
+    opId: number,
+    onProgress: (text: string, pct?: number) => void,
+    buildDone: (ok: boolean) => string,
+  ): Promise<OpOutcome> {
+    const prev = this.queues.get(root) ?? Promise.resolve();
+    const task = prev.catch(() => undefined).then(() => this.execute(root, spec, opId, onProgress, buildDone));
+    let release: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    this.queues.set(root, gate as Promise<void>);
+    const result = await task;
+    release!();
+    if (this.queues.get(root) === gate) this.queues.delete(root);
+    if (this.children.get(opId)) this.children.delete(opId);
+    this.onIdle?.();
+    return result;
+  }
+
+  private async execute(
+    root: string,
+    spec: OpSpec,
+    opId: number,
+    onProgress: (text: string, pct?: number) => void,
+    buildDone: (ok: boolean) => string,
+  ): Promise<OpOutcome> {
+    const args = buildArgs(spec);
+    let lastLine = '';
+    try {
+      const r = await this.exec.exec(root, args, {
+        timeoutMs: 0,   // 网络操作不设超时
+        maxBytes: 4 * 1024 * 1024,
+        registerChild: (c) => this.children.set(opId, c),
+        onStderrLine: (line) => {
+          const cleaned = line.replace(/[\r ]+$/, '');
+          if (!cleaned || cleaned === lastLine) return;
+          lastLine = cleaned;
+          const m = PCT_RE.exec(cleaned);
+          onProgress(cleaned, m ? Number(m[1]) : undefined);
+        },
+      });
+      const warn = r.stderr
+        .split('\n').map(s => s.trim()).filter(Boolean)
+        .filter(l => !l.startsWith('remote:')).slice(0, 3).join(' ');
+      return { ok: true, message: buildDone(true) + (warn ? ` — ${warn}` : '') };
+    } catch (e) {
+      if (this.cancelled.delete(opId) || (e instanceof GitError && e.code === 'E_TIMEOUT')) {
+        return { ok: false, message: 'cancelled' };
+      }
+      const tail = e instanceof GitError ? e.stderrTail : String(e);
+      return { ok: false, message: buildDone(false), outputTail: tail };
+    }
+  }
+}
+
+function buildArgs(spec: OpSpec): string[] {
+  switch (spec.kind) {
+    case 'fetch': {
+      const args = ['fetch', '--progress'];
+      if (spec.all) args.push('--all');
+      if (spec.prune) args.push('--prune');
+      if (!spec.all && spec.remote) args.push(spec.remote);
+      return args;
+    }
+    case 'pull': {
+      const args = ['pull', '--progress'];
+      if (spec.strategy === 'rebase') args.push('--rebase');
+      else if (spec.strategy === 'ff-only') args.push('--ff-only');
+      if (spec.autostash) args.push('--autostash');
+      if (spec.remote) args.push(spec.remote);
+      if (spec.branch) args.push(spec.branch);
+      return args;
+    }
+    case 'push': {
+      const args = ['push', '--progress'];
+      if (spec.setUpstream) args.push('-u');
+      args.push(spec.remote ?? 'origin', spec.branch ?? 'HEAD');
+      return args;
+    }
+    case 'reset':
+      return ['reset', `--${spec.mode ?? 'mixed'}`, spec.sha ?? 'HEAD'];
+    case 'checkout': {
+      if (spec.trackFrom) {
+        return ['checkout', '-b', spec.trackFrom.name, '--track', spec.trackFrom.remoteBranch];
+      }
+      const args = ['checkout'];
+      if (spec.detached) args.push('--detach');
+      args.push(spec.ref ?? spec.sha ?? 'HEAD');
+      return args;
+    }
+  }
+}

@@ -1,0 +1,162 @@
+{
+  "name": "gitgraph",
+  "displayName": "%ext.displayName%",
+  "description": "%ext.description%",
+  "version": "0.1.0",
+  "publisher": "emon",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Visualization"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gitgraph.open",
+        "title": "%cmd.open%"
+      },
+      {
+        "command": "gitgraph.fetch",
+        "title": "%cmd.fetch%"
+      },
+      {
+        "command": "gitgraph.pull",
+        "title": "%cmd.pull%"
+      },
+      {
+        "command": "gitgraph.push",
+        "title": "%cmd.push%"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "gitgraph.open",
+        "key": "ctrl+alt+g",
+        "mac": "cmd+alt+g"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "gitgraph.open",
+          "group": "navigation",
+          "when": "scmProvider == git"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "GitGraph",
+      "properties": {
+        "gitgraph.gitPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "%cfg.gitPath%"
+        },
+        "gitgraph.commitPageSize": {
+          "type": "number",
+          "default": 500,
+          "minimum": 100,
+          "maximum": 5000,
+          "description": "%cfg.commitPageSize%"
+        },
+        "gitgraph.maxAutoLoad": {
+          "type": "number",
+          "default": 20000,
+          "description": "%cfg.maxAutoLoad%"
+        },
+        "gitgraph.fetchOnOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "%cfg.fetchOnOpen%"
+        },
+        "gitgraph.fetchPrune": {
+          "type": "boolean",
+          "default": true,
+          "description": "%cfg.fetchPrune%"
+        },
+        "gitgraph.defaultPullStrategy": {
+          "type": "string",
+          "default": "merge",
+          "enum": ["merge", "rebase", "ff-only"],
+          "description": "%cfg.defaultPullStrategy%"
+        },
+        "gitgraph.dateFormat": {
+          "type": "string",
+          "default": "datetime",
+          "enum": ["datetime", "relative", "iso"],
+          "enumDescriptions": [
+            "%cfg.dateFormat.datetime%",
+            "%cfg.dateFormat.relative%",
+            "%cfg.dateFormat.iso%"
+          ],
+          "description": "%cfg.dateFormat%"
+        },
+        "gitgraph.rowHeight": {
+          "type": "string",
+          "default": "default",
+          "enum": ["compact", "default", "loose"],
+          "description": "%cfg.rowHeight%"
+        },
+        "gitgraph.graphStyle": {
+          "type": "string",
+          "default": "curved",
+          "enum": ["curved", "angular"],
+          "description": "%cfg.graphStyle%"
+        },
+        "gitgraph.graphColumnWidth": {
+          "type": "number",
+          "default": 180,
+          "minimum": 120,
+          "maximum": 260,
+          "description": "%cfg.graphColumnWidth%"
+        },
+        "gitgraph.showRemoteChips": {
+          "type": "boolean",
+          "default": true,
+          "description": "%cfg.showRemoteChips%"
+        },
+        "gitgraph.maxTagChips": {
+          "type": "number",
+          "default": 2,
+          "description": "%cfg.maxTagChips%"
+        },
+        "gitgraph.detailPanelPosition": {
+          "type": "string",
+          "default": "bottom",
+          "enum": ["bottom", "right"],
+          "description": "%cfg.detailPanelPosition%"
+        },
+        "gitgraph.language": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "zh-CN", "en"],
+          "description": "%cfg.language%"
+        },
+        "gitgraph.showStatusBarItem": {
+          "type": "boolean",
+          "default": true,
+          "description": "%cfg.showStatusBarItem%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.ui.json --noEmit",
+    "test": "vitest run",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.4.5",
+    "vitest": "^2.1.8"
+  }
+}
