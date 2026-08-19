@@ -82,13 +82,21 @@
         "gitgraph.defaultPullStrategy": {
           "type": "string",
           "default": "merge",
-          "enum": ["merge", "rebase", "ff-only"],
+          "enum": [
+            "merge",
+            "rebase",
+            "ff-only"
+          ],
           "description": "%cfg.defaultPullStrategy%"
         },
         "gitgraph.dateFormat": {
           "type": "string",
           "default": "datetime",
-          "enum": ["datetime", "relative", "iso"],
+          "enum": [
+            "datetime",
+            "relative",
+            "iso"
+          ],
           "enumDescriptions": [
             "%cfg.dateFormat.datetime%",
             "%cfg.dateFormat.relative%",
@@ -99,13 +107,20 @@
         "gitgraph.rowHeight": {
           "type": "string",
           "default": "default",
-          "enum": ["compact", "default", "loose"],
+          "enum": [
+            "compact",
+            "default",
+            "loose"
+          ],
           "description": "%cfg.rowHeight%"
         },
         "gitgraph.graphStyle": {
           "type": "string",
           "default": "curved",
-          "enum": ["curved", "angular"],
+          "enum": [
+            "curved",
+            "angular"
+          ],
           "description": "%cfg.graphStyle%"
         },
         "gitgraph.graphColumnWidth": {
@@ -128,13 +143,20 @@
         "gitgraph.detailPanelPosition": {
           "type": "string",
           "default": "bottom",
-          "enum": ["bottom", "right"],
+          "enum": [
+            "bottom",
+            "right"
+          ],
           "description": "%cfg.detailPanelPosition%"
         },
         "gitgraph.language": {
           "type": "string",
           "default": "auto",
-          "enum": ["auto", "zh-CN", "en"],
+          "enum": [
+            "auto",
+            "zh-CN",
+            "en"
+          ],
           "description": "%cfg.language%"
         },
         "gitgraph.showStatusBarItem": {
@@ -155,6 +177,7 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.21.5",
     "typescript": "^5.4.5",
     "vitest": "^2.1.8"
