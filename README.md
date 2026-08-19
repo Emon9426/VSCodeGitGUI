@@ -1,10 +1,10 @@
-# CommitMap — Git 可视化提交图 / Git Commit Graph for VS Code
+# GitMap — Git 可视化提交图 / Git Commit Graph for VS Code
 
 **简体中文** | [English](#english-documentation)
 
-CommitMap 是一个 VS Code 桌面版插件，以 SourceTree 风格的图形化提交历史为核心，浏览与操作 Git 仓库：彩色拓扑提交图、提交详情与差异对比、以及 Fetch / Pull / Push / 重置 / 切换分支等日常 GUI 操作。针对大仓库做了分页加载、虚拟滚动与分层渲染优化。
+GitMap 是一个 VS Code 桌面版插件，以 SourceTree 风格的图形化提交历史为核心，浏览与操作 Git 仓库：彩色拓扑提交图、提交详情与差异对比、以及 Fetch / Pull / Push / 重置 / 切换分支等日常 GUI 操作。针对大仓库做了分页加载、虚拟滚动与分层渲染优化。
 
-CommitMap is a VS Code extension (desktop) that visualizes and operates Git repositories with a SourceTree-style commit graph: colored topology, commit details & diffs, plus everyday GUI operations (Fetch / Pull / Push / Reset / Checkout). Built for large repos with paging, virtualized scrolling and layered rendering.
+GitMap is a VS Code extension (desktop) that visualizes and operates Git repositories with a SourceTree-style commit graph: colored topology, commit details & diffs, plus everyday GUI operations (Fetch / Pull / Push / Reset / Checkout). Built for large repos with paging, virtualized scrolling and layered rendering.
 
 ![主界面总览 / Overview](res/overview.png)
 
@@ -29,36 +29,36 @@ CommitMap is a VS Code extension (desktop) that visualizes and operates Git repo
 
 **方式〇：扩展市场（发布后可用）**
 
-扩展面板（Ctrl+Shift+X）搜索 **CommitMap** 安装（ID：`EmonZhang3438.commitmap`），或命令行：
+扩展面板（Ctrl+Shift+X）搜索 **GitMap** 安装（ID：`EmonZhang3438.gitmap`），或命令行：
 
 ```bash
-code --install-extension EmonZhang3438.commitmap
+code --install-extension EmonZhang3438.gitmap
 ```
 
 **方式一：命令行安装 vsix（推荐）**
 
 ```bash
-code --install-extension commitmap-0.6.0.vsix
+code --install-extension gitmap-0.6.0.vsix
 ```
 
 安装后执行 **Ctrl+Shift+P → “开发者：重新加载窗口”**（每次覆盖安装新版本后都需要）。
 
 **方式二：VS Code 界面安装**
 
-扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `commitmap-0.6.0.vsix` → 重新加载窗口。
+扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitmap-0.6.0.vsix` → 重新加载窗口。
 
 **方式三：从源码构建**
 
 ```bash
 git clone <本仓库> && cd 09_GitGraph
 npm install
-npm run package     # 产出 commitmap-x.y.z.vsix
+npm run package     # 产出 gitmap-x.y.z.vsix
 ```
 
 ### 快速上手
 
 1. 打开任意包含 Git 仓库的文件夹/工作区；
-2. 点击**左侧活动栏的 CommitMap 图标**（或 `Ctrl+Alt+G`，或命令面板执行 `CommitMap: 打开提交图`）——主界面直接打开；
+2. 点击**左侧活动栏的 GitMap 图标**（或 `Ctrl+Alt+G`，或命令面板执行 `GitMap: 打开提交图`）——主界面直接打开；
 3. 单击提交行查看详情，双击变更文件打开差异编辑器，右键探索各项操作。
 
 ### 功能使用详解
@@ -110,28 +110,28 @@ npm run package     # 产出 commitmap-x.y.z.vsix
 | `↑` / `↓` | 移动选中提交 |
 | `Enter` | 打开文件所在差异（在详情面板中） |
 
-### 常用设置（`Ctrl+,` 搜索 "commitmap"）
+### 常用设置（`Ctrl+,` 搜索 "gitmap"）
 
 | 设置 | 默认 | 说明 |
 | --- | --- | --- |
-| `commitmap.gitPath` | 自动检测 | git 可执行文件路径 |
-| `commitmap.commitPageSize` | 500 | 每页加载提交数（100–5000） |
-| `commitmap.maxAutoLoad` | 20000 | 自动加载上限 |
-| `commitmap.defaultPullStrategy` | merge | pull 策略：merge / rebase / ff-only |
-| `commitmap.dateFormat` | datetime | 时间格式：YYYY-MM-DD HH:mm:ss / 相对时间 / ISO |
-| `commitmap.rowHeight` | default | 行高：紧凑 20 / 标准 24 / 舒适 28 |
-| `commitmap.graphStyle` | curved | 走线风格：短半径圆角 / 直角折线 |
-| `commitmap.detailPanelPosition` | bottom | 详情面板位置：底部 / 右侧 |
-| `commitmap.language` | auto | 界面语言 |
-| `commitmap.fetchOnOpen` | true | 打开视图时自动 fetch |
+| `gitmap.gitPath` | 自动检测 | git 可执行文件路径 |
+| `gitmap.commitPageSize` | 500 | 每页加载提交数（100–5000） |
+| `gitmap.maxAutoLoad` | 20000 | 自动加载上限 |
+| `gitmap.defaultPullStrategy` | merge | pull 策略：merge / rebase / ff-only |
+| `gitmap.dateFormat` | datetime | 时间格式：YYYY-MM-DD HH:mm:ss / 相对时间 / ISO |
+| `gitmap.rowHeight` | default | 行高：紧凑 20 / 标准 24 / 舒适 28 |
+| `gitmap.graphStyle` | curved | 走线风格：短半径圆角 / 直角折线 |
+| `gitmap.detailPanelPosition` | bottom | 详情面板位置：底部 / 右侧 |
+| `gitmap.language` | auto | 界面语言 |
+| `gitmap.fetchOnOpen` | true | 打开视图时自动 fetch |
 
 ### 从源码开发
 
 ```bash
 npm install
-npm run watch       # F5 调试（“运行 CommitMap 扩展”）
+npm run watch       # F5 调试（“运行 GitMap 扩展”）
 npm run typecheck   # 双工程类型检查
-npm test            # 单元测试 + 真实 git 冒烟（COMMITMAP_SMOKE=1 启用）
+npm test            # 单元测试 + 真实 git 冒烟（GITMAP_SMOKE=1 启用）
 npm run build && npm run package
 ```
 
@@ -147,7 +147,7 @@ npm run build && npm run package
 
 **[简体中文](#中文文档)** | **English**
 
-CommitMap brings a SourceTree-style commit graph to VS Code (desktop): browse history with a colored topology, inspect commits and diffs, and run everyday Git operations from the GUI.
+GitMap brings a SourceTree-style commit graph to VS Code (desktop): browse history with a colored topology, inspect commits and diffs, and run everyday Git operations from the GUI.
 
 ![Overview](res/overview.png)
 
@@ -168,16 +168,16 @@ CommitMap brings a SourceTree-style commit graph to VS Code (desktop): browse hi
 
 **Option 0 — Marketplace (once published)**
 
-Search **CommitMap** in the Extensions view (Ctrl+Shift+X), ID: `EmonZhang3438.commitmap`, or:
+Search **GitMap** in the Extensions view (Ctrl+Shift+X), ID: `EmonZhang3438.gitmap`, or:
 
 ```bash
-code --install-extension EmonZhang3438.commitmap
+code --install-extension EmonZhang3438.gitmap
 ```
 
 **Option 1 — CLI (recommended)**
 
 ```bash
-code --install-extension commitmap-0.6.0.vsix
+code --install-extension gitmap-0.6.0.vsix
 ```
 
 Then run **Ctrl+Shift+P → “Developer: Reload Window”** (required after every upgrade).
@@ -195,7 +195,7 @@ npm install && npm run package
 ### Quick Start
 
 1. Open a folder/workspace containing Git repositories;
-2. Click the **CommitMap icon in the Activity Bar** (or press `Ctrl+Alt+G`, or run `CommitMap: Open Commit Graph`);
+2. Click the **GitMap icon in the Activity Bar** (or press `Ctrl+Alt+G`, or run `GitMap: Open Commit Graph`);
 3. Click a commit row for details, double-click a file to open the diff editor, right-click everywhere for more actions.
 
 ### Using the Features
@@ -219,7 +219,7 @@ npm install && npm run package
 ### Keybindings & Settings
 
 - `Ctrl+Alt+G` / `Cmd+Alt+G` — open the graph; `↑`/`↓` — move selection.
-- Search “commitmap” in Settings for page size, auto-load limit, pull strategy, date format, row height, graph style, detail panel position, language, auto-fetch on open, and more.
+- Search “gitmap” in Settings for page size, auto-load limit, pull strategy, date format, row height, graph style, detail panel position, language, auto-fetch on open, and more.
 
 ### FAQ
 
@@ -231,7 +231,7 @@ npm install && npm run package
 
 ```bash
 npm install
-npm run watch        # then press F5 (“运行 CommitMap 扩展”)
+npm run watch        # then press F5 (“运行 GitMap 扩展”)
 npm run typecheck && npm test
 npm run build && npm run package
 ```

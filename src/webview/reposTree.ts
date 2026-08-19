@@ -31,7 +31,7 @@ export class ReposTreeProvider implements vscode.TreeDataProvider<RepoEntry> {
     this.loading = true;
     try {
       if (!this.executor) {
-        const cfg = vscode.workspace.getConfiguration('commitmap');
+        const cfg = vscode.workspace.getConfiguration('gitmap');
         this.executor = await GitExecutor.detect(
           cfg.get<string>('gitPath', '') || '',
           builtinGitPath(),
@@ -56,13 +56,13 @@ export class ReposTreeProvider implements vscode.TreeDataProvider<RepoEntry> {
   }
 
   getTreeItem(entry: RepoEntry): vscode.TreeItem {
-    const cfg = vscode.workspace.getConfiguration('commitmap');
+    const cfg = vscode.workspace.getConfiguration('gitmap');
     const t = createT(resolveLang(cfg.get('language', 'auto'), vscode.env.language));
     const item = new vscode.TreeItem(entry.meta.name, vscode.TreeItemCollapsibleState.None);
     item.description = entry.detached ? t('detachedHead') : entry.branch;
     item.tooltip = entry.meta.root;
     item.iconPath = new vscode.ThemeIcon('repo');
-    item.command = { command: 'commitmap.openRepo', title: t('cmdOpenGraph'), arguments: [entry.meta.id] };
+    item.command = { command: 'gitmap.openRepo', title: t('cmdOpenGraph'), arguments: [entry.meta.id] };
     return item;
   }
 

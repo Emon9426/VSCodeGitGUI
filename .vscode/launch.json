@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "运行 CommitMap 扩展",
+      "name": "运行 GitMap 扩展",
       "type": "extensionHost",
       "request": "launch",
       "preLaunchTask": "npm: watch",

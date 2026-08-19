@@ -1,5 +1,5 @@
 {
-  "name": "commitmap",
+  "name": "gitmap",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
   "version": "0.6.0",
@@ -26,55 +26,55 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "commitmap",
+          "id": "gitmap",
           "title": "%viewContainer.name%",
-          "icon": "media/commitmap.svg"
+          "icon": "media/gitmap.svg"
         }
       ]
     },
     "views": {
-      "commitmap": [
+      "gitmap": [
         {
-          "id": "commitmap.repos",
+          "id": "gitmap.repos",
           "name": "%view.repos%"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "commitmap.repos",
+        "view": "gitmap.repos",
         "contents": "%welcome.noRepos%"
       }
     ],
     "commands": [
       {
-        "command": "commitmap.open",
+        "command": "gitmap.open",
         "title": "%cmd.open%"
       },
       {
-        "command": "commitmap.openRepo",
+        "command": "gitmap.openRepo",
         "title": "%cmd.openRepo%"
       },
       {
-        "command": "commitmap.refreshTree",
+        "command": "gitmap.refreshTree",
         "title": "%cmd.refreshTree%"
       },
       {
-        "command": "commitmap.fetch",
+        "command": "gitmap.fetch",
         "title": "%cmd.fetch%"
       },
       {
-        "command": "commitmap.pull",
+        "command": "gitmap.pull",
         "title": "%cmd.pull%"
       },
       {
-        "command": "commitmap.push",
+        "command": "gitmap.push",
         "title": "%cmd.push%"
       }
     ],
     "keybindings": [
       {
-        "command": "commitmap.open",
+        "command": "gitmap.open",
         "key": "ctrl+alt+g",
         "mac": "cmd+alt+g"
       }
@@ -82,65 +82,65 @@
     "menus": {
       "commandPalette": [
         {
-          "command": "commitmap.openRepo",
+          "command": "gitmap.openRepo",
           "when": "false"
         },
         {
-          "command": "commitmap.refreshTree",
+          "command": "gitmap.refreshTree",
           "when": "false"
         }
       ],
       "view/title": [
         {
-          "command": "commitmap.open",
-          "when": "view == commitmap.repos",
+          "command": "gitmap.open",
+          "when": "view == gitmap.repos",
           "group": "navigation"
         },
         {
-          "command": "commitmap.refreshTree",
-          "when": "view == commitmap.repos",
+          "command": "gitmap.refreshTree",
+          "when": "view == gitmap.repos",
           "group": "navigation"
         }
       ],
       "scm/title": [
         {
-          "command": "commitmap.open",
+          "command": "gitmap.open",
           "group": "navigation",
           "when": "scmProvider == git"
         }
       ]
     },
     "configuration": {
-      "title": "CommitMap",
+      "title": "GitMap",
       "properties": {
-        "commitmap.gitPath": {
+        "gitmap.gitPath": {
           "type": "string",
           "default": "",
           "markdownDescription": "%cfg.gitPath%"
         },
-        "commitmap.commitPageSize": {
+        "gitmap.commitPageSize": {
           "type": "number",
           "default": 500,
           "minimum": 100,
           "maximum": 5000,
           "description": "%cfg.commitPageSize%"
         },
-        "commitmap.maxAutoLoad": {
+        "gitmap.maxAutoLoad": {
           "type": "number",
           "default": 20000,
           "description": "%cfg.maxAutoLoad%"
         },
-        "commitmap.fetchOnOpen": {
+        "gitmap.fetchOnOpen": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.fetchOnOpen%"
         },
-        "commitmap.fetchPrune": {
+        "gitmap.fetchPrune": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.fetchPrune%"
         },
-        "commitmap.defaultPullStrategy": {
+        "gitmap.defaultPullStrategy": {
           "type": "string",
           "default": "merge",
           "enum": [
@@ -150,7 +150,7 @@
           ],
           "description": "%cfg.defaultPullStrategy%"
         },
-        "commitmap.dateFormat": {
+        "gitmap.dateFormat": {
           "type": "string",
           "default": "datetime",
           "enum": [
@@ -165,7 +165,7 @@
           ],
           "description": "%cfg.dateFormat%"
         },
-        "commitmap.rowHeight": {
+        "gitmap.rowHeight": {
           "type": "string",
           "default": "default",
           "enum": [
@@ -175,7 +175,7 @@
           ],
           "description": "%cfg.rowHeight%"
         },
-        "commitmap.graphStyle": {
+        "gitmap.graphStyle": {
           "type": "string",
           "default": "curved",
           "enum": [
@@ -184,24 +184,24 @@
           ],
           "description": "%cfg.graphStyle%"
         },
-        "commitmap.graphColumnWidth": {
+        "gitmap.graphColumnWidth": {
           "type": "number",
           "default": 180,
           "minimum": 120,
           "maximum": 260,
           "description": "%cfg.graphColumnWidth%"
         },
-        "commitmap.showRemoteChips": {
+        "gitmap.showRemoteChips": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.showRemoteChips%"
         },
-        "commitmap.maxTagChips": {
+        "gitmap.maxTagChips": {
           "type": "number",
           "default": 2,
           "description": "%cfg.maxTagChips%"
         },
-        "commitmap.detailPanelPosition": {
+        "gitmap.detailPanelPosition": {
           "type": "string",
           "default": "bottom",
           "enum": [
@@ -210,7 +210,7 @@
           ],
           "description": "%cfg.detailPanelPosition%"
         },
-        "commitmap.language": {
+        "gitmap.language": {
           "type": "string",
           "default": "auto",
           "enum": [
@@ -220,7 +220,7 @@
           ],
           "description": "%cfg.language%"
         },
-        "commitmap.showStatusBarItem": {
+        "gitmap.showStatusBarItem": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.showStatusBarItem%"
