@@ -5,6 +5,7 @@
   "version": "0.6.0",
   "publisher": "EmonZhang3438",
   "license": "MIT",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/Emon9426/VSCodeGitGUI.git"

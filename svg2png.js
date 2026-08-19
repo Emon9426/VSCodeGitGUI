@@ -18,4 +18,9 @@ const sharp = require('sharp');
     const kb = (fs.statSync(out).size / 1024).toFixed(1);
     console.log(`${f} -> ${path.basename(out)} (${kb} KB)`);
   }
+  // 扩展市场图标：必须为 128×128 PNG（高密度渲染后缩到 128 保证平滑）
+  const iconSrc = path.join(__dirname, 'media', 'icon.svg');
+  const iconOut = path.join(__dirname, 'media', 'icon.png');
+  await sharp(iconSrc, { density: 288 }).resize(128, 128, { kernel: 'lanczos3' }).png().toFile(iconOut);
+  console.log(`media/icon.svg -> media/icon.png (${(fs.statSync(iconOut).size / 1024).toFixed(1)} KB, 128×128)`);
 })().catch(e => { console.error(e); process.exit(1); });
