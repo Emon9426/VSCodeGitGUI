@@ -266,6 +266,7 @@ export class GraphPanel {
         const target = this.safeJoin(root, rel);
         if (fs.existsSync(target)) {
           await this.revealInFileManager(target);
+          this.post({ t: 'notify', level: 'info', message: `${this.t('revealed')}: ${rel}` });
           return null;
         }
         // 文件已不在工作区（如浏览历史提交时已被删除）：回退到最近仍存在的父目录
@@ -479,7 +480,9 @@ export class GraphPanel {
 
   /**
    * 在系统文件管理器中定位文件（选中该文件）。
-   * 直接调用原生资源管理器——Webview 场景下 revealFileInOS 命令不可靠，仅作回退。
+   * Windows 关键点：explorer 只对 `/select,"路径"`（逗号后紧跟引号、整体一个参数）可靠解析；
+   * 用 windowsVerbatimArguments 精确构造该命令行，避免 Node 对参数二次拆分/加引号。
+   * revealFileInOS 命令在 Webview 扩展场景不可靠，仅作回退。
    */
   private async revealInFileManager(target: string): Promise<void> {
     const fallback = (): void => {
@@ -487,16 +490,24 @@ export class GraphPanel {
         .then(() => undefined, () => undefined);
     };
     try {
-      let child;
       if (process.platform === 'win32') {
-        child = spawn('explorer.exe', ['/select,', target], { detached: true, stdio: 'ignore' });
+        const child = spawn('explorer.exe', [`/select,"${target.replace(/"/g, '')}"`], {
+          windowsVerbatimArguments: true,
+          windowsHide: true,
+          detached: true,
+          stdio: 'ignore',
+        });
+        child.once('error', () => fallback());
+        child.unref();
       } else if (process.platform === 'darwin') {
-        child = spawn('open', ['-R', target], { detached: true, stdio: 'ignore' });
+        const child = spawn('open', ['-R', target], { detached: true, stdio: 'ignore' });
+        child.once('error', () => fallback());
+        child.unref();
       } else {
-        child = spawn('xdg-open', [path.dirname(target)], { detached: true, stdio: 'ignore' });
+        const child = spawn('xdg-open', [path.dirname(target)], { detached: true, stdio: 'ignore' });
+        child.once('error', () => fallback());
+        child.unref();
       }
-      child.on('error', () => fallback());
-      child.unref();
     } catch {
       fallback();
     }

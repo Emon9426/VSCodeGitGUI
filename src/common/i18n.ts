@@ -59,6 +59,7 @@ const zh: Record<string, string> = {
   openFile: '打开工作区文件',
   openAtRevision: '查看此版本（只读）',
   revealInFM: '在文件管理器中显示',
+  revealed: '已在文件管理器中定位',
   mergeDiffNote: '合并提交按第一父提交口径显示差异',
 
   checkout: '检出',
@@ -175,6 +176,7 @@ const en: Record<string, string> = {
   openFile: 'Open working file',
   openAtRevision: 'Open this revision (read-only)',
   revealInFM: 'Reveal in file manager',
+  revealed: 'Revealed in file manager',
   mergeDiffNote: 'Merge commits are diffed against their first parent',
 
   checkout: 'Checkout',
