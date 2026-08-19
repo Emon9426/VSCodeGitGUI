@@ -35,12 +35,30 @@ export function createDetailPanel(app: App): DetailPanel {
   left.append(summary, msgBlock, filesHead, filesList);
   const diffHead = el('div', 'gg-diff-head');
   const diffPath = el('span', 'gg-diff-path');
+  const diffModeBtn = el('button', 'gg-btn small');
   const diffOpenBtn = el('button', 'gg-btn small');
   const diffBox = el('div', 'gg-diff-box');
   right.append(diffHead, diffBox);
-  diffHead.append(diffPath, diffOpenBtn);
+  diffHead.append(diffPath, diffModeBtn, diffOpenBtn);
   body.append(left, right);
   root.append(handle, head, body);
+
+  /** 紧凑差异（默认）：只显示增删行，无差异段落折叠为 ⋯ */
+  let compactDiff = true;
+
+  function renderDiffNow(): void {
+    diffModeBtn.textContent = compactDiff ? S.t('diffContext') : S.t('diffCompact');
+    diffModeBtn.title = S.t('diffModeTitle');
+    diffOpenBtn.textContent = S.t('openInDiffEditor');
+    renderDiff(diffBox, S.selectedFile ? S.diff : undefined, S.selectedFile, compactDiff, () => {
+      if (S.detail && S.selectedFile) app.openDiffEditor(S.detail.sha, S.selectedFile);
+    });
+  }
+
+  diffModeBtn.addEventListener('click', () => {
+    compactDiff = !compactDiff;
+    renderDiffNow();
+  });
 
   let collapsed = false;
   collapseBtn.addEventListener('click', () => {
@@ -118,11 +136,8 @@ export function createDetailPanel(app: App): DetailPanel {
     }
 
     // diff
-    diffOpenBtn.textContent = S.t('openInDiffEditor');
     diffPath.textContent = S.selectedFile ?? '';
-    renderDiff(diffBox, S.selectedFile ? S.diff : undefined, S.selectedFile, () => {
-      if (S.detail && S.selectedFile) app.openDiffEditor(S.detail.sha, S.selectedFile);
-    });
+    renderDiffNow();
     updateFileSelection();
   }
 
@@ -151,9 +166,7 @@ export function createDetailPanel(app: App): DetailPanel {
       if (S.detail) app.requestDiff(S.detail.sha, f.path);
       updateFileSelection();
       diffPath.textContent = f.path;
-      renderDiff(diffBox, S.diff, S.selectedFile, () => {
-        if (S.detail) app.openDiffEditor(S.detail.sha, f.path);
-      });
+      renderDiffNow();
     });
     row.addEventListener('dblclick', () => {
       if (S.detail) app.openDiffEditor(S.detail.sha, f.path);

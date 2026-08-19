@@ -3,6 +3,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawn } from 'child_process';
 import * as vscode from 'vscode';
 import { createT, resolveLang, type Lang, type Translate } from '../common/i18n';
 import type { Commit, LogFilter, RepoMeta, RepoState } from '../common/models';
@@ -264,14 +265,14 @@ export class GraphPanel {
         const root = this.currentRoot();
         const target = this.safeJoin(root, rel);
         if (fs.existsSync(target)) {
-          await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(target));
+          await this.revealInFileManager(target);
           return null;
         }
         // 文件已不在工作区（如浏览历史提交时已被删除）：回退到最近仍存在的父目录
         let dir = path.dirname(target);
         while (dir !== root && !fs.existsSync(dir)) dir = path.dirname(dir);
         if (fs.existsSync(dir)) {
-          await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dir));
+          await this.revealInFileManager(dir);
           this.post({ t: 'notify', level: 'info', message: this.t('revealParent') });
           return null;
         }
@@ -474,6 +475,31 @@ export class GraphPanel {
       throw new Error(`path escapes repository root: ${rel}`);   // E_PATH_OUTSIDE
     }
     return resolved;
+  }
+
+  /**
+   * 在系统文件管理器中定位文件（选中该文件）。
+   * 直接调用原生资源管理器——Webview 场景下 revealFileInOS 命令不可靠，仅作回退。
+   */
+  private async revealInFileManager(target: string): Promise<void> {
+    const fallback = (): void => {
+      void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(target))
+        .then(() => undefined, () => undefined);
+    };
+    try {
+      let child;
+      if (process.platform === 'win32') {
+        child = spawn('explorer.exe', ['/select,', target], { detached: true, stdio: 'ignore' });
+      } else if (process.platform === 'darwin') {
+        child = spawn('open', ['-R', target], { detached: true, stdio: 'ignore' });
+      } else {
+        child = spawn('xdg-open', [path.dirname(target)], { detached: true, stdio: 'ignore' });
+      }
+      child.on('error', () => fallback());
+      child.unref();
+    } catch {
+      fallback();
+    }
   }
 
   private readColWidths(): ColWidths | undefined {

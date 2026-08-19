@@ -362,6 +362,15 @@ button.danger:hover { background: #c62121; }
 .gg-dl .gg-ln { flex: none; width: 44px; text-align: right; padding-right: 8px; color: var(--vscode-descriptionForeground); opacity: 0.7; user-select: none; }
 .gg-dl .gg-mark { flex: none; width: 14px; user-select: none; }
 .gg-dl.hunk { background: var(--vscode-editorWidget-background, rgba(128,128,128,0.1)); color: var(--vscode-descriptionForeground); padding: 2px 0; }
+.gg-dl.gap {
+  justify-content: center;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.75;
+  background: rgba(128,128,128,0.06);
+  font-size: 11px;
+  padding: 1px 0;
+  user-select: none;
+}
 .gg-dl.add { background: var(--vscode-diffEditor-insertedTextBackground); }
 .gg-dl.add .gg-mark { color: var(--vscode-charts-green); }
 .gg-dl.del { background: var(--vscode-diffEditor-removedTextBackground); }

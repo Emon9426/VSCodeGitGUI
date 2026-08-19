@@ -73,6 +73,16 @@ describe.skipIf(!enabled)('git 冒烟', () => {
     const files = detail.files;
     expect(files.some(f => f.path === '中文 文件.txt')).toBe(true);
 
+    // 内联 diff：commit 模式必须以第一父为基线（回归：曾误用空树导致整文件显示为新增）
+    const featureCommit = commits.find(c => c.subject.startsWith('feature'))!;
+    const dp = await svc.diffOf(root, 'commit', featureCommit.sha, '中文 文件.txt');
+    expect(dp.kind).toBe('diff');
+    if (dp.kind === 'diff') {
+      const lines = dp.diff.hunks.flatMap(h => h.lines);
+      expect(lines.filter(l => l.kind === 'add').length).toBe(2);   // +B +d
+      expect(lines.filter(l => l.kind === 'del').length).toBe(1);   // -b
+    }
+
     // 状态
     const st = parseStatus((await exec.exec(root, ['status', '--porcelain=v1', '-b'])).stdout);
     expect(st.branch).toBe('main');

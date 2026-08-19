@@ -108,12 +108,16 @@ export class GitService {
     return { ...commit, files, filesTruncated: false };
   }
 
-  /** 单文件差异（内联预览用） */
+  /** 单文件差异（内联预览用）；commit 模式自动以第一父提交为基线 */
   async diffOf(root: string, mode: 'commit' | 'worktree' | 'range', sha: string, path: string, base?: string): Promise<DiffPayload> {
+    let baseRef = base;
+    if (!baseRef && mode === 'commit') {
+      const parent = await this.firstParentOf(root, sha);
+      baseRef = parent ?? EMPTY_TREE;   // root 提交：与空树比较
+    }
     const refs: string[] =
       mode === 'worktree' ? [sha]
-        : mode === 'range' ? [base ?? EMPTY_TREE, sha]
-          : [base ?? EMPTY_TREE, sha];
+        : [baseRef ?? EMPTY_TREE, sha];
     // 二进制判定
     const num = await this.exec.exec(root, ['diff', '--numstat', '-M', ...refs, '--', path]);
     const first = num.stdout.split('\n').find(Boolean);
@@ -124,6 +128,12 @@ export class GitService {
     const diff = parseUnifiedDiff(r.stdout);
     if (diff.hunks.length === 0) return { kind: 'empty' };
     return { kind: 'diff', diff };
+  }
+
+  private async firstParentOf(root: string, sha: string): Promise<string | null> {
+    const r = await this.exec.exec(root, ['rev-list', '--parents', '-n', '1', sha]);
+    const parts = r.stdout.trim().split(/\s+/).filter(Boolean);
+    return parts.length > 1 ? parts[1] : null;
   }
 
   /** 历史版本文件内容（diffProvider / 只读打开） */
