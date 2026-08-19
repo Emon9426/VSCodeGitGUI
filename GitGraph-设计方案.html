@@ -382,20 +382,20 @@
       <div class="mk-cols"><span>图形</span><span>提交说明</span><span>作者</span><span>SHA</span><span>时间</span></div>
       <div class="mk-rows">
         <svg class="mk-graph" width="190" height="168" viewBox="0 0 190 168">
-          <path d="M24,0 V168" stroke="#58a6ff" stroke-width="2" fill="none"/>
-          <path d="M24,60 C36,60 56,72 56,84 L56,120 C56,132 40,132 24,132" stroke="#f0883e" stroke-width="2" fill="none"/>
-          <circle cx="24" cy="12" r="4.5" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
-          <circle cx="24" cy="36" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
-          <circle cx="24" cy="60" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
-          <circle cx="56" cy="84" r="4" fill="#f0883e" stroke="#0d1117" stroke-width="2"/>
-          <circle cx="56" cy="108" r="4" fill="#f0883e" stroke="#0d1117" stroke-width="2"/>
-          <circle cx="24" cy="132" r="6" fill="none" stroke="#58a6ff" stroke-width="2"/>
-          <circle cx="24" cy="132" r="3.5" fill="#58a6ff"/>
-          <circle cx="24" cy="156" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
+          <path d="M20,0 V168" stroke="#58a6ff" stroke-width="2" fill="none"/>
+          <path d="M20,60 C20,66 42,66 42,72 L42,120 C42,126 20,126 20,132" stroke="#f0883e" stroke-width="2" fill="none"/>
+          <circle cx="20" cy="12" r="4.5" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
+          <circle cx="20" cy="36" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
+          <circle cx="20" cy="60" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
+          <circle cx="42" cy="84" r="4" fill="#f0883e" stroke="#0d1117" stroke-width="2"/>
+          <circle cx="42" cy="108" r="4" fill="#f0883e" stroke="#0d1117" stroke-width="2"/>
+          <circle cx="20" cy="132" r="6" fill="none" stroke="#58a6ff" stroke-width="2"/>
+          <circle cx="20" cy="132" r="3.5" fill="#58a6ff"/>
+          <circle cx="20" cy="156" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
           <g font-size="10" font-family="Segoe UI,sans-serif">
-            <rect x="98" y="4" width="86" height="15" rx="7.5" fill="#23863655"/><text x="104" y="15" fill="#3fb950">HEAD → main</text>
-            <rect x="98" y="78" width="80" height="15" rx="7.5" fill="#1f6feb55"/><text x="104" y="89" fill="#79c0ff">graph-refine</text>
-            <rect x="98" y="126" width="52" height="15" rx="7.5" fill="#8957e555"/><text x="104" y="137" fill="#d2a8ff">v0.1.0</text>
+            <rect x="56" y="4" width="86" height="15" rx="7.5" fill="#23863655"/><text x="62" y="15" fill="#3fb950">HEAD → main</text>
+            <rect x="56" y="78" width="80" height="15" rx="7.5" fill="#1f6feb55"/><text x="62" y="89" fill="#79c0ff">graph-refine</text>
+            <rect x="56" y="126" width="52" height="15" rx="7.5" fill="#8957e555"/><text x="62" y="137" fill="#d2a8ff">v0.1.0</text>
           </g>
         </svg>
         <div class="mk-row sel"><span></span><span>修复：虚拟滚动边界行重复渲染</span><span class="dim">Emon</span><span class="dim">a3f8e21</span><span class="dim">2 小时前</span></div>
@@ -575,7 +575,7 @@ for (const c of commits) {             // topo 序，子在前
 <ul>
 <li><b>行 DOM</b>：容器 <code class="inline">overflow-y:auto</code>；内部撑高元素 <code class="inline">height = N * ROW_H</code>；可见行 = <code class="inline">first = floor(scrollTop / ROW_H)</code> 至 <code class="inline">last = ceil((scrollTop + viewportH) / ROW_H)</code>，上下各多渲染 10 行缓冲；行元素池化复用（&lt; 60 个节点常驻），仅更新文本与 class，不做 innerHTML 重建。</li>
 <li><b>Canvas 线条层</b>：绝对定位在图形列区域，高度 = 视口高（非全列表高！）；滚动时按 <code class="inline">translateY(-scrollTop)</code> 重绘可见行范围 [first-1, last+1] 的 segments；尺寸按 <code class="inline">devicePixelRatio</code> 缩放，避免模糊。</li>
-<li><b>坐标</b>：<code class="inline">x(lane) = PADDING + lane * LANE_W</code>（LANE_W=14，PADDING=10）；行内纵向 y：上行中心 <code class="inline">rowTop + ROW_H/2</code>。曲线用三次贝塞尔：纵向线 <code class="inline">C(x1,y1)(x1,ym)(x2,ym)(x2,y2)</code>，控制点取中点，曲率平滑无交叉歧义。</li>
+<li><b>坐标</b>：<code class="inline">x(lane) = PADDING + lane * LANE_W</code>（LANE_W=14，PADDING=10）；行内纵向 y：上行中心 <code class="inline">rowTop + ROW_H/2</code>。曲线用三次贝塞尔<b>短半径圆角</b>：横向换轨在半个行高内完成，控制点纵向偏移 <code class="inline">k = ROW_H/4</code>（默认 6px），即 <code class="inline">C(x1,y)(x1,y+k)(x2,y2-k)(x2,y2)</code>；纵向主干保持长直线段——走线紧凑工整（类电路走线观感），相邻 lane 换轨不产生大弧度摆动。</li>
 <li><b>滚动同步</b>：Canvas 重绘与行复用同帧完成（<code class="inline">scroll</code> 事件 → rAF 合并）；实测目标单帧 &lt; 8ms。</li>
 <li>chip 仍用 DOM（可点击、可悬浮），叠加于 Canvas 之上，随行复用。</li>
 </ul>
@@ -589,7 +589,7 @@ for (const c of commits) {             // topo 序，子在前
 <tr><td>分支/远程头</td><td>普通节点 + 右侧 chip（名称；语义色，见 4.7）</td></tr>
 <tr><td>标签</td><td>普通节点 + 黄色 chip（tag 多时最多显示 maxTagChips=2 个，"+n"折叠）</td></tr>
 <tr><td>截断指示</td><td>加载边界以下的未完结 lane 画渐隐虚线，底部中央 ▽ 加载更多指示</td></tr>
-<tr><td>风格</td><td>默认 curved；设置项 angular（折线，SourceTree 旧版风格）</td></tr>
+<tr><td>风格</td><td>默认 curved（短半径圆角，紧凑走线）；设置项 angular（直角折线，SourceTree 旧版风格）</td></tr>
 </table>
 
 <h3 id="graph-incremental">5.5 增量加载与刷新</h3>
