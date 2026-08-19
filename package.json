@@ -3,8 +3,16 @@
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
   "version": "0.6.0",
-  "publisher": "emon",
+  "publisher": "EmonZhang3438",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Emon9426/VSCodeGitGUI.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Emon9426/VSCodeGitGUI/issues"
+  },
+  "homepage": "https://github.com/Emon9426/VSCodeGitGUI#readme",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -225,13 +233,15 @@
     "watch": "node esbuild.js --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.ui.json --noEmit",
     "test": "vitest run",
-    "package": "node prep-package.js && vsce package --readme-path .vscode-readme.md --allow-missing-repository"
+    "assets": "node svg2png.js",
+    "package": "npm run assets && vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.21.5",
+    "sharp": "^0.35.3",
     "typescript": "^5.4.5",
     "vitest": "^2.1.8"
   }

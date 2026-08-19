@@ -6,7 +6,7 @@ GitGraph 是一个 VS Code 桌面版插件，以 SourceTree 风格的图形化�
 
 GitGraph is a VS Code extension (desktop) that visualizes and operates Git repositories with a SourceTree-style commit graph: colored topology, commit details & diffs, plus everyday GUI operations (Fetch / Pull / Push / Reset / Checkout). Built for large repos with paging, virtualized scrolling and layered rendering.
 
-![主界面总览 / Overview](res/overview.svg)
+![主界面总览 / Overview](res/overview.png)
 
 ---
 
@@ -26,6 +26,14 @@ GitGraph is a VS Code extension (desktop) that visualizes and operates Git repos
 | 界面 | 跟随 VS Code 明暗主题、列宽拖拽并持久化、中英双语、状态栏当前分支 |
 
 ### 安装
+
+**方式〇：扩展市场（发布后可用）**
+
+扩展面板（Ctrl+Shift+X）搜索 **GitGraph** 安装（ID：`EmonZhang3438.gitgraph`），或命令行：
+
+```bash
+code --install-extension EmonZhang3438.gitgraph
+```
 
 **方式一：命令行安装 vsix（推荐）**
 
@@ -75,7 +83,7 @@ npm run package     # 产出 gitgraph-x.y.z.vsix
 
 #### 4. Git 操作
 
-![操作菜单 / Operations](res/operations.svg)
+![操作菜单 / Operations](res/operations.png)
 
 - **Fetch**：工具栏 ⟳，默认 `--all --prune`（可配置）；也可在侧栏远程主机/远程分支上右键按单个远程获取；打开视图时可配置自动 fetch；
 - **Pull / Push**：工具栏 ⤓ / ⤒，作用于当前分支；Push 无上游时弹窗引导创建；所有网络操作显示实时进度（百分比）并可取消；
@@ -84,7 +92,7 @@ npm run package     # 产出 gitgraph-x.y.z.vsix
 
 #### 5. 筛选
 
-![筛选 / Filters](res/filters.svg)
+![筛选 / Filters](res/filters.png)
 
 工具栏提供三组可叠加的筛选：**分支下拉**（或单击侧栏分支/远程/标签节点）、**作者输入框**（支持 git 正则语法，输入后自动应用）、**起止日期选择器**（截止日期含当天全天）。有筛选时显示 × 一键清除；筛选无结果时空态会明确提示。条件按仓库分别记忆。
 
@@ -141,7 +149,7 @@ npm run build && npm run package
 
 GitGraph brings a SourceTree-style commit graph to VS Code (desktop): browse history with a colored topology, inspect commits and diffs, and run everyday Git operations from the GUI.
 
-![Overview](res/overview.svg)
+![Overview](res/overview.png)
 
 ### Features
 
@@ -157,6 +165,14 @@ GitGraph brings a SourceTree-style commit graph to VS Code (desktop): browse his
 | UI | Follows VS Code light/dark themes, drag-resizable persisted columns, English/中文, status-bar branch |
 
 ### Install
+
+**Option 0 — Marketplace (once published)**
+
+Search **GitGraph** in the Extensions view (Ctrl+Shift+X), ID: `EmonZhang3438.gitgraph`, or:
+
+```bash
+code --install-extension EmonZhang3438.gitgraph
+```
 
 **Option 1 — CLI (recommended)**
 
@@ -190,11 +206,11 @@ npm install && npm run package
 
 **Details & diffs** — click a row to load the full SHA, author/committer, dates (`YYYY-MM-DD HH:mm:ss` by default) and the complete message. Click a file to preview its diff inline — compact mode highlights only added/removed lines and folds unchanged runs into `⋯` rows; switch to “With context” for full context. Double-click a file (or use the header button) to open VS Code’s built-in diff editor (parent revision ↔ commit). Merge commits are diffed against their first parent.
 
-![Operations](res/operations.svg)
+![Operations](res/operations.png)
 
 **Operations** — ① commit-row context menu (detached checkout, reset, copy SHA/subject); ② file context menu (open working file, read-only revision, reveal in file manager, copy path); ③ branch menu (checkout/pull/push/copy; double-click a branch to check it out, single-click to filter the graph; double-click a remote branch to create a local tracking branch); ④ the reset dialog — hard resets require an explicit red confirmation when uncommitted changes exist. Fetch/Pull/Push show live progress and can be cancelled.
 
-![Filters](res/filters.svg)
+![Filters](res/filters.png)
 
 **Filtering** — branch dropdown (or click a tree node), author box (git regex supported, auto-applies), and a date range (the end date includes the whole day). Filters stack, are remembered per repository, and map to `git log --ref / --author / --since / --until`.
 
