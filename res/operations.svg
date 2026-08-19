@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 500" font-family="Segoe UI, Microsoft YaHei, sans-serif">
+  <rect width="920" height="500" fill="#0d1117"/>
+
+  <!-- 面板1：提交行右键菜单 -->
+  <g>
+    <rect x="8" y="8" width="446" height="236" rx="8" fill="#161b22" stroke="#30363d"/>
+    <text x="24" y="34" fill="#e6edf3" font-size="13" font-weight="600">① 提交行右键菜单</text>
+    <text x="24" y="54" fill="#8b949e" font-size="10.5">在任意提交行上点击鼠标右键</text>
+    <rect x="24" y="66" width="200" height="160" rx="6" fill="#1c2128" stroke="#3d444d"/>
+    <g font-size="11.5" fill="#c9d1d9">
+      <rect x="30" y="74" width="188" height="22" rx="4"/><text x="40" y="90">检出此提交（分离 HEAD）</text>
+      <rect x="30" y="100" width="188" height="22" rx="4"/><text x="40" y="116">重置到此提交…</text>
+      <line x1="30" y1="130" x2="218" y2="130" stroke="#3d444d"/>
+      <text x="40" y="148">复制完整 SHA</text>
+      <text x="40" y="172">复制提交说明</text>
+    </g>
+    <g font-size="10.5" fill="#8b949e">
+      <text x="238" y="86">· 检出：进入分离 HEAD 状态</text>
+      <text x="238" y="106">· 重置：弹出 soft / mixed / hard</text>
+      <text x="238" y="122">  三选一对话框（见④）</text>
+      <text x="238" y="142">· ↑ / ↓ 键盘移动选中提交</text>
+      <text x="238" y="162">· 单击行 = 选中并查看详情</text>
+    </g>
+  </g>
+
+  <!-- 面板2：文件右键菜单 -->
+  <g>
+    <rect x="466" y="8" width="446" height="236" rx="8" fill="#161b22" stroke="#30363d"/>
+    <text x="482" y="34" fill="#e6edf3" font-size="13" font-weight="600">② 变更文件右键菜单</text>
+    <text x="482" y="54" fill="#8b949e" font-size="10.5">在详情面板的文件列表行上右键</text>
+    <rect x="482" y="66" width="190" height="166" rx="6" fill="#1c2128" stroke="#3d444d"/>
+    <g font-size="11.5" fill="#c9d1d9">
+      <text x="492" y="88">在差异编辑器中打开</text>
+      <line x1="488" y1="98" x2="666" y2="98" stroke="#3d444d"/>
+      <text x="492" y="118">打开工作区文件</text>
+      <text x="492" y="140">查看此版本（只读）</text>
+      <text x="492" y="162">在文件管理器中显示</text>
+      <line x1="488" y1="172" x2="666" y2="172" stroke="#3d444d"/>
+      <text x="492" y="192">复制路径</text>
+    </g>
+    <g font-size="10.5" fill="#8b949e">
+      <text x="686" y="86">· 双击文件 = 打开差异编辑器</text>
+      <text x="686" y="106">· 文件已在后续提交删除时，</text>
+      <text x="686" y="122">  定位自动回退到所在目录</text>
+      <text x="686" y="142">· 📂 按钮等效"在文件管理器</text>
+      <text x="686" y="158">  中显示"</text>
+    </g>
+  </g>
+
+  <!-- 面板3：分支右键菜单 -->
+  <g>
+    <rect x="8" y="256" width="446" height="236" rx="8" fill="#161b22" stroke="#30363d"/>
+    <text x="24" y="282" fill="#e6edf3" font-size="13" font-weight="600">③ 侧栏分支 / 远程右键菜单</text>
+    <text x="24" y="302" fill="#8b949e" font-size="10.5">在左侧分支树节点上右键</text>
+    <rect x="24" y="314" width="176" height="150" rx="6" fill="#1c2128" stroke="#3d444d"/>
+    <g font-size="11.5" fill="#c9d1d9">
+      <text x="34" y="336">检出</text>
+      <text x="34" y="360">拉取此分支</text>
+      <text x="34" y="384">推送此分支</text>
+      <line x1="30" y1="394" x2="194" y2="394" stroke="#3d444d"/>
+      <text x="34" y="414">复制分支名</text>
+    </g>
+    <g font-size="10.5" fill="#8b949e">
+      <text x="214" y="336">· 双击分支 = 直接检出</text>
+      <text x="214" y="356">· 单击分支 = 提交图仅显示</text>
+      <text x="214" y="372">  该分支可达提交（再点取消）</text>
+      <text x="214" y="392">· 双击远程分支 = 检出为本地</text>
+      <text x="214" y="408">  跟踪分支（可命名）</text>
+      <text x="214" y="428">· 远程主机组右键 = fetch --all</text>
+    </g>
+  </g>
+
+  <!-- 面板4：重置对话框 -->
+  <g>
+    <rect x="466" y="256" width="446" height="236" rx="8" fill="#161b22" stroke="#30363d"/>
+    <text x="482" y="282" fill="#e6edf3" font-size="13" font-weight="600">④ 重置仓库到某次提交</text>
+    <rect x="482" y="296" width="414" height="186" rx="6" fill="#1c2128" stroke="#3d444d"/>
+    <text x="498" y="320" fill="#e6edf3" font-size="12" font-weight="600">重置仓库到 a3f8e21</text>
+    <g font-size="11" fill="#c9d1d9">
+      <circle cx="506" cy="342" r="4.5" fill="none" stroke="#8b949e"/><text x="520" y="346">soft — 保留工作区与索引</text>
+      <circle cx="506" cy="364" r="4.5" fill="none" stroke="#8b949e"/><text x="520" y="368">mixed — 保留工作区，重置索引</text>
+      <circle cx="506" cy="386" r="4.5" fill="#f85149"/><circle cx="506" cy="386" r="2" fill="#1c2128"/><text x="520" y="390" fill="#f85149">hard — 丢弃全部未提交变更</text>
+    </g>
+    <rect x="498" y="402" width="382" height="34" rx="4" fill="#f8514918" stroke="#f8514966"/>
+    <text x="508" y="416" fill="#f85149" font-size="10">当前有 3 个文件存在未提交修改，</text>
+    <text x="508" y="430" fill="#f85149" font-size="10">hard 重置将永久丢弃这些变更！</text>
+    <rect x="700" y="446" width="60" height="22" rx="4" fill="#21262d"/><text x="730" y="461" fill="#c9d1d9" font-size="11" text-anchor="middle">取消</text>
+    <rect x="766" y="446" width="114" height="22" rx="4" fill="#ad0707"/><text x="823" y="461" fill="#fff" font-size="10.5" text-anchor="middle">我已知晓，执行 hard 重置</text>
+  </g>
+</svg>

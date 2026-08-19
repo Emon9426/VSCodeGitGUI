@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 620" font-family="Segoe UI, Microsoft YaHei, sans-serif">
+  <rect width="920" height="620" fill="#0d1117"/>
+  <g stroke="#30363d" stroke-width="1">
+    <line x1="0" y1="38" x2="920" y2="38"/>
+    <line x1="200" y1="38" x2="200" y2="620"/>
+    <line x1="200" y1="64" x2="920" y2="64"/>
+    <line x1="200" y1="250" x2="920" y2="250"/>
+    <line x1="200" y1="274" x2="920" y2="274"/>
+    <line x1="560" y1="274" x2="560" y2="620"/>
+  </g>
+  <rect x="0" y="0" width="920" height="38" fill="#161b22"/>
+  <rect x="0" y="252" width="920" height="22" fill="#161b22"/>
+
+  <!-- 工具栏 -->
+  <text x="12" y="24" fill="#58a6ff" font-size="13" font-weight="700">⑂ GitGraph</text>
+  <rect x="100" y="8" width="112" height="22" rx="4" fill="#21262d" stroke="#30363d"/>
+  <text x="108" y="23" fill="#c9d1d9" font-size="11">MyProject ▾</text>
+  <text x="228" y="23" fill="#3fb950" font-size="11">⑂ main</text>
+  <rect x="300" y="8" width="80" height="22" rx="4" fill="#21262d" stroke="#30363d"/>
+  <text x="308" y="23" fill="#c9d1d9" font-size="11">全部 ▾</text>
+  <rect x="398" y="8" width="86" height="22" rx="4" fill="#0d1117" stroke="#30363d"/>
+  <text x="406" y="23" fill="#8b949e" font-size="11">作者</text>
+  <rect x="494" y="8" width="96" height="22" rx="4" fill="#0d1117" stroke="#30363d"/>
+  <text x="500" y="23" fill="#c9d1d9" font-size="10.5" font-family="Consolas, monospace">2026-08-01</text>
+  <text x="596" y="23" fill="#8b949e" font-size="11">–</text>
+  <rect x="604" y="8" width="96" height="22" rx="4" fill="#0d1117" stroke="#30363d"/>
+  <text x="610" y="23" fill="#c9d1d9" font-size="10.5" font-family="Consolas, monospace">2026-08-19</text>
+  <rect x="706" y="8" width="18" height="22" rx="4" fill="#21262d" stroke="#30363d"/>
+  <text x="711" y="23" fill="#c9d1d9" font-size="11">×</text>
+  <g font-size="12" fill="#c9d1d9" text-anchor="middle">
+    <rect x="738" y="7" width="26" height="24" rx="4" fill="#21262d" stroke="#30363d"/><text x="751" y="24" fill="#58a6ff">⟳</text>
+    <rect x="768" y="7" width="26" height="24" rx="4" fill="#21262d" stroke="#30363d"/><text x="781" y="24">⤓</text>
+    <rect x="798" y="7" width="26" height="24" rx="4" fill="#21262d" stroke="#30363d"/><text x="811" y="24">⤒</text>
+    <rect x="828" y="7" width="26" height="24" rx="4" fill="#21262d" stroke="#30363d"/><text x="841" y="24">⟲</text>
+    <rect x="858" y="7" width="26" height="24" rx="4" fill="#21262d" stroke="#30363d"/><text x="871" y="24">⚙</text>
+  </g>
+  <text x="912" y="24" fill="#8b949e" font-size="9.5" text-anchor="end">v0.6.0</text>
+
+  <!-- 侧栏 -->
+  <g font-size="11">
+    <text x="12" y="56" fill="#8b949e" font-size="10" letter-spacing="1">仓库</text>
+    <rect x="0" y="62" width="200" height="20" fill="#093568"/>
+    <text x="12" y="77" fill="#e6edf3">⑂ MyProject</text>
+    <text x="150" y="77" fill="#3fb950" font-size="10">main</text>
+    <text x="12" y="104" fill="#8b949e" font-size="10" letter-spacing="1">分支</text>
+    <circle cx="18" cy="118" r="3.5" fill="#3fb950"/>
+    <text x="28" y="122" fill="#e6edf3" font-weight="600">main</text>
+    <text x="150" y="122" fill="#3fb950" font-size="10">↑1</text>
+    <text x="172" y="122" fill="#f85149" font-size="10">↓2</text>
+    <text x="28" y="142" fill="#c9d1d9">dev</text>
+    <text x="28" y="160" fill="#c9d1d9">feature/graph</text>
+    <text x="12" y="186" fill="#8b949e" font-size="10" letter-spacing="1">远程</text>
+    <text x="12" y="204" fill="#8b949e">▾ origin</text>
+    <text x="28" y="222" fill="#a371f7" font-size="10.5">origin/main</text>
+    <text x="28" y="238" fill="#a371f7" font-size="10.5">origin/dev</text>
+  </g>
+
+  <!-- 列表头 -->
+  <g fill="#8b949e" font-size="10.5">
+    <text x="212" y="55">图形</text>
+    <text x="400" y="55">提交说明</text>
+    <text x="690" y="55">作者</text>
+    <text x="788" y="55">SHA</text>
+    <text x="912" y="55" text-anchor="end">时间</text>
+  </g>
+
+  <!-- 提交图线条 -->
+  <path d="M232,64 V246" stroke="#58a6ff" stroke-width="2" fill="none"/>
+  <path d="M232,129 C232,137 262,141 262,149 L262,199 C262,207 240,207 232,207" stroke="#f0883e" stroke-width="2" fill="none"/>
+  <!-- 选中行背景 -->
+  <rect x="200" y="64" width="720" height="26" fill="#093568"/>
+  <rect x="200" y="64" width="3" height="26" fill="#58a6ff"/>
+
+  <!-- 图形列行内容 -->
+  <g font-size="11" fill="#c9d1d9">
+    <circle cx="232" cy="77" r="4.5" fill="#58a6ff" stroke="#f85149" stroke-width="1.6"/>
+    <circle cx="232" cy="103" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="1.4"/>
+    <circle cx="232" cy="129" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="1.4"/>
+    <circle cx="262" cy="155" r="4" fill="#f0883e" stroke="#0d1117" stroke-width="1.4"/>
+    <circle cx="262" cy="181" r="4" fill="#f0883e" stroke="#0d1117" stroke-width="1.4"/>
+    <circle cx="232" cy="207" r="5.5" fill="none" stroke="#58a6ff" stroke-width="1.6"/>
+    <circle cx="232" cy="207" r="3.4" fill="#58a6ff"/>
+    <circle cx="232" cy="233" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="1.4"/>
+    <!-- chips -->
+    <rect x="292" y="70" width="76" height="15" rx="7.5" fill="#23863644"/><text x="298" y="81" fill="#3fb950" font-size="9.5">HEAD → main</text>
+    <rect x="372" y="70" width="68" height="15" rx="7.5" fill="#8957e544"/><text x="378" y="81" fill="#a371f7" font-size="9.5">origin/main</text>
+    <rect x="292" y="148" width="72" height="15" rx="7.5" fill="#23863644"/><text x="298" y="159" fill="#3fb950" font-size="9.5">feature/graph</text>
+    <rect x="292" y="200" width="38" height="15" rx="7.5" fill="#23863644"/><text x="298" y="211" fill="#3fb950" font-size="9.5">main</text>
+    <rect x="292" y="226" width="46" height="15" rx="7.5" fill="#8957e533"/><text x="298" y="237" fill="#d29922" font-size="9.5">v0.6.0</text>
+  </g>
+
+  <!-- 行文本 -->
+  <g font-size="10.5">
+    <g fill="#e6edf3">
+      <text x="400" y="81" font-size="11">修复：虚拟滚动边界行重复渲染</text>
+      <text x="400" y="107">重构 lane 分配算法为增量计算</text>
+      <text x="400" y="133">新增仓库发现与 .git 监视器</text>
+      <text x="400" y="159">feature: 图形列 Canvas 分层绘制</text>
+      <text x="400" y="185">perf: 大仓库分页加载与 LRU 缓存</text>
+      <text x="400" y="211">Merge branch 'feature/graph' into main</text>
+      <text x="400" y="237">chore: 初始化项目脚手架</text>
+    </g>
+    <g fill="#8b949e">
+      <text x="690" y="81">Emon</text><text x="690" y="107">Emon</text><text x="690" y="133">Lin</text><text x="690" y="159">Lin</text><text x="690" y="185">Emon</text><text x="690" y="211">Emon</text><text x="690" y="237">Emon</text>
+    </g>
+    <g fill="#8b949e" font-family="Consolas, monospace">
+      <text x="788" y="81">a3f8e21</text><text x="788" y="107">b7c92d4</text><text x="788" y="133">c41a07f</text><text x="788" y="159">d9e5b83</text><text x="788" y="185">e02c91a</text><text x="788" y="211">f5a3d27</text><text x="788" y="237">1a0b3c9</text>
+      <text x="912" y="81" text-anchor="end">2026-08-19 20:15:32</text>
+      <text x="912" y="107" text-anchor="end">2026-08-18 14:02:10</text>
+      <text x="912" y="133" text-anchor="end">2026-08-14 11:20:45</text>
+      <text x="912" y="159" text-anchor="end">2026-08-13 16:41:08</text>
+      <text x="912" y="185" text-anchor="end">2026-08-12 09:55:21</text>
+      <text x="912" y="211" text-anchor="end">2026-08-11 21:30:14</text>
+      <text x="912" y="237" text-anchor="end">2026-08-10 10:02:57</text>
+    </g>
+  </g>
+
+  <!-- 详情面板 -->
+  <text x="212" y="268" fill="#58a6ff" font-size="11" font-family="Consolas, monospace">a3f8e21</text>
+  <text x="905" y="268" fill="#8b949e">⌃</text>
+
+  <!-- 概要 -->
+  <g font-size="10.5">
+    <g fill="#8b949e">
+      <text x="212" y="292">SHA</text><text x="212" y="308">作者</text><text x="212" y="324">作者时间</text>
+    </g>
+    <g fill="#c9d1d9" font-family="Consolas, monospace">
+      <text x="272" y="292">a3f8e21d…</text>
+      <text x="272" y="308" font-family="Segoe UI, sans-serif">Emon &lt;emon@example.com&gt;</text>
+      <text x="272" y="324">2026-08-19 20:15:32</text>
+    </g>
+    <rect x="212" y="334" width="342" height="42" rx="4" fill="#161b22"/>
+    <rect x="212" y="334" width="3" height="42" fill="#58a6ff"/>
+    <text x="226" y="350" fill="#c9d1d9">修复：虚拟滚动边界行重复渲染</text>
+    <text x="226" y="366" fill="#8b949e" font-size="10">详情面板加载失败时的自动补拉与置灰反馈</text>
+    <text x="212" y="398" fill="#8b949e" font-size="10.5">变更文件 · 3 · <tspan fill="#3fb950">+314</tspan> <tspan fill="#f85149">−222</tspan></text>
+    <g font-family="Consolas, monospace" font-size="10.5">
+      <text x="220" y="416" fill="#d29922" font-weight="700">M</text><text x="238" y="416" fill="#3fb950">+48</text><text x="266" y="416" fill="#f85149">−12</text><text x="292" y="416" fill="#c9d1d9">src/ui/commitList.ts</text>
+      <rect x="204" y="424" width="356" height="18" fill="#093568"/>
+      <text x="220" y="437" fill="#3fb950" font-weight="700">A</text><text x="238" y="437" fill="#3fb950">+260</text><text x="266" y="437" fill="#f85149">−0</text><text x="292" y="437" fill="#e6edf3">src/graph/lanes.ts</text>
+      <text x="220" y="458" fill="#d29922" font-weight="700">M</text><text x="238" y="458" fill="#3fb950">+6</text><text x="266" y="458" fill="#f85149">−0</text><text x="292" y="458" fill="#c9d1d9">package.json</text>
+    </g>
+    <text x="212" y="490" fill="#8b949e" font-size="10">双击文件行 → 在 VS Code 内置差异编辑器中打开</text>
+    <text x="212" y="506" fill="#8b949e" font-size="10">右键文件行 → 打开 / 只读历史版本 / 在文件管理器中定位 / 复制路径</text>
+  </g>
+
+  <!-- 内联 diff -->
+  <text x="572" y="268" fill="#c9d1d9" font-size="10.5" font-family="Consolas, monospace">src/ui/commitList.ts</text>
+  <g font-size="9.5">
+    <rect x="782" y="258" width="22" height="16" rx="3" fill="#21262d" stroke="#30363d"/><text x="793" y="270" fill="#c9d1d9" text-anchor="middle">📂</text>
+    <rect x="808" y="258" width="56" height="16" rx="3" fill="#21262d" stroke="#30363d"/><text x="836" y="270" fill="#c9d1d9" text-anchor="middle" font-size="9">含上下文</text>
+    <rect x="868" y="258" width="48" height="16" rx="3" fill="#21262d" stroke="#30363d"/><text x="892" y="270" fill="#c9d1d9" text-anchor="middle" font-size="9">差异编辑器</text>
+  </g>
+  <g font-family="Consolas, monospace" font-size="10.5">
+    <rect x="560" y="282" width="360" height="16" fill="#161b22"/>
+    <text x="568" y="294" fill="#8b949e">@@ -88,6 +88,9 @@ class CommitList {</text>
+    <text x="568" y="312" fill="#8b949e">  private pool: RowPool;</text>
+    <rect x="560" y="320" width="360" height="16" fill="#3d1418"/><text x="568" y="332" fill="#f0b8bf">-  renderAll(commits: Commit[]) {</text>
+    <rect x="560" y="336" width="360" height="16" fill="#0d2818"/><text x="568" y="348" fill="#aacfea">+  render(commits: Commit[]) {</text>
+    <rect x="560" y="352" width="360" height="16" fill="#0d2818"/><text x="568" y="364" fill="#aacfea">+    const first = Math.max(0, this.top - 10);</text>
+    <rect x="560" y="372" width="360" height="15" fill="rgba(128,128,128,0.08)"/><text x="740" y="384" fill="#8b949e" text-anchor="middle" font-size="9.5">⋯ 92 → 96 ⋯</text>
+    <rect x="560" y="387" width="360" height="16" fill="#0d2818"/><text x="568" y="399" fill="#aacfea">+    this.pool.sync(commits.slice(first, last), first);</text>
+    <text x="568" y="417" fill="#8b949e">  }</text>
+    <rect x="560" y="425" width="360" height="16" fill="#161b22"/>
+    <text x="568" y="437" fill="#8b949e">@@ -141,3 +146,4 @@</text>
+    <rect x="560" y="441" width="360" height="16" fill="#0d2818"/><text x="568" y="453" fill="#aacfea">+  }</text>
+  </g>
+
+  <!-- 编号标注 -->
+  <g font-size="11" font-weight="700" text-anchor="middle">
+    <circle cx="470" cy="19" r="9" fill="#1f6feb"/><text x="470" y="23" fill="#fff" font-size="10">1</text>
+    <circle cx="190" cy="120" r="9" fill="#1f6feb"/><text x="190" y="124" fill="#fff" font-size="10">2</text>
+    <circle cx="282" cy="90" r="9" fill="#1f6feb"/><text x="282" y="94" fill="#fff" font-size="10">3</text>
+    <circle cx="240" cy="290" r="9" fill="#1f6feb"/><text x="240" y="294" fill="#fff" font-size="10">4</text>
+    <circle cx="552" cy="446" r="9" fill="#1f6feb"/><text x="552" y="450" fill="#fff" font-size="10">5</text>
+    <circle cx="580" cy="296" r="9" fill="#1f6feb"/><text x="580" y="300" fill="#fff" font-size="10">6</text>
+  </g>
+</svg>

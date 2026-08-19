@@ -2,7 +2,7 @@
   "name": "gitgraph",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "publisher": "emon",
   "license": "MIT",
   "engines": {
@@ -225,7 +225,7 @@
     "watch": "node esbuild.js --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.ui.json --noEmit",
     "test": "vitest run",
-    "package": "vsce package"
+    "package": "node prep-package.js && vsce package --readme-path .vscode-readme.md --allow-missing-repository"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
