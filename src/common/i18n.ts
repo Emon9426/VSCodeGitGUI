@@ -7,6 +7,7 @@ export type Lang = 'zh-CN' | 'en';
 
 const zh: Record<string, string> = {
   app: 'GitGraph',
+  cmdOpenGraph: '打开提交图',
   loading: '加载中…',
   refresh: '刷新',
   cancel: '取消',
@@ -111,6 +112,7 @@ const zh: Record<string, string> = {
 
 const en: Record<string, string> = {
   app: 'GitGraph',
+  cmdOpenGraph: 'Open Commit Graph',
   loading: 'Loading…',
   refresh: 'Refresh',
   cancel: 'Cancel',

@@ -2,7 +2,7 @@
   "name": "gitgraph",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "emon",
   "license": "MIT",
   "engines": {
@@ -15,10 +15,41 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gitgraph",
+          "title": "%viewContainer.name%",
+          "icon": "media/gitgraph.svg"
+        }
+      ]
+    },
+    "views": {
+      "gitgraph": [
+        {
+          "id": "gitgraph.repos",
+          "name": "%view.repos%"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "gitgraph.repos",
+        "contents": "%welcome.noRepos%"
+      }
+    ],
     "commands": [
       {
         "command": "gitgraph.open",
         "title": "%cmd.open%"
+      },
+      {
+        "command": "gitgraph.openRepo",
+        "title": "%cmd.openRepo%"
+      },
+      {
+        "command": "gitgraph.refreshTree",
+        "title": "%cmd.refreshTree%"
       },
       {
         "command": "gitgraph.fetch",
@@ -41,6 +72,28 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "gitgraph.openRepo",
+          "when": "false"
+        },
+        {
+          "command": "gitgraph.refreshTree",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "gitgraph.open",
+          "when": "view == gitgraph.repos",
+          "group": "navigation"
+        },
+        {
+          "command": "gitgraph.refreshTree",
+          "when": "view == gitgraph.repos",
+          "group": "navigation"
+        }
+      ],
       "scm/title": [
         {
           "command": "gitgraph.open",

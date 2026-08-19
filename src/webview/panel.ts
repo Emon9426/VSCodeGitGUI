@@ -34,7 +34,7 @@ function readConfig(): ConfigDto {
   };
 }
 
-function builtinGitPath(): string | undefined {
+export function builtinGitPath(): string | undefined {
   try {
     const ext = vscode.extensions.getExtension('vscode.git');
     if (!ext) return undefined;
@@ -48,6 +48,10 @@ function builtinGitPath(): string | undefined {
 
 export class GraphPanel {
   private static current: GraphPanel | undefined;
+
+  /** 每次仓库状态刷新后通知（侧栏树监听以同步分支名） */
+  static readonly onDidStateChange = new vscode.EventEmitter<void>();
+  static readonly onDidState = GraphPanel.onDidStateChange.event;
 
   readonly roots = new Map<string, string>();          // repoId → root（diffProvider 共享）
   private panel!: vscode.WebviewPanel;
@@ -69,14 +73,30 @@ export class GraphPanel {
   private statusBarItem?: vscode.StatusBarItem;
   private disposed = false;
 
-  static show(context: vscode.ExtensionContext): GraphPanel {
+  static show(context: vscode.ExtensionContext, repoId?: string): GraphPanel {
     if (GraphPanel.current) {
       GraphPanel.current.panel.reveal();
+      if (repoId) GraphPanel.current.openRepo(repoId);
       return GraphPanel.current;
     }
     const p = new GraphPanel(context);
     GraphPanel.current = p;
+    if (repoId) p.pendingRepoId = repoId;
     return p;
+  }
+
+  private pendingRepoId?: string;
+  private ready = false;
+
+  /** 面板已就绪时切换仓库；未就绪时挂起待 bootstrap 完成 */
+  private openRepo(repoId: string): void {
+    if (!this.ready) {
+      this.pendingRepoId = repoId;
+      return;
+    }
+    if (repoId !== this.currentRepoId && this.repos.some(r => r.id === repoId)) {
+      void this.selectRepo(repoId);
+    }
   }
 
   private constructor(private readonly context: vscode.ExtensionContext) {
@@ -243,6 +263,7 @@ export class GraphPanel {
       try {
         this.executor = await GitExecutor.detect(configured, builtinGitPath());
       } catch (e) {
+        this.ready = true;
         this.post({ t: 'ready', config: this.config, repos: [], language: this.lang });
         this.post({ t: 'notify', level: 'error', message: `${this.t('gitNotFound')} — ${this.t('gitNotFoundHint')}` });
         return;
@@ -253,7 +274,12 @@ export class GraphPanel {
     this.repos = await discoverRepos(this.executor, vscode.workspace.workspaceFolders ?? []);
     for (const r of this.repos) this.roots.set(r.id, r.root);
     this.post({ t: 'ready', config: this.config, repos: this.repos, language: this.lang });
-    if (this.currentRepoId) {
+    this.ready = true;
+    if (this.pendingRepoId && this.repos.some(r => r.id === this.pendingRepoId)) {
+      const id = this.pendingRepoId;
+      this.pendingRepoId = undefined;
+      await this.selectRepo(id);
+    } else if (this.currentRepoId) {
       // webview 被回收后重建：重发当前仓库状态
       await this.refresh();
     } else if (this.repos.length) {
@@ -300,6 +326,7 @@ export class GraphPanel {
       this.commitCache.set(repoId, cache);
       this.post({ t: 'repoState', state });
       this.updateStatusBar();
+      GraphPanel.onDidStateChange.fire();
     } catch (e) {
       this.post({ t: 'notify', level: 'error', message: String((e as Error)?.message ?? e) });
     }
