@@ -482,8 +482,10 @@ export class GraphPanel {
   // ---------- 杂项 ----------
 
   private safeJoin(root: string, rel: string): string {
+    // 两侧都过 path.resolve 规范化（git 根可能带正斜杠，resolve 后为系统分隔符）
+    const normRoot = path.resolve(root);
     const resolved = path.resolve(root, rel);
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    if (resolved !== normRoot && !resolved.startsWith(normRoot + path.sep)) {
       throw new Error(`path escapes repository root: ${rel}`);   // E_PATH_OUTSIDE
     }
     return resolved;

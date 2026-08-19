@@ -9,6 +9,7 @@ import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 import { GitExecutor } from '../../src/git/executor';
 import { GitService } from '../../src/git/service';
+import { discoverRepos } from '../../src/git/discovery';
 import { LOG_FORMAT, EACH_REF_FORMAT, parseLog, parseForEachRef, parseStatus } from '../../src/git/parse';
 import { computeLanes } from '../../src/graph/lanes';
 
@@ -82,6 +83,11 @@ describe.skipIf(!enabled)('git 冒烟', () => {
       expect(lines.filter(l => l.kind === 'add').length).toBe(2);   // +B +d
       expect(lines.filter(l => l.kind === 'del').length).toBe(1);   // -b
     }
+
+    // Windows 回归：git 返回正斜杠根路径必须被规范化（曾致 safeJoin 全部误判越界）
+    const metas = await discoverRepos(exec, [{ uri: { fsPath: root } }]);
+    expect(metas).toHaveLength(1);
+    expect(metas[0].root.includes('/')).toBe(false);
 
     // 状态
     const st = parseStatus((await exec.exec(root, ['status', '--porcelain=v1', '-b'])).stdout);

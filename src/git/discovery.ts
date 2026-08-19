@@ -16,7 +16,9 @@ export async function discoverRepos(executor: GitExecutor, workspaceFolders: rea
   for (const folder of workspaceFolders) {
     try {
       const r = await executor.exec(folder.uri.fsPath, ['rev-parse', '--show-toplevel']);
-      const root = r.stdout.trim();
+      // git 返回正斜杠路径（D:/x/y）；统一规范为系统原生分隔符，
+      // 否则后续 path.resolve 前缀比对（安全检查）会误判越界
+      const root = path.resolve(r.stdout.trim());
       if (r.exitCode === 0 && root) {
         const id = repoIdOf(root);
         if (!repos.has(id)) repos.set(id, { id, name: path.basename(root), root });
