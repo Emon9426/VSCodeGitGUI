@@ -102,6 +102,14 @@ const zh: Record<string, string> = {
   dirtyCount: '{n} 个未提交修改',
   filesTruncated: '文件列表过长已截断',
 
+  fileNotFound: '文件在当前工作区不存在（可能已被删除或移动）：{path}',
+  revealParent: '文件在当前工作区已不存在，已定位到其所在目录',
+  filterAuthor: '作者',
+  filterSince: '开始日期',
+  filterUntil: '结束日期',
+  clearFilter: '清除筛选',
+  noMatches: '没有符合条件的提交，请调整分支/作者/时间筛选',
+
   justNow: '刚刚',
   minAgo: '{n} 分钟前',
   hourAgo: '{n} 小时前',
@@ -206,6 +214,14 @@ const en: Record<string, string> = {
   detachedHead: 'Detached HEAD',
   dirtyCount: '{n} uncommitted changes',
   filesTruncated: 'File list truncated',
+
+  fileNotFound: 'File not found in the working tree (possibly deleted or moved): {path}',
+  revealParent: 'File no longer exists in the working tree; revealed its containing folder',
+  filterAuthor: 'Author',
+  filterSince: 'From date',
+  filterUntil: 'To date',
+  clearFilter: 'Clear filters',
+  noMatches: 'No commits match the current branch/author/date filters',
 
   justNow: 'just now',
   minAgo: '{n} min ago',

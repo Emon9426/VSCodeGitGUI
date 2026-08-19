@@ -43,8 +43,9 @@ export function createCommitList(app: App): CommitList {
   const sizer = el('div', 'gg-list-sizer');
   const footer = el('div', 'gg-list-footer');
   const empty = el('div', 'gg-empty');
-  empty.appendChild(el('div', 'gg-empty-title', S.t('noCommits')));
-  empty.appendChild(el('div', 'gg-empty-hint', S.t('noCommitsHint')));
+  const emptyTitle = el('div', 'gg-empty-title', S.t('noCommits'));
+  const emptyHint = el('div', 'gg-empty-hint', S.t('noCommitsHint'));
+  empty.append(emptyTitle, emptyHint);
   scroll.append(sizer, footer);
   body.append(scroll, canvas.canvas, empty);
   wrap.append(header, body);
@@ -107,6 +108,13 @@ export function createCommitList(app: App): CommitList {
     sizer.style.height = `${total()}px`;
     const showEmpty = !!S.state && S.commits.length === 0;
     empty.classList.toggle('show', showEmpty);
+    if (showEmpty) {
+      // 区分"仓库无提交"与"筛选无结果"
+      const filtered = !!(S.state?.filterRef || S.logFilter.author || S.logFilter.since || S.logFilter.until);
+      const title = S.t(filtered ? 'noMatches' : 'noCommits');
+      if (emptyTitle.textContent !== title) emptyTitle.textContent = title;
+      emptyHint.classList.toggle('hidden', filtered);
+    }
   }
 
   function makeRow(): HTMLElement {
@@ -280,9 +288,8 @@ export function createCommitList(app: App): CommitList {
       for (let i = 0; i < colKeys.length; i++) {
         headCells[i].firstChild!.textContent = S.t(colKeys[i]);
       }
-      empty.textContent = '';
-      empty.appendChild(el('div', 'gg-empty-title', S.t('noCommits')));
-      empty.appendChild(el('div', 'gg-empty-hint', S.t('noCommitsHint')));
+      emptyTitle.textContent = S.t('noCommits');
+      emptyHint.textContent = S.t('noCommitsHint');
       refreshCommon();
     },
   };

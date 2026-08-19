@@ -30,7 +30,16 @@ const app: App = {
   },
   setFilter(ref) {
     if (S.state) S.state.filterRef = ref;
-    void rpc('setFilter', { ref }).catch(showErr);
+    void rpc('setFilter', { ref, ...S.logFilter }).catch(showErr);
+  },
+  setLogFilter(f) {
+    const DATE = /^\d{4}-\d{2}-\d{2}$/;
+    S.logFilter = {
+      author: f.author.trim().slice(0, 200),
+      since: DATE.test(f.since) ? f.since : '',
+      until: DATE.test(f.until) ? f.until : '',
+    };
+    void rpc('setFilter', { ref: S.state?.filterRef ?? null, ...S.logFilter }).catch(showErr);
   },
   selectCommit(sha) {
     S.selectedSha = sha;
@@ -165,6 +174,14 @@ function applyLayout(): void {
 }
 applyLayout();
 
+/** 原生日期选择器等控件跟随 VS Code 明暗主题 */
+function applyThemeKind(): void {
+  const kind = getComputedStyle(document.body).getPropertyValue('--vscode-theme-kind');
+  document.body.style.colorScheme = kind.includes('dark') ? 'dark' : 'light';
+}
+
+let restoreSha: string | undefined;   // Webview 重建后恢复选中的提交
+
 function applyColWidths(w: { graph?: number; msg?: number; author?: number; sha?: number }): void {
   for (const key of ['graph', 'msg', 'author', 'sha'] as const) {
     const v = w[key];
@@ -185,6 +202,8 @@ window.addEventListener('message', e => {
       S.t = createT(S.lang);
       S.repos = m.repos;
       if (m.colWidths) applyColWidths(m.colWidths);
+      restoreSha = m.selectedSha;
+      applyThemeKind();
       list.configChanged();
       toolbar.update();
       sidebar.update();
@@ -209,13 +228,22 @@ window.addEventListener('message', e => {
       S.state = st;
       S.commits = st.commits;
       S.graph = computeLanes(st.commits);
+      if (st.logFilter) S.logFilter = st.logFilter;
       if (repoChanged) list.reset(); else list.refresh();
       sidebar.update();
       toolbar.update();
+      toolbar.syncFilterInputs(S.logFilter);
       detail.update();
       // 刷新后选中仍在但详情缺失（如请求曾被刷新打断）：自动补拉
       if (S.selectedSha && !S.detailLoading && S.detail?.sha !== S.selectedSha) {
         app.selectCommit(S.selectedSha);
+      } else if (restoreSha && S.commits.some(c => c.sha === restoreSha)) {
+        // Webview 重建后的选中恢复
+        const sha = restoreSha;
+        restoreSha = undefined;
+        app.selectCommit(sha);
+      } else if (restoreSha) {
+        restoreSha = undefined;
       }
       break;
     }
@@ -263,6 +291,7 @@ window.addEventListener('message', e => {
       detail.configChanged();
       break;
     case 'themeChanged':
+      applyThemeKind();
       list.selectionChanged();   // 触发 Canvas 用新主题色重绘
       break;
   }

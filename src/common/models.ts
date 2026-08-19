@@ -62,6 +62,14 @@ export interface TagInfo {
   date?: string;
 }
 
+/** 提交列表筛选：ref（分支/远程/标签）+ 作者 + 时间段 */
+export interface LogFilter {
+  ref: string | null;
+  author: string;
+  since: string;    // YYYY-MM-DD 或空
+  until: string;    // YYYY-MM-DD 或空
+}
+
 export interface RepoState {
   repoId: string;
   head: { sha: string; branch?: string; detached: boolean };
@@ -70,6 +78,7 @@ export interface RepoState {
   tags: TagInfo[];
   status: { dirtyCount: number };
   filterRef: string | null;
+  logFilter: { author: string; since: string; until: string };
   commits: Commit[];         // 已加载首页（后续经 commitsAppend 追加）
   commitsLoaded: number;
   hasMore: boolean;

@@ -8,6 +8,8 @@ import type { GraphData } from '../graph/lanes';
 export interface App {
   selectRepo(repoId: string): void;
   setFilter(ref: string | null): void;
+  /** 更新作者/时间段筛选（与当前 ref 筛选合并后发送） */
+  setLogFilter(f: { author: string; since: string; until: string }): void;
   selectCommit(sha: string): void;
   loadMore(): void;
   runFetch(remote?: string): void;
@@ -48,6 +50,8 @@ export const S = {
   diff: undefined as DiffPayload | undefined,
   /** 列宽（图形/说明/作者/SHA，时间列自适应剩余空间）；ready 时由扩展侧持久化值覆盖 */
   colWidths: { graph: 150, msg: 460, author: 120, sha: 90 } as Record<'graph' | 'msg' | 'author' | 'sha', number>,
+  /** 作者/时间段筛选（随 repoState 同步） */
+  logFilter: { author: '', since: '', until: '' } as { author: string; since: string; until: string },
   /** 详情请求在途的提交 sha（面板置灰提示） */
   detailLoading: undefined as string | undefined,
   /** 进行中的操作（opId → 最近进度） */

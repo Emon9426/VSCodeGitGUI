@@ -69,6 +69,15 @@ button.danger:hover { background: #c62121; }
   color: var(--vscode-descriptionForeground);
 }
 
+/* 作者 + 时间段筛选 */
+.gg-logfilter { display: flex; align-items: center; gap: 4px; margin-left: 6px; }
+.gg-filter-input { height: 24px; padding: 2px 8px; font-size: 12px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border-color: var(--vscode-input-border, transparent); }
+.gg-filter-input:focus { outline: 1px solid var(--vscode-focusBorder); }
+.gg-author-input { width: 110px; }
+.gg-date-input { width: 128px; }
+.gg-range-sep { color: var(--vscode-descriptionForeground); }
+.gg-clear-btn { min-width: 26px; font-size: 13px; padding: 3px 5px; }
+
 /* ---------------- 整体 ---------------- */
 
 .gg-body { flex: 1; display: flex; min-height: 0; }

@@ -49,7 +49,7 @@ export interface ColWidths {
 }
 
 export type ExtEvent =
-  | { t: 'ready'; config: ConfigDto; repos: RepoMeta[]; language: string; colWidths?: ColWidths }
+  | { t: 'ready'; config: ConfigDto; repos: RepoMeta[]; language: string; colWidths?: ColWidths; selectedSha?: string }
   | { t: 'repoState'; state: RepoState }
   | { t: 'commitsAppend'; repoId: string; offset: number; commits: Commit[]; hasMore: boolean }
   | OpProgress

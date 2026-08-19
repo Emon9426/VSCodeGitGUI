@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { createT, resolveLang, type Lang, type Translate } from '../common/i18n';
-import type { Commit, RepoMeta, RepoState } from '../common/models';
+import type { Commit, LogFilter, RepoMeta, RepoState } from '../common/models';
 import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, WVRequest } from '../common/protocol';
 import { GitError, GitExecutor } from '../git/executor';
 import { discoverRepos, repoIdOf } from '../git/discovery';
@@ -46,6 +46,18 @@ export function builtinGitPath(): string | undefined {
   }
 }
 
+/** 空筛选默认值 */
+const DEFAULT_FILTER: LogFilter = { ref: null, author: '', since: '', until: '' };
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function sanitizeLogFilter(src: any): LogFilter {
+  const ref = typeof src?.ref === 'string' && src.ref ? src.ref : null;
+  const author = typeof src?.author === 'string' ? src.author.trim().slice(0, 200) : '';
+  const since = typeof src?.since === 'string' && DATE_RE.test(src.since) ? src.since : '';
+  const until = typeof src?.until === 'string' && DATE_RE.test(src.until) ? src.until : '';
+  return { ref, author, since, until };
+}
+
 export class GraphPanel {
   private static current: GraphPanel | undefined;
 
@@ -60,7 +72,8 @@ export class GraphPanel {
   private runner?: OpRunner;
   private repos: RepoMeta[] = [];
   private currentRepoId?: string;
-  private filters = new Map<string, string | null>();
+  private filters = new Map<string, LogFilter>();
+  private lastSelectedSha?: string;
   private stateVersions = new Map<string, number>();
   private watchers = new Map<string, RepoWatcher>();
   private commitCache = new Map<string, Map<string, Commit>>();
@@ -106,7 +119,8 @@ export class GraphPanel {
       vscode.ViewColumn.Active,
       {
         enableScripts: true,
-        retainContextWhenHidden: false,
+        // 面板隐藏（切换到文件页签等）时保留 Webview 状态，切回后详情不丢
+        retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'out')],
       },
     );
@@ -203,10 +217,12 @@ export class GraphPanel {
         return this.commitDetail(String(args.sha));
       case 'diff':
         return this.service!.diffOf(this.currentRoot(), args.mode, String(args.sha), String(args.path), args.base ? String(args.base) : undefined);
-      case 'setFilter':
-        this.filters.set(this.currentRepoId!, args.ref ?? null);
+      case 'setFilter': {
+        const cur = this.filters.get(this.currentRepoId!) ?? DEFAULT_FILTER;
+        this.filters.set(this.currentRepoId!, sanitizeLogFilter({ ...cur, ref: args.ref, author: args.author ?? cur.author, since: args.since ?? cur.since, until: args.until ?? cur.until }));
         await this.refresh();
         return null;
+      }
       case 'op:fetch':
         this.startOp({ kind: 'fetch', all: args.all !== false, remote: args.remote, prune: args.prune ?? this.config.fetchPrune });
         return null;
@@ -227,7 +243,11 @@ export class GraphPanel {
         return null;
 
       case 'ui:openFile': {
-        const file = this.safeJoin(this.currentRoot(), String(args.path));
+        const rel = String(args.path);
+        const file = this.safeJoin(this.currentRoot(), rel);
+        if (!fs.existsSync(file)) {
+          throw new Error(this.t('fileNotFound', { path: rel }));
+        }
         await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file), { preview: false });
         return null;
       }
@@ -240,9 +260,22 @@ export class GraphPanel {
       case 'ui:openDiffEditor':
         return this.openDiffEditor(args);
       case 'ui:revealInFM': {
-        const file = this.safeJoin(this.currentRoot(), String(args.path));
-        await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(file));
-        return null;
+        const rel = String(args.path);
+        const root = this.currentRoot();
+        const target = this.safeJoin(root, rel);
+        if (fs.existsSync(target)) {
+          await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(target));
+          return null;
+        }
+        // 文件已不在工作区（如浏览历史提交时已被删除）：回退到最近仍存在的父目录
+        let dir = path.dirname(target);
+        while (dir !== root && !fs.existsSync(dir)) dir = path.dirname(dir);
+        if (fs.existsSync(dir)) {
+          await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dir));
+          this.post({ t: 'notify', level: 'info', message: this.t('revealParent') });
+          return null;
+        }
+        throw new Error(this.t('fileNotFound', { path: rel }));
       }
       case 'ui:copy':
         await vscode.env.clipboard.writeText(String(args.text));
@@ -267,7 +300,7 @@ export class GraphPanel {
         this.executor = await GitExecutor.detect(configured, builtinGitPath());
       } catch (e) {
         this.ready = true;
-        this.post({ t: 'ready', config: this.config, repos: [], language: this.lang, colWidths: this.readColWidths() });
+        this.post({ t: 'ready', config: this.config, repos: [], language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha });
         this.post({ t: 'notify', level: 'error', message: `${this.t('gitNotFound')} — ${this.t('gitNotFoundHint')}` });
         return;
       }
@@ -276,7 +309,7 @@ export class GraphPanel {
     }
     this.repos = await discoverRepos(this.executor, vscode.workspace.workspaceFolders ?? []);
     for (const r of this.repos) this.roots.set(r.id, r.root);
-    this.post({ t: 'ready', config: this.config, repos: this.repos, language: this.lang, colWidths: this.readColWidths() });
+    this.post({ t: 'ready', config: this.config, repos: this.repos, language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha });
     this.ready = true;
     if (this.pendingRepoId && this.repos.some(r => r.id === this.pendingRepoId)) {
       const id = this.pendingRepoId;
@@ -322,11 +355,15 @@ export class GraphPanel {
     const version = (this.stateVersions.get(repoId) ?? 0) + 1;
     this.stateVersions.set(repoId, version);
     try {
-      const state = await this.service.buildState(root, repoId, this.filters.get(repoId) ?? null, this.config.commitPageSize, version);
+      const state = await this.service.buildState(root, repoId, this.filters.get(repoId) ?? DEFAULT_FILTER, this.config.commitPageSize, version);
       this.lastState = state;
       const cache = new Map<string, Commit>();
       for (const c of state.commits) cache.set(c.sha, c);
       this.commitCache.set(repoId, cache);
+      // 记忆的选中提交已不在当前列表（过滤/切换分支等）则清除
+      if (this.lastSelectedSha && !cache.has(this.lastSelectedSha)) {
+        this.lastSelectedSha = undefined;
+      }
       this.post({ t: 'repoState', state });
       this.updateStatusBar();
       GraphPanel.onDidStateChange.fire();
@@ -343,7 +380,7 @@ export class GraphPanel {
       localBranches: new Set(this.lastState?.branches.map(b => b.name) ?? []),
       remoteBranches: new Set(this.lastState?.remotes.flatMap(g => g.branches.map(b => b.name)) ?? []),
     };
-    const filter = this.filters.get(repoId) ?? null;
+    const filter = this.filters.get(repoId) ?? DEFAULT_FILTER;
     const { commits, hasMore } = await this.service.commitsPage(root, filter, offset, this.config.commitPageSize, ctx);
     const cache = this.commitCache.get(repoId);
     for (const c of commits) cache?.set(c.sha, c);
@@ -354,10 +391,11 @@ export class GraphPanel {
   private async commitDetail(sha: string): Promise<unknown> {
     if (!this.service) throw new Error('not ready');
     const repoId = this.currentRepoId!;
+    this.lastSelectedSha = sha;   // 面板重建（Webview 被回收）后恢复选中
     let commit = this.commitCache.get(repoId)?.get(sha);
     if (!commit) {
-      // 兜底：不在已加载页内（极少发生）
-      const { commits } = await this.service.commitsPage(this.currentRoot(), sha, 0, 1);
+      // 兜底：不在已加载页内（极少发生）——以 sha 作为 ref 单条查询
+      const { commits } = await this.service.commitsPage(this.currentRoot(), { ...DEFAULT_FILTER, ref: sha }, 0, 1);
       commit = commits[0];
       if (!commit) throw new Error(`commit not found: ${sha}`);
       this.commitCache.get(repoId)?.set(sha, commit);

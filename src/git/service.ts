@@ -1,7 +1,7 @@
 /**
  * GitService —— 高层只读 API（设计方案 6.4）。
  */
-import type { Commit, CommitDetail, DiffPayload, FileChange, RepoState } from '../common/models';
+import type { Commit, CommitDetail, DiffPayload, FileChange, LogFilter, RepoState } from '../common/models';
 import { GitError, type GitExecutor } from './executor';
 import {
   LOG_FORMAT, EACH_REF_FORMAT, parseLog, parseForEachRef, parseFiles, parseStatus,
@@ -42,13 +42,17 @@ export class GitService {
     return r.stdout.split('\n').map(s => s.trim()).filter(Boolean);
   }
 
-  /** 分页获取提交；filter 为 null 时 --all */
-  async commitsPage(root: string, filter: string | null, offset: number, limit: number, ctx?: { localBranches: Set<string>; remoteBranches: Set<string> }): Promise<{ commits: Commit[]; hasMore: boolean }> {
+  /** 分页获取提交；LogFilter = ref（null 时 --all）+ 作者 + 时间段 */
+  async commitsPage(root: string, filter: LogFilter, offset: number, limit: number, ctx?: { localBranches: Set<string>; remoteBranches: Set<string> }): Promise<{ commits: Commit[]; hasMore: boolean }> {
     const args = [
       'log', '--topo-order', '--date=iso-strict', `--pretty=format:${LOG_FORMAT}`,
       '-n', String(limit), '--skip', String(offset),
     ];
-    if (filter) args.push(filter); else args.push('--all');
+    if (filter.ref) args.push(filter.ref); else args.push('--all');
+    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+    if (filter.author) args.push(`--author=${filter.author}`);
+    if (DATE_RE.test(filter.since)) args.push(`--since=${filter.since} 00:00:00`);
+    if (DATE_RE.test(filter.until)) args.push(`--until=${filter.until} 23:59:59`);
     try {
       const r = await this.exec.exec(root, args, { timeoutMs: 60_000 });
       const commits = parseLog(r.stdout, ctx ?? {});
@@ -62,7 +66,7 @@ export class GitService {
   }
 
   /** 汇总某仓库当前呈现所需全部数据（首屏页） */
-  async buildState(root: string, repoId: string, filter: string | null, pageSize: number, stateVersion: number): Promise<RepoState> {
+  async buildState(root: string, repoId: string, filter: LogFilter, pageSize: number, stateVersion: number): Promise<RepoState> {
     const [refs, status, headSha] = await Promise.all([
       this.refsOf(root),
       this.statusOf(root),
@@ -84,7 +88,8 @@ export class GitService {
       remotes: tree.remotes,
       tags: tree.tags,
       status: { dirtyCount: status.dirtyCount },
-      filterRef: filter,
+      filterRef: filter.ref,
+      logFilter: { author: filter.author, since: filter.since, until: filter.until },
       commits,
       commitsLoaded: commits.length,
       hasMore,

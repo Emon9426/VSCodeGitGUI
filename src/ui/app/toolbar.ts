@@ -1,13 +1,15 @@
 /**
- * 顶部工具栏（设计方案 4.3）：仓库/分支过滤选择、Fetch/Pull/Push、刷新、进度、设置。
+ * 顶部工具栏（设计方案 4.3）：仓库/分支过滤选择、作者+时间段筛选、Fetch/Pull/Push、刷新、进度、设置。
  */
 import { S, type App } from '../state';
-import { el } from '../util';
+import { el, debounce } from '../util';
 
 export interface Toolbar {
   el: HTMLElement;
   update(): void;
   updateProgress(): void;
+  /** 用后端状态同步筛选输入框（避免打断正在输入的用户跳过聚焦元素） */
+  syncFilterInputs(f: { author: string; since: string; until: string }): void;
 }
 
 export function createToolbar(app: App): Toolbar {
@@ -21,6 +23,41 @@ export function createToolbar(app: App): Toolbar {
   const filterSel = el('select', 'gg-select gg-filter-sel') as HTMLSelectElement;
   filterSel.addEventListener('change', () => {
     app.setFilter(filterSel.value || null);
+  });
+
+  // 作者 + 时间段筛选
+  const authorInput = el('input', 'gg-filter-input gg-author-input') as HTMLInputElement;
+  authorInput.placeholder = S.t('filterAuthor');
+  authorInput.title = S.t('filterAuthor');
+  const sinceInput = el('input', 'gg-filter-input gg-date-input') as HTMLInputElement;
+  sinceInput.type = 'date';
+  sinceInput.title = S.t('filterSince');
+  const untilInput = el('input', 'gg-filter-input gg-date-input') as HTMLInputElement;
+  untilInput.type = 'date';
+  untilInput.title = S.t('filterUntil');
+  const clearBtn = el('button', 'gg-tb-btn gg-clear-btn hidden', '×') as HTMLButtonElement;
+  clearBtn.title = S.t('clearFilter');
+  const filterBox = el('div', 'gg-logfilter');
+  filterBox.append(authorInput, sinceInput, el('span', 'gg-range-sep', '–'), untilInput, clearBtn);
+
+  const applySoon = debounce(() => {
+    app.setLogFilter({ author: authorInput.value, since: sinceInput.value, until: untilInput.value });
+  }, 450);
+  authorInput.addEventListener('input', applySoon);
+  sinceInput.addEventListener('change', applySoon);
+  untilInput.addEventListener('change', applySoon);
+  const updateClearVis = () => {
+    clearBtn.classList.toggle('hidden', !(authorInput.value || sinceInput.value || untilInput.value));
+  };
+  authorInput.addEventListener('input', updateClearVis);
+  sinceInput.addEventListener('change', updateClearVis);
+  untilInput.addEventListener('change', updateClearVis);
+  clearBtn.addEventListener('click', () => {
+    authorInput.value = '';
+    sinceInput.value = '';
+    untilInput.value = '';
+    updateClearVis();
+    app.setLogFilter({ author: '', since: '', until: '' });
   });
 
   const fetchBtn = mkBtn('⟳', () => app.runFetch());
@@ -44,7 +81,7 @@ export function createToolbar(app: App): Toolbar {
   progress.append(progressText, progressCancel);
 
   const left = el('div', 'gg-toolbar-left');
-  left.append(repoSel, branchLabel, filterSel);
+  left.append(repoSel, branchLabel, filterSel, filterBox);
   const right = el('div', 'gg-toolbar-right');
   right.append(fetchBtn, pullBtn, pushBtn, refreshBtn, gearBtn, progress);
   root.append(left, right);
@@ -114,5 +151,16 @@ export function createToolbar(app: App): Toolbar {
     progressText.textContent = `${S.t(op.kind)}${pct} · ${op.text}`;
   }
 
-  return { el: root, update, updateProgress };
+  function syncFilterInputs(f: { author: string; since: string; until: string }): void {
+    const focusIn = document.activeElement === authorInput
+      || document.activeElement === sinceInput
+      || document.activeElement === untilInput;
+    if (focusIn) return;   // 用户正在编辑，不覆盖
+    if (authorInput.value !== f.author) authorInput.value = f.author;
+    if (sinceInput.value !== f.since) sinceInput.value = f.since;
+    if (untilInput.value !== f.until) untilInput.value = f.until;
+    updateClearVis();
+  }
+
+  return { el: root, update, updateProgress, syncFilterInputs };
 }
