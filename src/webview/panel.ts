@@ -3,7 +3,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawn } from 'child_process';
+import { exec, spawn } from 'child_process';
 import * as vscode from 'vscode';
 import { createT, resolveLang, type Lang, type Translate } from '../common/i18n';
 import type { Commit, LogFilter, RepoMeta, RepoState } from '../common/models';
@@ -493,9 +493,9 @@ export class GraphPanel {
 
   /**
    * 在系统文件管理器中定位文件（选中该文件）。
-   * Windows 关键点：explorer 只对 `/select,"路径"`（逗号后紧跟引号、整体一个参数）可靠解析；
-   * 用 windowsVerbatimArguments 精确构造该命令行，避免 Node 对参数二次拆分/加引号。
-   * revealFileInOS 命令在 Webview 扩展场景不可靠，仅作回退。
+   * Windows 实测（窗口标题级验证）：直接 spawn explorer（含 verbatim/detached 变体）不创建窗口，
+   * 唯一稳定创建窗口的形态是经 cmd 执行 `explorer /select,"路径"`（exec 默认走 cmd /c）。
+   * explorer 正常情况退出码为 1，仅 ENOENT 等字符串错误码才回退 revealFileInOS。
    */
   private async revealInFileManager(target: string): Promise<void> {
     const fallback = (): void => {
@@ -504,14 +504,10 @@ export class GraphPanel {
     };
     try {
       if (process.platform === 'win32') {
-        const child = spawn('explorer.exe', [`/select,"${target.replace(/"/g, '')}"`], {
-          windowsVerbatimArguments: true,
-          windowsHide: true,
-          detached: true,
-          stdio: 'ignore',
+        const q = target.replace(/"/g, '');
+        exec(`explorer /select,"${q}"`, err => {
+          if (err && typeof err.code === 'string') fallback();   // 启动失败（如 ENOENT）；退出码 1 为正常
         });
-        child.once('error', () => fallback());
-        child.unref();
       } else if (process.platform === 'darwin') {
         const child = spawn('open', ['-R', target], { detached: true, stdio: 'ignore' });
         child.once('error', () => fallback());
