@@ -1,18 +1,18 @@
 /**
- * gitgraph: 只读文档提供者（设计方案 7.1）—— 复用 VS Code 内置差异编辑器。
- * URI 格式：gitgraph://<repoId>/<encodeURIComponent(fileName)>?ref=<ref>&path=<repo 相对路径>
+ * commitmap: 只读文档提供者（设计方案 7.1）—— 复用 VS Code 内置差异编辑器。
+ * URI 格式：commitmap://<repoId>/<encodeURIComponent(fileName)>?ref=<ref>&path=<repo 相对路径>
  * 文件名放在 path 段以获得 languageId 推断（语法高亮）。
  */
 import * as vscode from 'vscode';
 import type { GitService } from '../git/service';
 
-export const GITGRAPH_SCHEME = 'gitgraph';
+export const COMMITMAP_SCHEME = 'commitmap';
 export const EMPTY_REF = '__empty__';
 
-export function gitgraphUri(repoId: string, fileName: string, ref: string, path: string): vscode.Uri {
+export function commitmapUri(repoId: string, fileName: string, ref: string, path: string): vscode.Uri {
   const enc = encodeURIComponent;
   return vscode.Uri.parse(
-    `${GITGRAPH_SCHEME}://${repoId}/${enc(fileName)}?ref=${enc(ref)}&path=${enc(path)}`,
+    `${COMMITMAP_SCHEME}://${repoId}/${enc(fileName)}?ref=${enc(ref)}&path=${enc(path)}`,
   );
 }
 

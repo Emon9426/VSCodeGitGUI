@@ -1,5 +1,5 @@
 {
-  "name": "gitgraph",
+  "name": "commitmap",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
   "version": "0.6.0",
@@ -26,55 +26,55 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "gitgraph",
+          "id": "commitmap",
           "title": "%viewContainer.name%",
-          "icon": "media/gitgraph.svg"
+          "icon": "media/commitmap.svg"
         }
       ]
     },
     "views": {
-      "gitgraph": [
+      "commitmap": [
         {
-          "id": "gitgraph.repos",
+          "id": "commitmap.repos",
           "name": "%view.repos%"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "gitgraph.repos",
+        "view": "commitmap.repos",
         "contents": "%welcome.noRepos%"
       }
     ],
     "commands": [
       {
-        "command": "gitgraph.open",
+        "command": "commitmap.open",
         "title": "%cmd.open%"
       },
       {
-        "command": "gitgraph.openRepo",
+        "command": "commitmap.openRepo",
         "title": "%cmd.openRepo%"
       },
       {
-        "command": "gitgraph.refreshTree",
+        "command": "commitmap.refreshTree",
         "title": "%cmd.refreshTree%"
       },
       {
-        "command": "gitgraph.fetch",
+        "command": "commitmap.fetch",
         "title": "%cmd.fetch%"
       },
       {
-        "command": "gitgraph.pull",
+        "command": "commitmap.pull",
         "title": "%cmd.pull%"
       },
       {
-        "command": "gitgraph.push",
+        "command": "commitmap.push",
         "title": "%cmd.push%"
       }
     ],
     "keybindings": [
       {
-        "command": "gitgraph.open",
+        "command": "commitmap.open",
         "key": "ctrl+alt+g",
         "mac": "cmd+alt+g"
       }
@@ -82,65 +82,65 @@
     "menus": {
       "commandPalette": [
         {
-          "command": "gitgraph.openRepo",
+          "command": "commitmap.openRepo",
           "when": "false"
         },
         {
-          "command": "gitgraph.refreshTree",
+          "command": "commitmap.refreshTree",
           "when": "false"
         }
       ],
       "view/title": [
         {
-          "command": "gitgraph.open",
-          "when": "view == gitgraph.repos",
+          "command": "commitmap.open",
+          "when": "view == commitmap.repos",
           "group": "navigation"
         },
         {
-          "command": "gitgraph.refreshTree",
-          "when": "view == gitgraph.repos",
+          "command": "commitmap.refreshTree",
+          "when": "view == commitmap.repos",
           "group": "navigation"
         }
       ],
       "scm/title": [
         {
-          "command": "gitgraph.open",
+          "command": "commitmap.open",
           "group": "navigation",
           "when": "scmProvider == git"
         }
       ]
     },
     "configuration": {
-      "title": "GitGraph",
+      "title": "CommitMap",
       "properties": {
-        "gitgraph.gitPath": {
+        "commitmap.gitPath": {
           "type": "string",
           "default": "",
           "markdownDescription": "%cfg.gitPath%"
         },
-        "gitgraph.commitPageSize": {
+        "commitmap.commitPageSize": {
           "type": "number",
           "default": 500,
           "minimum": 100,
           "maximum": 5000,
           "description": "%cfg.commitPageSize%"
         },
-        "gitgraph.maxAutoLoad": {
+        "commitmap.maxAutoLoad": {
           "type": "number",
           "default": 20000,
           "description": "%cfg.maxAutoLoad%"
         },
-        "gitgraph.fetchOnOpen": {
+        "commitmap.fetchOnOpen": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.fetchOnOpen%"
         },
-        "gitgraph.fetchPrune": {
+        "commitmap.fetchPrune": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.fetchPrune%"
         },
-        "gitgraph.defaultPullStrategy": {
+        "commitmap.defaultPullStrategy": {
           "type": "string",
           "default": "merge",
           "enum": [
@@ -150,7 +150,7 @@
           ],
           "description": "%cfg.defaultPullStrategy%"
         },
-        "gitgraph.dateFormat": {
+        "commitmap.dateFormat": {
           "type": "string",
           "default": "datetime",
           "enum": [
@@ -165,7 +165,7 @@
           ],
           "description": "%cfg.dateFormat%"
         },
-        "gitgraph.rowHeight": {
+        "commitmap.rowHeight": {
           "type": "string",
           "default": "default",
           "enum": [
@@ -175,7 +175,7 @@
           ],
           "description": "%cfg.rowHeight%"
         },
-        "gitgraph.graphStyle": {
+        "commitmap.graphStyle": {
           "type": "string",
           "default": "curved",
           "enum": [
@@ -184,24 +184,24 @@
           ],
           "description": "%cfg.graphStyle%"
         },
-        "gitgraph.graphColumnWidth": {
+        "commitmap.graphColumnWidth": {
           "type": "number",
           "default": 180,
           "minimum": 120,
           "maximum": 260,
           "description": "%cfg.graphColumnWidth%"
         },
-        "gitgraph.showRemoteChips": {
+        "commitmap.showRemoteChips": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.showRemoteChips%"
         },
-        "gitgraph.maxTagChips": {
+        "commitmap.maxTagChips": {
           "type": "number",
           "default": 2,
           "description": "%cfg.maxTagChips%"
         },
-        "gitgraph.detailPanelPosition": {
+        "commitmap.detailPanelPosition": {
           "type": "string",
           "default": "bottom",
           "enum": [
@@ -210,7 +210,7 @@
           ],
           "description": "%cfg.detailPanelPosition%"
         },
-        "gitgraph.language": {
+        "commitmap.language": {
           "type": "string",
           "default": "auto",
           "enum": [
@@ -220,7 +220,7 @@
           ],
           "description": "%cfg.language%"
         },
-        "gitgraph.showStatusBarItem": {
+        "commitmap.showStatusBarItem": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.showStatusBarItem%"

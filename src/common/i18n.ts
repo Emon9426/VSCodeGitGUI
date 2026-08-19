@@ -6,7 +6,7 @@
 export type Lang = 'zh-CN' | 'en';
 
 const zh: Record<string, string> = {
-  app: 'GitGraph',
+  app: 'CommitMap',
   cmdOpenGraph: '打开提交图',
   loading: '加载中…',
   refresh: '刷新',
@@ -96,7 +96,7 @@ const zh: Record<string, string> = {
   noRepos: '当前工作区未发现 Git 仓库',
   noReposHint: '请先打开一个包含 Git 仓库的文件夹。',
   gitNotFound: '未找到可用的 git 可执行文件',
-  gitNotFoundHint: '请安装 Git 或在设置中指定 gitgraph.gitPath。',
+  gitNotFoundHint: '请安装 Git 或在设置中指定 commitmap.gitPath。',
 
   loadMore: '继续加载更多',
   loadedCount: '已加载 {n} 条提交',
@@ -123,7 +123,7 @@ const zh: Record<string, string> = {
 };
 
 const en: Record<string, string> = {
-  app: 'GitGraph',
+  app: 'CommitMap',
   cmdOpenGraph: 'Open Commit Graph',
   loading: 'Loading…',
   refresh: 'Refresh',
@@ -213,7 +213,7 @@ const en: Record<string, string> = {
   noRepos: 'No Git repository found in this workspace',
   noReposHint: 'Open a folder that contains a Git repository first.',
   gitNotFound: 'Git executable not found',
-  gitNotFoundHint: 'Install Git, or set gitgraph.gitPath in settings.',
+  gitNotFoundHint: 'Install Git, or set commitmap.gitPath in settings.',
 
   loadMore: 'Load more',
   loadedCount: '{n} commits loaded',

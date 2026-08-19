@@ -13,10 +13,10 @@ import { discoverRepos, repoIdOf } from '../git/discovery';
 import { GitService, EMPTY_TREE } from '../git/service';
 import { RepoWatcher } from '../git/watcher';
 import { OpRunner, type OpSpec, type PullStrategy } from '../ops/runner';
-import { DiffContentProvider, GITGRAPH_SCHEME, EMPTY_REF, gitgraphUri } from './diffProvider';
+import { DiffContentProvider, COMMITMAP_SCHEME, EMPTY_REF, commitmapUri } from './diffProvider';
 
 function readConfig(): ConfigDto {
-  const cfg = vscode.workspace.getConfiguration('gitgraph');
+  const cfg = vscode.workspace.getConfiguration('commitmap');
   const rowHeight = cfg.get<'compact' | 'default' | 'loose'>('rowHeight', 'default');
   return {
     language: cfg.get('language', 'auto'),
@@ -86,7 +86,7 @@ export class GraphPanel {
   private t: Translate = createT(this.lang);
   private statusBarItem?: vscode.StatusBarItem;
   private disposed = false;
-  private readonly channel = vscode.window.createOutputChannel('GitGraph');
+  private readonly channel = vscode.window.createOutputChannel('CommitMap');
 
   static show(context: vscode.ExtensionContext, repoId?: string): GraphPanel {
     if (GraphPanel.current) {
@@ -116,7 +116,7 @@ export class GraphPanel {
 
   private constructor(private readonly context: vscode.ExtensionContext) {
     this.panel = vscode.window.createWebviewPanel(
-      'gitgraph.view',
+      'commitmap.view',
       this.t('app'),
       vscode.ViewColumn.Active,
       {
@@ -131,12 +131,12 @@ export class GraphPanel {
 
     context.subscriptions.push(
       vscode.workspace.registerTextDocumentContentProvider(
-        GITGRAPH_SCHEME,
+        COMMITMAP_SCHEME,
         new DiffContentProvider(() => this.service, this.roots),
       ),
       vscode.window.onDidChangeActiveColorTheme(() => this.post({ t: 'themeChanged' })),
       vscode.workspace.onDidChangeConfiguration(e => {
-        if (!e.affectsConfiguration('gitgraph')) return;
+        if (!e.affectsConfiguration('commitmap')) return;
         this.config = readConfig();
         this.lang = resolveLang(this.config.language, vscode.env.language);
         this.t = createT(this.lang);
@@ -257,7 +257,7 @@ export class GraphPanel {
         return null;
       }
       case 'ui:openFileAt': {
-        const u = gitgraphUri(this.currentRepoId!, path.basename(String(args.path)), String(args.sha), String(args.path));
+        const u = commitmapUri(this.currentRepoId!, path.basename(String(args.path)), String(args.sha), String(args.path));
         const doc = await vscode.workspace.openTextDocument(u);
         await vscode.window.showTextDocument(doc, { preview: true });
         return null;
@@ -293,10 +293,10 @@ export class GraphPanel {
         await vscode.env.clipboard.writeText(String(args.text));
         return null;
       case 'ui:saveColWidths':
-        await this.context.globalState.update('gitgraph.colWidths', this.sanitizeColWidths(args.widths));
+        await this.context.globalState.update('commitmap.colWidths', this.sanitizeColWidths(args.widths));
         return null;
       case 'ui:openSettings':
-        await vscode.commands.executeCommand('workbench.action.openSettings', 'gitgraph');
+        await vscode.commands.executeCommand('workbench.action.openSettings', 'commitmap');
         return null;
       default:
         throw new Error(`unknown command: ${cmd}`);
@@ -307,7 +307,7 @@ export class GraphPanel {
 
   private async handleBootstrap(): Promise<void> {
     if (!this.executor) {
-      const configured = vscode.workspace.getConfiguration('gitgraph').get<string>('gitPath', '') || '';
+      const configured = vscode.workspace.getConfiguration('commitmap').get<string>('gitPath', '') || '';
       try {
         this.executor = await GitExecutor.detect(configured, builtinGitPath());
       } catch (e) {
@@ -424,10 +424,10 @@ export class GraphPanel {
     const commit = this.commitCache.get(this.currentRepoId!)?.get(sha);
     const leftRef = base ?? commit?.parents[0] ?? EMPTY_REF;
     const fileName = path.basename(filePath);
-    const left = gitgraphUri(this.currentRepoId!, fileName, leftRef, filePath);
+    const left = commitmapUri(this.currentRepoId!, fileName, leftRef, filePath);
     const right = worktree
       ? vscode.Uri.file(this.safeJoin(this.currentRoot(), filePath))
-      : gitgraphUri(this.currentRepoId!, fileName, sha, filePath);
+      : commitmapUri(this.currentRepoId!, fileName, sha, filePath);
     const leftShort = leftRef === EMPTY_REF || leftRef === EMPTY_TREE ? 'new' : leftRef.slice(0, 7);
     const rightShort = worktree ? 'worktree' : sha.slice(0, 7);
     await vscode.commands.executeCommand(
@@ -523,7 +523,7 @@ export class GraphPanel {
   }
 
   private readColWidths(): ColWidths | undefined {
-    const w = this.context.globalState.get<Partial<ColWidths>>('gitgraph.colWidths');
+    const w = this.context.globalState.get<Partial<ColWidths>>('commitmap.colWidths');
     return w ? this.sanitizeColWidths(w) : undefined;
   }
 
@@ -539,11 +539,11 @@ export class GraphPanel {
   }
 
   private updateStatusBar(): void {
-    const enabled = vscode.workspace.getConfiguration('gitgraph').get<boolean>('showStatusBarItem', true);
+    const enabled = vscode.workspace.getConfiguration('commitmap').get<boolean>('showStatusBarItem', true);
     if (!this.statusBarItem) {
       this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-      this.statusBarItem.name = 'GitGraph';
-      this.statusBarItem.command = 'gitgraph.open';
+      this.statusBarItem.name = 'CommitMap';
+      this.statusBarItem.command = 'commitmap.open';
     }
     const st = this.lastState;
     if (!st || st.head.branch === undefined && !st.head.detached) {
