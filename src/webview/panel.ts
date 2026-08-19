@@ -86,6 +86,7 @@ export class GraphPanel {
   private t: Translate = createT(this.lang);
   private statusBarItem?: vscode.StatusBarItem;
   private disposed = false;
+  private readonly channel = vscode.window.createOutputChannel('GitGraph');
 
   static show(context: vscode.ExtensionContext, repoId?: string): GraphPanel {
     if (GraphPanel.current) {
@@ -154,6 +155,7 @@ export class GraphPanel {
     for (const w of this.watchers.values()) w.dispose();
     this.watchers.clear();
     this.statusBarItem?.dispose();
+    this.channel.dispose();
     GraphPanel.current = undefined;
   }
 
@@ -195,11 +197,13 @@ export class GraphPanel {
     }
     const req = m as WVRequest;
     if (typeof req?.id !== 'number' || typeof req?.cmd !== 'string') return;   // E_PROTOCOL：静默丢弃
+    this.channel.appendLine(`[req] ${req.cmd} #${req.id}`);
     try {
       const data = await this.route(req.cmd, req.args ?? {});
       this.post({ t: 'res', id: req.id, ok: true, data });
     } catch (e) {
       const msg = e instanceof GitError ? `${e.code}: ${e.message}` : String((e as Error)?.message ?? e);
+      this.channel.appendLine(`[err] ${req.cmd}: ${msg}`);
       this.post({ t: 'res', id: req.id, ok: false, error: msg });
     }
   }
@@ -264,8 +268,10 @@ export class GraphPanel {
         const rel = String(args.path);
         const root = this.currentRoot();
         const target = this.safeJoin(root, rel);
+        this.channel.appendLine(`[reveal] target=${target} exists=${fs.existsSync(target)}`);
         if (fs.existsSync(target)) {
           await this.revealInFileManager(target);
+          this.channel.appendLine('[reveal] explorer spawned, notifying');
           // 用 VS Code 原生通知，绝无遗漏
           void vscode.window.showInformationMessage(`${this.t('revealed')}: ${rel}`);
           return null;
@@ -275,9 +281,11 @@ export class GraphPanel {
         while (dir !== root && !fs.existsSync(dir)) dir = path.dirname(dir);
         if (fs.existsSync(dir)) {
           await this.revealInFileManager(dir);
+          this.channel.appendLine(`[reveal] fallback dir=${dir}`);
           void vscode.window.showWarningMessage(this.t('revealParent'));
           return null;
         }
+        this.channel.appendLine('[reveal] not found anywhere');
         void vscode.window.showWarningMessage(this.t('fileNotFound', { path: rel }));
         return null;
       }

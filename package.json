@@ -2,7 +2,7 @@
   "name": "gitgraph",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "publisher": "emon",
   "license": "MIT",
   "engines": {

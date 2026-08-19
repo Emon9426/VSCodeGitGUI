@@ -114,6 +114,8 @@ const app: App = {
     void rpc('ui:openFileAt', { sha, path }).catch(showErr);
   },
   revealInFM(path) {
+    // 即时反馈：证明点击 → app → rpc 链路已启动（配合扩展侧输出通道日志定位断点）
+    toast('info', `reveal → ${path}`);
     void rpc('ui:revealInFM', { path }).catch(showErr);
   },
   checkoutRef(ref) {
