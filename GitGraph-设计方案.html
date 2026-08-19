@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitGraph · VS Code Git 可视化插件 · 设计方案 v1.0</title>
+<style>
+  :root{
+    --fg:#1f2328; --fg2:#57606a; --line:#d0d7de; --bg:#ffffff; --bg2:#f6f8fa;
+    --accent:#0969da; --green:#1a7f37; --red:#cf222e; --amber:#9a6700; --purple:#8250df;
+    --code-bg:#0d1117; --code-fg:#e6edf3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.75 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;color:var(--fg);background:var(--bg)}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code.inline{background:var(--bg2);border:1px solid var(--line);border-radius:4px;padding:0 5px;font:12.5px/1.6 Consolas,"Courier New",monospace;color:#953800;white-space:nowrap}
+  pre.code{background:var(--code-bg);color:var(--code-fg);border-radius:8px;padding:14px 16px;overflow:auto;font:12.5px/1.6 Consolas,"Courier New",monospace;tab-size:2}
+  pre.code code{background:none;border:none;color:inherit;padding:0;font-size:inherit;white-space:pre}
+  table.tbl{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  table.tbl th{background:var(--bg2);text-align:left}
+  table.tbl th,table.tbl td{border:1px solid var(--line);padding:6px 10px;vertical-align:top}
+  table.tbl tr:nth-child(even) td{background:#fbfcfd}
+  h1{font-size:28px;margin:.2em 0 .3em}
+  h2{font-size:21px;margin:2.2em 0 .6em;padding-left:12px;border-left:4px solid var(--accent)}
+  h3{font-size:17px;margin:1.6em 0 .5em;color:#24292f}
+  h4{font-size:15px;margin:1.2em 0 .4em;color:var(--fg2)}
+  p{margin:.6em 0}
+  ul,ol{padding-left:1.6em}
+  li{margin:.25em 0}
+  hr.sect{border:none;border-top:1px solid var(--line);margin:2.5em 0}
+  aside.toc{position:fixed;top:0;left:0;bottom:0;width:250px;overflow-y:auto;padding:20px 14px;border-right:1px solid var(--line);background:var(--bg2);font-size:13px}
+  aside.toc .toc-title{font-weight:600;margin-bottom:10px}
+  aside.toc a{display:block;color:var(--fg2);padding:2px 6px;border-radius:4px;line-height:1.5}
+  aside.toc a:hover{background:#eaeef2;text-decoration:none;color:var(--accent)}
+  aside.toc a.sub{padding-left:18px;font-size:12.3px}
+  main.doc{margin-left:250px;padding:36px 44px 80px;max-width:1020px}
+  .docmeta{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:12px 18px;margin:14px 0 8px;font-size:13.5px}
+  .box{border-radius:8px;padding:10px 16px;margin:14px 0;font-size:13.8px;border:1px solid}
+  .box.note{background:#ddf4ff;border-color:#54aeff66}
+  .box.warn{background:#fff8c5;border-color:#d4a72c66}
+  .box.decision{background:#dafbe1;border-color:#4ac26b66}
+  .box.assume{background:#fbefff;border-color:#c297ff66}
+  .box b:first-child{display:inline;margin-right:6px}
+  .prio{display:inline-block;border-radius:10px;padding:0 9px;font-size:12px;font-weight:600;line-height:20px}
+  .p0{background:#dafbe1;color:var(--green)}
+  .p1{background:#ddf4ff;color:var(--accent)}
+  .p2{background:#fff8c5;color:var(--amber)}
+  figure{margin:18px 0}
+  figcaption{font-size:12.5px;color:var(--fg2);text-align:center;margin-top:8px}
+  /* ===== 内嵌 UI 模拟图（Mockup，深色主题示意） ===== */
+  .mockup{background:#0d1117;border:1px solid #30363d;border-radius:10px;overflow:hidden;color:#c9d1d9;font-size:12px}
+  .mk-toolbar{display:flex;align-items:center;gap:8px;height:38px;padding:0 10px;background:#161b22;border-bottom:1px solid #30363d}
+  .mk-logo{font-weight:700;color:#58a6ff;margin-right:6px}
+  .mk-branchsel{background:#21262d;border:1px solid #30363d;border-radius:6px;padding:3px 10px;color:#3fb950}
+  .mk-btn{background:#21262d;border:1px solid #30363d;border-radius:6px;padding:3px 10px;color:#c9d1d9}
+  .mk-btn.primary{color:#58a6ff}
+  .mk-search{margin-left:auto;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:3px 10px;color:#8b949e}
+  .mk-body{display:flex;min-height:470px}
+  .mk-side{width:200px;min-width:200px;background:#0d1117;border-right:1px solid #30363d;padding:8px 0;font-size:12px}
+  .mk-side-h{color:#8b949e;font-size:11px;padding:8px 12px 2px;letter-spacing:.08em}
+  .mk-item{padding:3px 12px;color:#c9d1d9;white-space:nowrap;overflow:hidden}
+  .mk-item.active{background:#04395e;color:#fff}
+  .mk-item .cnt{color:#8b949e;font-size:11px}
+  .mk-item .ahead{color:#3fb950;font-size:11px}
+  .mk-item .behind{color:#f85149;font-size:11px}
+  .mk-caret{color:#8b949e;margin-right:3px}
+  .mk-main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .mk-cols{display:grid;grid-template-columns:190px 1fr 110px 78px 130px;height:28px;line-height:28px;background:#161b22;border-bottom:1px solid #30363d;color:#8b949e;font-size:11.5px;padding:0 0 0 0}
+  .mk-cols span{padding:0 10px;border-right:1px solid #21262d}
+  .mk-rows{position:relative;flex:1;overflow:hidden;background:#0d1117}
+  .mk-row{display:grid;grid-template-columns:190px 1fr 110px 78px 130px;height:24px;line-height:24px;border-bottom:1px solid #161b2288}
+  .mk-row.sel{background:#093568}
+  .mk-row span{padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#c9d1d9;font-size:12px}
+  .mk-row .dim{color:#8b949e;font-family:Consolas,monospace;font-size:11.5px}
+  .mk-graph{position:absolute;left:0;top:0}
+  .mk-detail{height:170px;border-top:1px solid #30363d;display:flex;background:#0d1117}
+  .mk-detail-left{width:330px;min-width:330px;border-right:1px solid #30363d;display:flex;flex-direction:column}
+  .mk-detail-h{background:#161b22;color:#8b949e;font-size:11.5px;padding:4px 12px;border-bottom:1px solid #30363d}
+  .mk-files{flex:1;padding:4px 0;overflow:hidden;font-family:Consolas,monospace;font-size:11.5px}
+  .mk-file{padding:1px 12px;white-space:nowrap;display:flex;gap:8px}
+  .mk-st{width:12px;font-weight:700}
+  .mk-st.M{color:#d29922}.mk-st.A{color:#3fb950}.mk-st.D{color:#f85149}
+  .mk-num{width:78px;color:#8b949e}
+  .mk-num b.a{color:#3fb950;font-weight:400}.mk-num b.d{color:#f85149;font-weight:400}
+  .mk-path{color:#c9d1d9}
+  .mk-diff{flex:1;overflow:hidden;font-family:Consolas,monospace;font-size:11.5px;line-height:1.55}
+  .mk-diff .dl{padding:0 12px;white-space:pre}
+  .mk-diff .hunk{color:#8b949e;background:#161b22}
+  .mk-diff .add{background:#0d2818;color:#aacfea}
+  .mk-diff .del{background:#3d1418;color:#f0b8bf}
+  .mk-diff .meta{color:#8b949e;padding:2px 12px;background:#161b22}
+  .kfig{background:#f6f8fa;border:1px solid var(--line);border-radius:8px;padding:12px 16px;overflow-x:auto;font:12px/1.5 Consolas,monospace;color:#24292f}
+  footer{margin-top:40px;color:var(--fg2);font-size:12.5px;border-top:1px solid var(--line);padding-top:12px}
+  @media print{aside.toc{display:none}main.doc{margin:0;padding:0}}
+  @media (max-width:900px){aside.toc{display:none}main.doc{margin:0;padding:20px}}
+</style>
+</head>
+<body>
+
+<aside class="toc" id="toc">
+  <div class="toc-title">GitGraph 设计方案 v1.0</div>
+  <a href="#overview">1. 项目概述</a>
+  <a href="#requirements">2. 需求分析</a>
+  <a class="sub" href="#fr">2.1 功能需求清单（FR）</a>
+  <a class="sub" href="#nfr">2.2 非功能需求（NFR）</a>
+  <a class="sub" href="#assumptions">2.3 假设与澄清</a>
+  <a href="#architecture">3. 总体架构与技术选型</a>
+  <a class="sub" href="#dirstruct">3.4 工程目录结构</a>
+  <a href="#ui">4. 界面设计（参考 SourceTree）</a>
+  <a class="sub" href="#layout-map">4.1 布局映射与整体结构</a>
+  <a class="sub" href="#ui-sidebar">4.2 左侧边栏</a>
+  <a class="sub" href="#ui-toolbar">4.3 顶部工具栏</a>
+  <a class="sub" href="#ui-list">4.4 提交图主区</a>
+  <a class="sub" href="#ui-detail">4.5 详情面板</a>
+  <a class="sub" href="#ui-interact">4.6 交互规格</a>
+  <a class="sub" href="#ui-theme">4.7 主题与视觉规范</a>
+  <a class="sub" href="#ui-states">4.8 空状态与错误状态</a>
+  <a href="#graph">5. 提交图渲染引擎</a>
+  <a class="sub" href="#graph-data">5.1 数据获取与解析</a>
+  <a class="sub" href="#graph-lanes">5.2 Lane 分配算法</a>
+  <a class="sub" href="#graph-vscroll">5.3 虚拟滚动与 Canvas 分层</a>
+  <a class="sub" href="#graph-draw">5.4 绘制规格</a>
+  <a class="sub" href="#graph-incremental">5.5 增量加载与刷新</a>
+  <a href="#gitlayer">6. Git 集成层</a>
+  <a class="sub" href="#git-exec">6.1 命令执行器</a>
+  <a class="sub" href="#git-auth">6.2 认证（HTTPS/SSH）</a>
+  <a class="sub" href="#git-watch">6.3 仓库发现与监视</a>
+  <a class="sub" href="#git-ops">6.4 操作命令表</a>
+  <a class="sub" href="#git-safety">6.5 危险操作防护</a>
+  <a href="#diff">7. Diff 子系统</a>
+  <a href="#protocol">8. Webview 通信协议</a>
+  <a href="#models">9. 数据模型（TypeScript）</a>
+  <a href="#manifest">10. 扩展清单（package.json）</a>
+  <a href="#i18n">11. 国际化</a>
+  <a href="#security">12. 安全设计</a>
+  <a href="#testing">13. 测试与质量保障</a>
+  <a href="#build">14. 构建与发布</a>
+  <a href="#milestones">15. 里程碑计划</a>
+  <a href="#risks">16. 风险与对策</a>
+  <a href="#appendix">17. 附录</a>
+</aside>
+
+<main class="doc">
+
+<div class="docmeta">
+  <b>项目</b> GitGraph —— VS Code Git 可视化插件　|　<b>文档版本</b> v1.0　|　<b>日期</b> 2026-08-19　|　<b>状态</b> 待评审<br>
+  <b>目标读者</b> 本项目开发者　|　<b>UI 参考</b> Atlassian SourceTree（布局与信息架构）　|　<b>工程参考</b> Git Graph（渲染性能策略）
+</div>
+
+<h1>GitGraph · 设计方案</h1>
+
+<h2 id="overview">1. 项目概述</h2>
+
+<p>GitGraph 是一个 VS Code 桌面版插件，以<b>图形化提交历史（Commit Graph）</b>为核心，提供对 Git 仓库的可视化浏览与日常操作能力。布局与交互参考 SourceTree：左侧为仓库/分支/远程/标签树，中部为提交图列表，底部为选中提交的详情面板（完整提交信息、变更文件、差异）。</p>
+
+<h3>1.1 目标</h3>
+<ul>
+  <li><b>看得清</b>：以彩色拓扑图直观呈现分支、合并、标签与 HEAD 位置；一行提交展示图形、提交说明、作者、时间、短 SHA。</li>
+  <li><b>查得快</b>：点击提交行即可查看完整 SHA、完整提交注释（含正文）、变更文件列表；支持打开文件、在系统文件管理器中定位；文本文件可查看任意版本间差异。</li>
+  <li><b>用得顺</b>：GUI 完成 Fetch / Pull / Push / 重置到某次提交 / 切换分支等日常 Git 操作，带进度、取消与清晰错误反馈。</li>
+  <li><b>扛得住</b>：针对大仓库（数万至十万级提交）做分页加载、虚拟滚动与分层渲染，保证流畅。</li>
+</ul>
+
+<h3>1.2 非目标（本期明确不做）</h3>
+<ul>
+  <li>不嵌入 Git 实现（不使用 libgit2/dugite），完全调用系统 <code class="inline">git</code> CLI。</li>
+  <li>不做 SourceTree 式的"仓库书签管理器"（管理任意磁盘路径仓库列表）；本期仓库来源 = 当前工作区的全部 Git 仓库（多根工作区支持）。</li>
+  <li>不支持 VS Code Web（vscode.dev / github.dev）：Web 环境无法执行本地 git 命令。</li>
+  <li>交互式 rebase、cherry-pick、stash、子模块等高级操作列入 P2 路线（见 2.1）。</li>
+</ul>
+
+<hr class="sect">
+<h2 id="requirements">2. 需求分析</h2>
+
+<h3 id="fr">2.1 功能需求清单（FR）</h3>
+<p>优先级定义：<span class="prio p0">P0</span> 首个可用版本必须交付；<span class="prio p1">P1</span> 紧随其后的增强；<span class="prio p2">P2</span> 远期路线。</p>
+
+<table class="tbl">
+<tr><th style="width:70px">编号</th><th style="width:640px">功能描述</th><th>优先级</th></tr>
+<tr><td>FR-01</td><td>打开提交图视图（编辑器标签页形式）；多仓库工作区下可通过侧栏/下拉切换仓库</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-02</td><td>提交图渲染：图形列以彩色线条与节点表达分支/合并拓扑（支持交叉、八爪合并、多根仓库）</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-03</td><td>提交列表列：图形 | 提交说明 | 作者 | 短 SHA | 时间（相对时间/绝对时间可切换）</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-04</td><td>Ref 徽标：HEAD→分支、本地分支、远程分支、Tag，以彩色 chip 显示在对应提交行</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-05</td><td>点击提交行 → 底部详情面板：完整 SHA（可复制）、作者/提交者及邮箱、作者时间/提交时间、完整 Commit Comment（标题+正文）、变更文件列表（状态 A/M/D/R、±行数、路径）</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-06</td><td>文件级操作：打开工作区文件、以只读方式打开某历史版本、在系统文件管理器中显示（Reveal）、复制路径</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-07</td><td>文本差异：面板内联 diff 快速预览 + 双击/按钮打开 VS Code 内置差异编辑器（支持任意两版本、commit vs 工作区）</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-08</td><td>Fetch：工具栏按钮（fetch --all --prune，可配置）+ 侧栏远程节点右键按远程 fetch；进度显示、可取消</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-09</td><td>Pull：merge / rebase / ff-only 三种策略可选（默认取自设置），进度显示、可取消</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-10</td><td>Push：无上游时引导设置上游（-u）；进度显示、可取消</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-11</td><td>重置仓库到某次提交：soft / mixed / hard 三种模式选择 + 模式说明；hard 需二次确认并提示将丢弃的变更</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-12</td><td>切换分支：双击本地分支切换；点击远程分支 → 创建本地跟踪分支；提交右键 → 分离头指针检出</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-13</td><td>按 ref 过滤提交图：点击侧栏分支/远程分支/标签或工具栏下拉，仅显示该 ref 可达提交</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-14</td><td>自动刷新：监视 .git 变化（HEAD/refs/index/packed-refs）防抖刷新；工具栏手动刷新按钮</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-15</td><td>侧栏树：仓库区、本地分支（含 ahead/behind 徽标）、远程主机>分支、标签；各节点右键菜单</td><td><span class="prio p0">P0</span></td></tr>
+<tr><td>FR-16</td><td>创建分支（自当前 HEAD 或选中提交）、删除分支（含未合并提示）</td><td><span class="prio p1">P1</span></td></tr>
+<tr><td>FR-17</td><td>合并分支到当前分支（--no-ff 可选，冲突时引导处理）</td><td><span class="prio p1">P1</span></td></tr>
+<tr><td>FR-18</td><td>标签管理：在选中提交上创建/删除标签（轻量/附注）</td><td><span class="prio p1">P1</span></td></tr>
+<tr><td>FR-19</td><td>搜索过滤：按提交说明/作者/SHA 过滤（git log --grep / --author）</td><td><span class="prio p1">P1</span></td></tr>
+<tr><td>FR-20</td><td>任意两次提交对比（选中两个提交 → 区间 diff 文件列表）</td><td><span class="prio p1">P1</span></td></tr>
+<tr><td>FR-21</td><td>工作区变更/暂存与提交界面（SourceTree 的"文件状态"页签）</td><td><span class="prio p2">P2</span></td></tr>
+<tr><td>FR-22</td><td>Stash 推入/弹出/列表；cherry-pick、revert、rebase</td><td><span class="prio p2">P2</span></td></tr>
+<tr><td>FR-23</td><td>子模块、图片/二进制可视化 diff</td><td><span class="prio p2">P2</span></td></tr>
+</table>
+
+<h3 id="nfr">2.2 非功能需求（NFR）</h3>
+<table class="tbl">
+<tr><th style="width:120px">类别</th><th>指标 / 约束</th></tr>
+<tr><td>首屏性能</td><td>10,000 提交仓库：从打开视图到首屏（500 行）渲染完成 <b>&lt; 800ms</b>（本机 git 命令耗时除外的上限另计）</td></tr>
+<tr><td>滚动性能</td><td>提交列表滚动保持 60fps；单帧列表工作（行回收/复用 + Canvas 重绘）&lt; 8ms</td></tr>
+<tr><td>内存</td><td>已加载 50,000 提交时，Webview 堆内存 &lt; 150MB；DOM 行节点数恒定（约可视行数 + 缓冲，&lt; 60 个）</td></tr>
+<tr><td>刷新性能</td><td>refs 变化触发的局部刷新 &lt; 300ms（不整页重载、不清空选中状态）</td></tr>
+<tr><td>diff 性能</td><td>2,000 行文本文件的内联 diff 渲染 &lt; 50ms；超 5,000 行提示改用内置差异编辑器</td></tr>
+<tr><td>兼容性</td><td>VS Code ≥ 1.85 桌面版（Windows / macOS / Linux）；git ≥ 2.30；多根工作区；路径含中文/空格正确处理（core.quotepath=false）</td></tr>
+<tr><td>安全</td><td>Webview CSP 严格白名单；所有来自 git 输出的字符串经 HTML 转义后再渲染（防提交信息注入）；文件操作限制在仓库根内</td></tr>
+<tr><td>可用性</td><td>所有长操作（fetch/pull/push）可取消；错误信息包含 git stderr 摘要与"查看完整输出"入口；界面文案 zh-CN/en 双语</td></tr>
+<tr><td>隐私</td><td>不采集遥测、不访问网络（仅由 git 本身访问远端）</td></tr>
+</table>
+
+<h3 id="assumptions">2.3 假设与澄清（请确认）</h3>
+<div class="box assume">
+<b>A1 · "Put" 理解为 "Push"。</b>需求原文"Fetch、Pull、Put"中的 Put 判断为笔误，按 Push（推送）设计。
+</div>
+<div class="box assume">
+<b>A2 · 仓库范围。</b>本期仓库来源为"当前工作区的全部 Git 仓库"（含多根），侧栏仓库区切换；SourceTree 那种管理任意磁盘路径的"书签"列入 P2。
+</div>
+<div class="box assume">
+<b>A3 · 界面语言。</b>默认简体中文，内置 i18n 切换英文（跟随 VS Code 语言，可强制指定）。
+</div>
+<div class="box assume">
+<b>A4 · Diff 呈现方式。</b>以 VS Code 内置差异编辑器为主（语法高亮、性能最好），详情面板内联 diff 作为快速预览；两者并存。
+</div>
+<div class="box assume">
+<b>A5 · 合并提交的文件列表</b>默认按 first-parent 口径显示差异（SourceTree 同款默认），后续提供"组合 diff"选项。
+</div>
+
+<hr class="sect">
+<h2 id="architecture">3. 总体架构与技术选型</h2>
+
+<h3>3.1 架构总览</h3>
+<div class="kfig">
+┌───────────────────────────── VS Code 桌面版 ─────────────────────────────┐
+│  Extension Host 进程（Node.js）                                           │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
+│  │ extension.ts        激活入口 · 命令/菜单注册 · 状态栏当前分支        │    │
+│  │ git/                GitExecutor(spawn git CLI)                     │    │
+│  │                     GitService（高层 API：log/refs/fetch/…）        │    │
+│  │                     RepoDiscovery（工作区仓库发现）                  │    │
+│  │                     RepoWatcher（fs.watch .git，防抖刷新）          │    │
+│  │ webview/            GraphPanel（WebviewPanel 生命周期与保留状态）    │    │
+│  │                     MessageRouter（消息协议路由）                    │    │
+│  │                     DiffContentProvider（gitgraph: 只读文档）       │    │
+│  │ ops/                操作执行器（fetch/pull/push/reset/checkout）     │    │
+│  │                     · 每仓库串行队列 · 进度流 · 取消                 │    │
+│  └──────────▲──────────────────────────────────┬────────────────────┘    │
+└─────────────│ postMessage(JSON, reqId 关联)    │ TextDocumentContentProvider│
+              │                                  │ scheme: gitgraph:        │
+┌─────────────┴──────────────────────────────────▼────────────────────┐
+│  Webview（沙箱）— UI 全部在此渲染                                     │
+│  工具栏 · 左侧栏(分支/远程/标签树) · 提交图主区 · 详情面板/内联diff     │
+│  lanes.ts（lane 算法，与扩展侧共享同一份源码）· 原生 TS，零运行时依赖   │
+└─────────────────────────────────────────────────────────────────────┘
+</div>
+
+<p>数据流要点：</p>
+<ul>
+<li><b>只读数据（提交、refs）</b>由扩展侧经 <code class="inline">git log / for-each-ref</code> 获取并解析为结构化对象，按页推送给 Webview；<b>lane 拓扑计算放在 Webview 侧</b>（纯函数 <code class="inline">src/graph/lanes.ts</code>，与扩展共享源码、可单测），避免扩展主机成为渲染瓶颈。</li>
+<li><b>操作类请求</b>（fetch/pull/push/reset/checkout）由 Webview 发起，扩展侧按仓库串行执行，进度按行流式回推（git --progress）。</li>
+<li><b>差异文档</b>通过自定义 <code class="inline">gitgraph:</code> 协议的 TextDocumentContentProvider 提供，直接复用 VS Code 内置差异编辑器的全部能力（虚拟滚动、语法高亮、minimap）。</li>
+</ul>
+
+<h3>3.2 技术选型</h3>
+<table class="tbl">
+<tr><th style="width:150px">决策点</th><th style="width:230px">选择</th><th>理由（含被否方案）</th></tr>
+<tr><td>语言</td><td>TypeScript（strict）</td><td>VS Code 生态标准；协议与模型可在两侧共享类型</td></tr>
+<tr><td>Git 访问</td><td>spawn 系统 <code class="inline">git</code> CLI</td><td>功能全覆盖（reset/push 等）；否决 vscode.git 内置 API——其不暴露 reset/push 等写操作，且属非稳定内部接口；否决 dugite/nodegit——引入数十 MB 二进制、包体大、与用户已装 git 行为不一致</td></tr>
+<tr><td>UI 容器</td><td>WebviewPanel（编辑器标签页）</td><td>SourceTree 式布局需要大画布；否决 TreeView API——无法绘制图形与自由布局</td></tr>
+<tr><td>前端框架</td><td>无框架，原生 TS + 手写组件</td><td>核心性能件（虚拟滚动、Canvas）本就必须手写；零依赖使包体小、内存低、冷启动快；CSS 手写并消费 VS Code 主题 CSS 变量</td></tr>
+<tr><td>图形绘制</td><td>Canvas 2D（线条层）+ DOM（行）</td><td>见第 5 节；否决纯 SVG——数万行时节点过多；否决整块 Canvas——文本列要原生可选中/无障碍</td></tr>
+<tr><td>打包</td><td>esbuild（扩展与 Webview 各一个 bundle）</td><td>秒级增量构建；产物小</td></tr>
+<tr><td>测试</td><td>vitest（单测）+ @vscode/test-electron（集成）</td><td>lanes 算法/解析器为纯函数，快速回归；集成测试用脚本生成的夹具仓库</td></tr>
+</table>
+
+<h3>3.3 进程模型与生命周期</h3>
+<ul>
+<li>插件在 <code class="inline">gitgraph.open</code> 命令首次执行时激活（lazy activation）。</li>
+<li>GraphPanel 被 dispose 时：停止 watcher、终止进行中的 git 子进程（若用户无前台操作则挂后台继续可选，默认终止）；再次打开时从扩展侧缓存的 RepoState 快照恢复，避免重复加载。</li>
+<li>Webview 隐藏不销毁（VS Code 默认可回收 DOM）：设置 <code class="inline">retainContextWhenHidden: false</code> 以省内存，恢复时由扩展重发 <code class="inline">repoState</code> 全量状态重建 UI（状态的唯一事实来源在扩展侧）。</li>
+</ul>
+
+<h3 id="dirstruct">3.4 工程目录结构</h3>
+<pre class="code"><code>09_GitGraph/
+├── package.json                 # 扩展清单（见第 10 节）
+├── tsconfig.json                # 严格模式；两个 tsconfig 分别覆盖 ext / webview DOM 库
+├── esbuild.js                   # 构建脚本：ext(cjs,external:vscode) + webview(iife,minify)
+├── .vscodeignore
+├── src/
+│   ├── extension.ts             # 激活/停用；注册命令、菜单、状态栏
+│   ├── git/
+│   │   ├── executor.ts          # spawn 封装：env、超时、流式、取消、输出上限、编码
+│   │   ├── args.ts              # 常量：LOG_FORMAT、baseArgs（-C/-c 选项）
+│   │   ├── parse.ts             # log / for-each-ref / numstat 输出解析（纯函数）
+│   │   ├── service.ts           # GitService：getCommits/getRefs/detailOf/diffOf…
+│   │   ├── discovery.ts         # 工作区仓库发现（rev-parse --show-toplevel）
+│   │   └── watcher.ts           # .git 监视 + 300ms 防抖 → RepoState 重建
+│   ├── ops/
+│   │   ├── runner.ts            # 每仓库操作队列、进度流、取消、完成后刷新
+│   │   └── ops.ts               # fetch/pull/push/reset/checkout 参数构建与预检
+│   ├── webview/
+│   │   ├── panel.ts             # GraphPanel 生命周期、HTML/nonce/CSP 组装
+│   │   ├── router.ts            # 消息协议路由（第 8 节）
+│   │   └── diffProvider.ts      # gitgraph: TextDocumentContentProvider
+│   ├── graph/
+│   │   └── lanes.ts             # lane 分配算法（纯函数；webview 侧复用同一文件）
+│   ├── common/
+│   │   ├── protocol.ts          # 消息与数据模型类型（两侧共享）
+│   │   └── models.ts            # Commit/Ref/FileChange…
+│   ├── i18n/
+│   │   ├── index.ts             # 语言解析（auto/zh-CN/en）
+│   │   ├── zh-cn.ts / en.ts     # 文案表
+│   │   └── package.nls.*.json   # package.json 命令/配置标题本地化
+│   └── ui/                      # ===== Webview 前端源码 =====
+│       ├── main.ts              # 入口：装配各组件、消息收发
+│       ├── app/
+│       │   ├── toolbar.ts       # 工具栏（含进度指示与取消）
+│       │   ├── sidebar.ts       # 仓库/分支/远程/标签树
+│       │   ├── commitList.ts    # 虚拟滚动列表 + 行复用
+│       │   ├── graphCanvas.ts   # Canvas 线条层绘制
+│       │   ├── detailPanel.ts   # 详情：概要/文件列表/内联diff
+│       │   ├── contextMenu.ts   # 通用右键菜单
+│       │   └── dialog.ts        # 确认对话框（reset hard 等）
+│       ├── diff/render.ts       # unified diff → DOM（行虚拟化）
+│       ├── theme.ts             # 注入/监听 VS Code 主题 CSS 变量
+│       └── styles/main.css
+├── media/                       # 图标（复用 codicon 字体，随包分发）
+├── test/
+│   ├── unit/                    # lanes / parse / protocol 守卫
+│   ├── integration/             # @vscode/test-electron 用例
+│   └── fixtures/make-repo.sh    # 生成夹具仓库（规模/拓扑/中文内容可参数化）
+└── design/                      # 本设计文档与后续 ADR
+</code></pre>
+
+<hr class="sect">
+<h2 id="ui">4. 界面设计（参考 SourceTree）</h2>
+
+<h3 id="layout-map">4.1 布局映射与整体结构</h3>
+<table class="tbl">
+<tr><th style="width:220px">SourceTree 区域</th><th style="width:240px">GitGraph 对应实现</th><th>说明</th></tr>
+<tr><td>顶部工具栏（拉取/推送/获取/分支…）</td><td>Webview 顶部工具栏</td><td>Fetch / Pull / Push / 刷新 / 分支过滤 / 搜索(P1) / 进度指示</td></tr>
+<tr><td>左侧边栏（仓库、分支、远程、标签、暂存）</td><td>Webview 左侧栏树</td><td>暂存(P2) 不做；本地分支含 ahead/behind 徽标</td></tr>
+<tr><td>主区提交图形列表</td><td>提交图主区（虚拟滚动 + Canvas）</td><td>列：图形 | 说明 | 作者 | 短SHA | 时间</td></tr>
+<tr><td>底部详情（变更文件 + diff）</td><td>底部详情面板（高度可拖拽、可折叠）</td><td>左：概要+文件列表；右：内联 diff；双击文件 → 内置差异编辑器</td></tr>
+</table>
+
+<figure>
+<div class="mockup">
+  <div class="mk-toolbar">
+    <span class="mk-logo">⑂ GitGraph</span>
+    <span class="mk-branchsel">⌥ main ▾</span>
+    <span class="mk-btn">⟳ Fetch</span>
+    <span class="mk-btn">⤓ Pull</span>
+    <span class="mk-btn primary">⤒ Push</span>
+    <span class="mk-btn">刷新</span>
+    <span class="mk-search">🔍 提交 / 作者 / SHA…</span>
+  </div>
+  <div class="mk-body">
+    <div class="mk-side">
+      <div class="mk-side-h">仓库</div>
+      <div class="mk-item active">⑂ GitGraph <span class="cnt">main</span></div>
+      <div class="mk-side-h">分支</div>
+      <div class="mk-item"><span class="mk-caret">▾</span>● main <span class="ahead">↓2 ↑1</span></div>
+      <div class="mk-item" style="padding-left:26px">dev</div>
+      <div class="mk-item" style="padding-left:26px">feature/graph</div>
+      <div class="mk-side-h">远程</div>
+      <div class="mk-item"><span class="mk-caret">▾</span>origin</div>
+      <div class="mk-item" style="padding-left:26px">origin/main</div>
+      <div class="mk-item" style="padding-left:26px">origin/dev</div>
+      <div class="mk-side-h">标签</div>
+      <div class="mk-item" style="padding-left:26px">v0.1.0</div>
+    </div>
+    <div class="mk-main">
+      <div class="mk-cols"><span>图形</span><span>提交说明</span><span>作者</span><span>SHA</span><span>时间</span></div>
+      <div class="mk-rows">
+        <svg class="mk-graph" width="190" height="168" viewBox="0 0 190 168">
+          <path d="M24,0 V168" stroke="#58a6ff" stroke-width="2" fill="none"/>
+          <path d="M24,60 C36,60 56,72 56,84 L56,120 C56,132 40,132 24,132" stroke="#f0883e" stroke-width="2" fill="none"/>
+          <circle cx="24" cy="12" r="4.5" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
+          <circle cx="24" cy="36" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
+          <circle cx="24" cy="60" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
+          <circle cx="56" cy="84" r="4" fill="#f0883e" stroke="#0d1117" stroke-width="2"/>
+          <circle cx="56" cy="108" r="4" fill="#f0883e" stroke="#0d1117" stroke-width="2"/>
+          <circle cx="24" cy="132" r="6" fill="none" stroke="#58a6ff" stroke-width="2"/>
+          <circle cx="24" cy="132" r="3.5" fill="#58a6ff"/>
+          <circle cx="24" cy="156" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
+          <g font-size="10" font-family="Segoe UI,sans-serif">
+            <rect x="98" y="4" width="86" height="15" rx="7.5" fill="#23863655"/><text x="104" y="15" fill="#3fb950">HEAD → main</text>
+            <rect x="98" y="78" width="80" height="15" rx="7.5" fill="#1f6feb55"/><text x="104" y="89" fill="#79c0ff">graph-refine</text>
+            <rect x="98" y="126" width="52" height="15" rx="7.5" fill="#8957e555"/><text x="104" y="137" fill="#d2a8ff">v0.1.0</text>
+          </g>
+        </svg>
+        <div class="mk-row sel"><span></span><span>修复：虚拟滚动边界行重复渲染</span><span class="dim">Emon</span><span class="dim">a3f8e21</span><span class="dim">2 小时前</span></div>
+        <div class="mk-row"><span></span><span>重构 lane 分配算法为增量计算</span><span class="dim">Emon</span><span class="dim">b7c92d4</span><span class="dim">昨天 14:02</span></div>
+        <div class="mk-row"><span></span><span>新增仓库发现与 .git 监视器</span><span class="dim">Lin</span><span class="dim">c41a07f</span><span class="dim">8月14日</span></div>
+        <div class="mk-row"><span></span><span>feature: 图形列 Canvas 分层绘制</span><span class="dim">Lin</span><span class="dim">d9e5b83</span><span class="dim">8月13日</span></div>
+        <div class="mk-row"><span></span><span>perf: 大仓库分页加载与 LRU 缓存</span><span class="dim">Emon</span><span class="dim">e02c91a</span><span class="dim">8月12日</span></div>
+        <div class="mk-row"><span></span><span>Merge branch 'graph-refine' into main</span><span class="dim">Emon</span><span class="dim">f5a3d27</span><span class="dim">8月11日</span></div>
+        <div class="mk-row"><span></span><span>chore: 初始化项目脚手架</span><span class="dim">Emon</span><span class="dim">1a0b3c9</span><span class="dim">8月10日</span></div>
+      </div>
+      <div class="mk-detail">
+        <div class="mk-detail-left">
+          <div class="mk-detail-h">变更文件 · a3f8e21 · 3 个文件 +308 −222</div>
+          <div class="mk-files">
+            <div class="mk-file"><span class="st M">M</span><span class="mk-num"><b class="a">+48</b> <b class="d">−12</b></span><span class="mk-path">src/ui/commitList.ts</span></div>
+            <div class="mk-file"><span class="st A">A</span><span class="mk-num"><b class="a">+260</b> <b class="d">−0</b></span><span class="mk-path">src/graph/lanes.ts</span></div>
+            <div class="mk-file"><span class="st M">M</span><span class="mk-num"><b class="a">+6</b> <b class="d">−0</b></span><span class="mk-path">package.json</span></div>
+          </div>
+        </div>
+        <div class="mk-diff">
+          <div class="dl meta">src/ui/commitList.ts — 双击打开内置差异编辑器</div>
+          <div class="dl hunk">@@ -88,6 +88,9 @@ class CommitList {</div>
+          <div class="dl">   private buffer = 10;</div>
+          <div class="dl">   private pool: RowPool;</div>
+          <div class="dl del">-  renderAll(commits: Commit[]) {</div>
+          <div class="dl add">+  render(commits: Commit[]) {</div>
+          <div class="dl add">+    const first = Math.max(0, this.top - this.buffer);</div>
+          <div class="dl add">+    const last = Math.min(commits.length, this.bottom + this.buffer + 1);</div>
+          <div class="dl add">+    this.pool.sync(commits.slice(first, last), first);</div>
+          <div class="dl">   }</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<figcaption>图 1 · 主界面布局模拟（深色主题示意；实际颜色跟随 VS Code 主题）</figcaption>
+</figure>
+
+<h3 id="ui-toolbar">4.3 顶部工具栏（规格）</h3>
+<table class="tbl">
+<tr><th style="width:150px">元素</th><th>行为</th></tr>
+<tr><td>仓库选择器</td><td>多仓库时显示下拉（单仓库隐藏）；与侧栏仓库区联动</td></tr>
+<tr><td>分支过滤下拉</td><td>全部 refs / 当前分支 / 指定 ref（触发 FR-13 过滤）</td></tr>
+<tr><td>Fetch</td><td>点击执行 fetch（默认 --all --prune，按设置）；下拉可选"仅 fetch 当前远程"</td></tr>
+<tr><td>Pull / Push</td><td>对当前分支执行；无上游时弹引导；下拉可选策略（pull: merge/rebase/ff-only；push: 设上游/强制 P1）</td></tr>
+<tr><td>刷新</td><td>强制重建 RepoState（丢弃缓存）</td></tr>
+<tr><td>进度区</td><td>操作运行时显示 spinner + 阶段文案（如 "接收对象中 45%"），点击展开尾部输出，附取消按钮</td></tr>
+<tr><td>搜索框</td><td><span class="prio p1">P1</span> 提交说明/作者/SHA 过滤</td></tr>
+<tr><td>设置齿轮</td><td>打开 VS Code 设置页（过滤 gitgraph.*）</td></tr>
+</table>
+
+<h3 id="ui-sidebar">4.2 左侧边栏（规格）</h3>
+<ul>
+<li><b>仓库区</b>：工作区内全部仓库列表，当前项高亮；显示当前分支名。</li>
+<li><b>分支</b>：本地分支；当前分支前有圆点标记；有上游时显示 <code class="inline">↓n ↑m</code> 徽标（来自 rev-list 计数）；<b>单击 = 过滤图至该分支</b>，双击 = 切换检出（FR-12），右键 = 菜单（检出 / 拉取 / 推送 / 合并到当前分支 P1 / 删除 P1 / 复制名称）。</li>
+<li><b>远程</b>：按 remote 分组（origin 等）→ 远程分支；单击过滤；右键 = 检出为新的本地分支 / fetch 此远程 / prune；远程主机组右键 = fetch --all。</li>
+<li><b>标签</b>：单击过滤；右键 = 删除 P1 / 复制名称。</li>
+<li>分支/标签数量 &gt; 500 时侧栏列表启用虚拟滚动（与主区同机制）。</li>
+</ul>
+
+<h3 id="ui-list">4.4 提交图主区（规格）</h3>
+<table class="tbl">
+<tr><th style="width:170px">项</th><th>规格</th></tr>
+<tr><td>列布局</td><td>图形 180px（可配置 120–260）｜提交说明 1fr（min 260px）｜作者 130px｜短 SHA 84px（等宽字体）｜时间 130px</td></tr>
+<tr><td>行高</td><td>默认 24px；设置项 紧凑 20px / 舒适 28px</td></tr>
+<tr><td>行内容</td><td>说明列：Subject + 其后的 ref chips（HEAD→main / origin/main / tag）；作者列显示作者名（悬浮显示邮箱）；时间默认相对时间（"3 小时前"），悬浮 tooltip 显示完整本地时间</td></tr>
+<tr><td>选中态</td><td>单击选中（高亮背景 + 左侧 accent 条），联动底部详情面板；↑/↓ 键移动选中</td></tr>
+<tr><td>加载指示</td><td>列表底部：自动加载中 spinner；达到 maxAutoLoad 上限后显示"继续加载更多"按钮与已加载数</td></tr>
+<tr><td>图形列</td><td>Canvas 绘制（见第 5 节）；节点与 chip 的点击命中检测在 Canvas 上层用透明 DOM 覆盖或按 x 坐标判定，chip 可点击（弹出对应 ref 菜单）</td></tr>
+</table>
+
+<h3 id="ui-detail">4.5 详情面板（规格）</h3>
+<ul>
+<li><b>位置</b>：默认底部（SourceTree 同款），设置可改右侧；高度可拖拽（140–60% 视高）、双击分隔条折叠/展开。</li>
+<li><b>概要区</b>：完整 SHA（点击复制，悬浮提示）、短 SHA、作者/提交者（姓名 + 邮箱）、作者时间/提交时间（完整格式）、完整提交注释（Subject 加粗 + body 等宽/正常混排，长文本区域内滚动）。</li>
+<li><b>文件列表</b>：状态字母（A 绿 / M 黄 / D 红 / R 蓝，R 显示 old → new 路径）、±行数、路径；按目录可分组折叠（P1）。合计行数显示在标题。右键文件：打开工作区文件 / 查看此版本（只读）/ 在文件管理器中显示 / 复制路径 / 复制相对路径。</li>
+<li><b>内联 diff</b>：单选文件即在右侧渲染 unified diff（行号 + 增删着色 + hunk 折叠 P1）；超过 5,000 行提示改用内置差异编辑器。<b>双击文件 = 打开 VS Code 内置差异编辑器</b>（old=父提交版本，new=该提交版本；工作区 diff 则 new=工作区）。</li>
+<li><b>合并提交</b>：文件列表口径 = first-parent diff（假设 A5），提供"切换为组合差异"P1。</li>
+</ul>
+
+<h3 id="ui-interact">4.6 交互规格（菜单与快捷键）</h3>
+<table class="tbl">
+<tr><th style="width:180px">对象/动作</th><th>行为</th></tr>
+<tr><td>提交行 · 单击</td><td>选中，详情面板加载该提交（文件列表懒加载）</td></tr>
+<tr><td>提交行 · 右键</td><td>菜单：检出此提交（分离 HEAD）/ 在此创建分支 P1 / 重置到此提交…/ 复制 SHA / 复制提交说明 / 新建标签 P1 / 与选中提交对比 P1</td></tr>
+<tr><td>分支节点 · 右键</td><td>检出 / 拉取 / 推送 / 合并到当前分支 P1 / 删除 P1 / 复制名称</td></tr>
+<tr><td>远程分支 · 右键</td><td>检出为新的本地分支 / fetch 所属远程 / 复制名称</td></tr>
+<tr><td>图形列 chip · 单击</td><td>弹出该 ref 的快捷菜单（同侧栏对应节点菜单）</td></tr>
+<tr><td>键盘</td><td>↑/↓ 移动选中提交；Enter 焦点详情；Ctrl/Cmd+F 聚焦搜索(P1)；Delete 对选中文件无操作；Esc 关闭菜单/对话框</td></tr>
+<tr><td>命令面板</td><td><code class="inline">GitGraph: 打开提交图</code>；快捷键 <code class="inline">Ctrl+Alt+G</code> / <code class="inline">Cmd+Alt+G</code></td></tr>
+</table>
+
+<h3 id="ui-theme">4.7 主题与视觉规范</h3>
+<ul>
+<li><b>跟随 VS Code 主题</b>：Webview 根元素注入 <code class="inline">--vscode-*</code> CSS 变量（body 默认即有），组件全部消费变量，深/浅色自动适配；扩展侧监听主题变化事件转发。</li>
+<li><b>语义色映射</b>（Chip 与图形）：本地分支 = <code class="inline">--vscode-charts-green</code>；远程分支 = <code class="inline">--vscode-charts-purple</code>；标签 = <code class="inline">--vscode-charts-yellow</code>；HEAD = <code class="inline">--vscode-charts-red</code>。Chip 背景 = 对应色 20% 透明度，文字 = 对应色。</li>
+<li><b>lane 颜色盘</b>：12 色循环（从主题 charts 色衍生，保证深浅色对比度 ≥ 4.5:1），同分支尽量同色（分支头所在 lane 固定取色）。</li>
+<li><b>图标</b>：复用 VS Code 内置 <b>codicon</b> 字体（随插件分发 <code class="inline">media/codicon.ttf</code>，CSP 允许本地字体），工具栏按钮 16px。</li>
+<li><b>字体</b>：UI 文本 = <code class="inline">var(--vscode-font-family)</code>；SHA/路径/diff = <code class="inline">var(--vscode-editor-font-family)</code>。</li>
+</ul>
+
+<h3 id="ui-states">4.8 空状态与错误状态</h3>
+<ul>
+<li><b>空仓库</b>（无提交）：居中引导卡片——"尚无提交"，显示建议命令（含复制按钮），不显示图。</li>
+<li><b>分离 HEAD</b>：工具栏分支名处显示 "分离: a3f8e21" 黄色标识；侧栏无当前分支圆点。</li>
+<li><b>git 不可用</b>：全屏错误卡片（检测逻辑见 6.1），给出安装指引链接与"重试"。</li>
+<li><b>操作失败</b>：面板右上 toast（级别色条）+ "查看完整输出"展开 git stderr/stdout 尾部 100 行；不阻塞界面。</li>
+<li><b>加载中</b>：主区骨架行（shimmer）+ 顶部细进度条，避免布局跳动。</li>
+</ul>
+
+<hr class="sect">
+<h2 id="graph">5. 提交图渲染引擎</h2>
+
+<h3 id="graph-data">5.1 数据获取与解析</h3>
+<p><b>分页策略</b>：首屏加载 <code class="inline">pageSize</code>（默认 500）条，滚动接近底部（剩余 &lt; 2 屏）自动追加下一页；累计达到 <code class="inline">maxAutoLoad</code>（默认 20,000）后停止自动加载，显示"继续加载"按钮。</p>
+<p><b>命令</b>（完整参数；<code class="inline">&lt;repo&gt;</code> 由 executor 注入 <code class="inline">-C</code>）：</p>
+<pre class="code"><code>git log
+  --topo-order                 # 保证子提交先于父提交出现（lane 算法前提）
+  --all                        # 含全部分支/远程/标签可达提交
+  --date=iso-strict
+  --pretty=format:%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%ad%x1f%cn%x1f%ce%x1f%cd%x1f%D%x1f%s%x1f%b%x1e
+  -n &lt;pageSize&gt; [--skip &lt;loaded&gt;]
+  [&lt;ref&gt;]                      # FR-13 过滤时追加，替换 --all</code></pre>
+<ul>
+<li>字段分隔符 <code class="inline">U+001F</code>、记录分隔符 <code class="inline">U+001E</code>，杜绝与提交信息内容冲突；解析在 <b>分片</b> 中进行（每片 ≤ 2000 条，<code class="inline">requestAnimationFrame</code>/微任务间隔），避免长任务阻塞扩展主机。</li>
+<li><code class="inline">%D</code>（decoration）就地解析出 chips：按逗号切分，识别 <code class="inline">HEAD -> branch</code>、<code class="inline">tag: vX</code>、<code class="inline">origin/xxx</code>（远程）与本地分支名；与 <code class="inline">for-each-ref</code> 结果互相校验补充（如 HEAD 分离时 %D 仅含 HEAD）。</li>
+<li><code class="inline">--skip</code> 在超大仓库会退化为 O(skip+n) 遍历：文档 FAQ 引导用户运行 <code class="inline">git commit-graph write --reachable</code> 加速；这也是 maxAutoLoad 上限存在的原因。</li>
+<li>refs 全量：见 6.4 <code class="inline">for-each-ref</code>；提交计数（ahead/behind、可选的分支提交数）：<code class="inline">git rev-list --left-right --count upstream...HEAD</code>。</li>
+</ul>
+
+<h3 id="graph-lanes">5.2 Lane 分配算法</h3>
+<p>输入为 topo 序提交数组（子在前）。核心思想：维护一组"活跃 lane"，每条 lane 记录其<b>期待的下一个提交 id</b>（即该支线将流向的父提交）。</p>
+<pre class="code"><code>type LaneCell = string | null          // lane 期待的下一个提交 id
+lanes: LaneCell[] = []
+segments: Segment[] = []               // 每行边界的连线段（供 Canvas 绘制）
+
+for (const c of commits) {             // topo 序，子在前
+  // 1) 本提交被哪些 lane 期待（同父多子 = 交叉/criss-cross）
+  const hit = indicesOf(lanes, c.sha)
+  let lane: number
+  if (hit.length > 0) {
+    lane = Math.min(...hit)            // 取最左命中 lane 作为本提交位置
+    for (const k of hit) if (k !== lane) {
+      segments.push({ row: c.row, from: k, to: lane, kind: 'merge-in' }) // 收敛弧线
+      lanes[k] = null                  // 多余 lane 让位
+    }
+  } else {
+    lane = firstEmpty(lanes)           // 复用空位，否则 append
+  }
+  c.lane = lane
+
+  // 2) 安排父提交去向
+  if (c.parents.length === 0) {        // 根提交：支线终止
+    lanes[lane] = null
+  } else {
+    lanes[lane] = c.parents[0]         // 第一父延续本 lane（主干直线）
+    for (const p of c.parents.slice(1)) {   // 其余父 = merge 来源，分配新 lane
+      const existing = lanes.indexOf(p)     // 父已被其他 lane 期待 → 复用（criss-cross）
+      if (existing >= 0) {
+        segments.push({ row: c.row, from: lane, to: existing, kind: 'merge-out' })
+      } else {
+        const k = firstEmpty(lanes)
+        lanes[k] = p
+        segments.push({ row: c.row, from: lane, to: k, kind: 'fork' })
+      }
+    }
+  }
+}</code></pre>
+<ul>
+<li><b>正确性</b>：topo 序保证处理某提交时其所有子提交已处理，因此"期待命中"只可能出现在当前行；算法天然覆盖 criss-cross、octopus merge、多根仓库。</li>
+<li><b>增量</b>：追加新一页时 lanes 状态即上一页末尾状态，只需处理新提交（O(新增)），不重算历史；但为控制 lane 漂移，追加后对全空尾部 lane 做压缩重排（仅影响视觉，不影响正确性）。</li>
+<li><b>颜色</b>：lane 取色 = 调色盘 <code class="inline">laneColor(lane)</code>；若某 lane 起点对应具名分支头，则该 lane 使用分支语义色（绿/紫），直至收敛。</li>
+<li>纯函数无副作用 → vitest 直接用生成夹具断言（见 13.2 用例矩阵）。</li>
+</ul>
+
+<h3 id="graph-vscroll">5.3 虚拟滚动与 Canvas 分层</h3>
+<ul>
+<li><b>行 DOM</b>：容器 <code class="inline">overflow-y:auto</code>；内部撑高元素 <code class="inline">height = N * ROW_H</code>；可见行 = <code class="inline">first = floor(scrollTop / ROW_H)</code> 至 <code class="inline">last = ceil((scrollTop + viewportH) / ROW_H)</code>，上下各多渲染 10 行缓冲；行元素池化复用（&lt; 60 个节点常驻），仅更新文本与 class，不做 innerHTML 重建。</li>
+<li><b>Canvas 线条层</b>：绝对定位在图形列区域，高度 = 视口高（非全列表高！）；滚动时按 <code class="inline">translateY(-scrollTop)</code> 重绘可见行范围 [first-1, last+1] 的 segments；尺寸按 <code class="inline">devicePixelRatio</code> 缩放，避免模糊。</li>
+<li><b>坐标</b>：<code class="inline">x(lane) = PADDING + lane * LANE_W</code>（LANE_W=14，PADDING=10）；行内纵向 y：上行中心 <code class="inline">rowTop + ROW_H/2</code>。曲线用三次贝塞尔：纵向线 <code class="inline">C(x1,y1)(x1,ym)(x2,ym)(x2,y2)</code>，控制点取中点，曲率平滑无交叉歧义。</li>
+<li><b>滚动同步</b>：Canvas 重绘与行复用同帧完成（<code class="inline">scroll</code> 事件 → rAF 合并）；实测目标单帧 &lt; 8ms。</li>
+<li>chip 仍用 DOM（可点击、可悬浮），叠加于 Canvas 之上，随行复用。</li>
+</ul>
+
+<h3 id="graph-draw">5.4 绘制规格（节点样式表）</h3>
+<table class="tbl">
+<tr><th>节点类型</th><th style="width:320px">绘制</th></tr>
+<tr><td>普通提交</td><td>实心圆 r=4，lane 色，描边主题背景色 1.5px（与线条隔离）</td></tr>
+<tr><td>合并提交（parents&gt;1）</td><td>实心圆 r=3.5 + 同色空心外环 r=6</td></tr>
+<tr><td>HEAD 提交</td><td>r=4.5 + 背景色外环 + 红色描边（主题 charts-red）</td></tr>
+<tr><td>分支/远程头</td><td>普通节点 + 右侧 chip（名称；语义色，见 4.7）</td></tr>
+<tr><td>标签</td><td>普通节点 + 黄色 chip（tag 多时最多显示 maxTagChips=2 个，"+n"折叠）</td></tr>
+<tr><td>截断指示</td><td>加载边界以下的未完结 lane 画渐隐虚线，底部中央 ▽ 加载更多指示</td></tr>
+<tr><td>风格</td><td>默认 curved；设置项 angular（折线，SourceTree 旧版风格）</td></tr>
+</table>
+
+<h3 id="graph-incremental">5.5 增量加载与刷新</h3>
+<ul>
+<li><b>追加</b>：新页解析完成 → 计算增量 lanes → <code class="inline">commitsAppend</code> 消息 → 列表仅追加行池登记与撑高元素高度更新；Canvas 下一帧重绘。</li>
+<li><b>refs 变化</b>（fetch/checkout/外部命令）：重建 RepoState 但<b>保留滚动位置与选中提交</b>（选中提交消失时回退到最近仍存在的祖先）；提交数组做 key（SHA）级 diff，仅变更行更新。</li>
+<li><b>HEAD 变化</b>：不重载提交数据，仅更新 chips 与选中标记（快路径）。</li>
+<li><b>diff 缓存</b>：详情文件列表与内联 diff 按 <code class="inline">sha:path</code> LRU（100 项）缓存；refs 刷新时按受影响 ref 失效。</li>
+</ul>
+
+<hr class="sect">
+<h2 id="gitlayer">6. Git 集成层</h2>
+
+<h3 id="git-exec">6.1 命令执行器（GitExecutor）</h3>
+<pre class="code"><code>// 所有命令的公共形态
+spawn(gitPath, [
+  '-C', repoRoot,
+  '-c', 'core.quotepath=false',        // 中文文件名不转义（关键）
+  '-c', 'core.preloadIndex=true',
+  '--no-optional-locks',               // 只读命令不抢 index 锁（关键）
+  ...args
+], {
+  env: process.env,                    // 继承 VS Code 注入的 askpass/凭据变量（见 6.2）
+  windowsHide: true
+})</code></pre>
+<ul>
+<li><b>参数一律数组传递</b>，不经 shell 拼接 —— 天然免疫注入与空格/中文路径问题。</li>
+<li><b>编码</b>：stdout/stderr 以 UTF-8 解码（<code class="inline">StringDecoder</code> 处理跨 chunk 多字节截断）；git 侧已用 <code class="inline">quotepath=false</code> + 输出本身为 UTF-8。</li>
+<li><b>分类</b>：只读命令（log/for-each-ref/show/diff/status）默认 30s 超时、输出上限 8MB（超出截断并标记）；网络命令（fetch/pull/push）无超时、流式读取 <code class="inline">--progress</code> 行、可取消（kill 子进程 + <code class="inline">SIGTERM</code>）。</li>
+<li><b>并发</b>：同一仓库只读并发上限 4；<b>写操作按仓库串行</b>（内存队列），避免 index.lock 冲突。</li>
+<li><b>git 探测</b>：解析顺序 = 设置 <code class="inline">gitgraph.gitPath</code> → <code class="inline">vscode.git</code> 扩展 API 的 git.path → <code class="inline">PATH</code> 中的 <code class="inline">git</code>；启动时执行 <code class="inline">git --version</code> 校验，失败进入 4.8 错误态。</li>
+<li><b>错误模型</b>：<code class="inline">{ code: 'E_GIT_EXIT', exitCode, command, stderrTail }</code> 等（错误码表见第 8.4 节），供 UI 统一呈现。</li>
+</ul>
+
+<h3 id="git-auth">6.2 认证（HTTPS/SSH）</h3>
+<ul>
+<li>扩展宿主进程环境已含 VS Code 内置 Git 注入的凭据代理变量（<code class="inline">VSCODE_GIT_ASKPASS_MAIN</code> / <code class="inline">VSCODE_GIT_ASKPASS_NODE</code> / <code class="inline">GIT_ASKPASS</code>）。子进程<b>完整继承 process.env</b>，因此 HTTPS 凭据（含 GitHub 账号授权）与内置 Git 体验一致，无需自建凭据管理。</li>
+<li>SSH：依赖用户本机 ssh-agent / ~/.ssh；若 git 因等待 passphrase 卡住（无 askpass 可用），检测 60s 无输出且无进度 → 提示"认证可能需要交互，是否在集成终端中重试？"，<b>降级方案</b>：将同一命令在集成终端（<code class="inline">window.createTerminal</code>）中执行，用户可在终端完成交互认证。</li>
+</ul>
+
+<h3 id="git-watch">6.3 仓库发现与监视</h3>
+<ul>
+<li><b>发现</b>：工作区根逐个 <code class="inline">git rev-parse --show-toplevel</code>；命中即注册；多根全部纳入侧栏。根目录非仓库时显示占位（不递归扫描，避免性能陷阱；P2 提供"选择文件夹添加"）。</li>
+<li><b>监视</b>：<code class="inline">fs.watch(&lt;root&gt;/.git, {recursive: true})</code>（Windows/macOS 原生支持；Linux 降级为监听显式清单：<code class="inline">HEAD、index、packed-refs、refs/、MERGE_HEAD、CHERRY_PICK_HEAD</code>）；忽略 <code class="inline">objects/、logs/、COMMIT_EDITMSG</code> 等噪声。</li>
+<li><b>防抖</b>：250ms 合并触发 → 重建 RepoState（走 5.5 快路径）；fetch/pull/push/reset 完成后<b>主动</b>触发一次刷新，不等 watcher。</li>
+</ul>
+
+<h3 id="git-ops">6.4 操作命令表（P0 全量）</h3>
+<table class="tbl">
+<tr><th style="width:110px">操作</th><th style="width:400px">命令（在 executor 公共参数之上）</th><th>前置检查 / 说明</th></tr>
+<tr><td>获取 refs</td><td><code class="inline">for-each-ref --format=… refs/heads refs/remotes refs/tags</code>（字段以 %x00 分隔：refname、objectname、objecttype、short、upstream、upstream:track、subject、authordate、authorname）</td><td>侧栏与 chips 数据源</td></tr>
+<tr><td>当前状态</td><td><code class="inline">status --porcelain=v1 -b</code>；<code class="inline">rev-list --left-right --count @{u}...HEAD</code></td><td>ahead/behind、脏文件计数、detached 判定</td></tr>
+<tr><td>提交详情</td><td><code class="inline">diff-tree --no-commit-id --numstat --name-status -r -M --first-parent &lt;sha&gt;</code></td><td>文件列表 + ±行数；重命名识别 -M</td></tr>
+<tr><td>内联 diff</td><td><code class="inline">diff --unified=3 --no-color -M [&lt;base&gt; &lt;sha&gt; | &lt;sha&gt;] -- &lt;path&gt;</code></td><td>先查 numstat 判断二进制/超限</td></tr>
+<tr><td>历史版本内容</td><td><code class="inline">show &lt;ref&gt;:&lt;path&gt;</code></td><td>diffProvider / 只读打开</td></tr>
+<tr><td>Fetch</td><td><code class="inline">fetch --progress --prune [--all | &lt;remote&gt;]</code></td><td>开关 <code class="inline">fetchOnOpen</code> 打开视图时自动执行</td></tr>
+<tr><td>Pull</td><td><code class="inline">pull --progress [--rebase|--ff-only] [&lt;remote&gt; &lt;branch&gt;]</code></td><td>策略默认取设置；工作区脏时警告（P1 提供 autostash 选项）</td></tr>
+<tr><td>Push</td><td><code class="inline">push --progress [-u] [&lt;remote&gt; &lt;branch&gt;]</code></td><td>无上游 → 对话框引导 -u；P1 才提供 force-with-lease 且需勾选</td></tr>
+<tr><td>Reset</td><td><code class="inline">reset --soft|--mixed|--hard &lt;sha&gt;</code></td><td>模式选择对话框（6.5）；hard 二次确认</td></tr>
+<tr><td>Checkout 分支</td><td><code class="inline">checkout &lt;branch&gt;</code></td><td>脏工作区时预检（6.5），失败展示 git 原始输出</td></tr>
+<tr><td>Checkout 远程分支</td><td><code class="inline">checkout -b &lt;name&gt; --track &lt;remote/branch&gt;</code></td><td>名称预填、可改</td></tr>
+<tr><td>分离 HEAD</td><td><code class="inline">checkout --detach &lt;sha&gt;</code></td><td>提交右键</td></tr>
+</table>
+
+<h3 id="git-safety">6.5 危险操作防护</h3>
+<ul>
+<li><b>Reset 对话框</b>：三选一（保留工作区 soft / 保留索引 mixed / <b style="color:var(--red)">丢弃全部变更 hard</b>）+ 各模式一句话说明（本地化）；选择 hard 时：先 <code class="inline">status --porcelain</code> 统计，脏则列出"将丢弃 n 个文件的未提交修改"，要求点击红色确认按钮（无"回车确认"，防误触）；hard 仅在用户明确选择时执行，插件永不默认 hard。</li>
+<li><b>Checkout 预检</b>：脏工作区时先提示"有 n 个未提交修改"，提供【继续尝试】（git 自身会拒绝有冲突的切换并保护数据）/【取消】；不隐式执行 stash。</li>
+<li><b>写操作互斥</b>：同仓库串行队列；进行中时工具栏按钮禁用并显示队列状态。</li>
+<li><b>路径安全</b>：所有 openFile / reveal 请求先 <code class="inline">path.resolve</code> 并校验以仓库根为前缀（见 12 节），拒绝越界。</li>
+</ul>
+
+<hr class="sect">
+<h2 id="diff">7. Diff 子系统</h2>
+
+<h3>7.1 内置差异编辑器（主路径）</h3>
+<ul>
+<li>注册 <code class="inline">TextDocumentContentProvider</code>，scheme <code class="inline">gitgraph</code>；URI 编码规则：
+<pre class="code"><code>gitgraph://&lt;repoId8&gt;/file?ref=&lt;encodeURIComponent(ref)&gt;&amp;path=&lt;encodeURIComponent(path)&gt;
+// ref 取值：完整 SHA（历史版本）、"worktree" 占位不需要（直接用 file: 打开）
+// 返回内容：git show &lt;ref&gt;:&lt;path&gt;；languageId 按扩展名映射，获得语法高亮</code></pre></li>
+<li>打开差异：<code class="inline">vscode.diff(left, right, title, {preview:true, viewColumn: Beside})</code>；left = 父提交版本，right = 选中提交版本（或工作区文件 <code class="inline">file://</code> URI）。虚拟滚动/高亮/minimap 全部由 VS Code 承担 —— 性能与文本文件规模无关。</li>
+<li>区间对比（P1）：left 取 base SHA，right 取 target SHA。</li>
+</ul>
+
+<h3>7.2 面板内联 diff（快速预览）</h3>
+<ul>
+<li>数据：单文件 <code class="inline">git diff -U3</code> 的 unified 文本 → 解析为 hunks/lines 模型 → 渲染为 DOM（行号双列、增/删/上下文着色，与主题 diff 色变量一致）。</li>
+<li>行数 &gt; 5,000 时不渲染，显示"文件较大，请使用差异编辑器查看"按钮（内置编辑器自身虚拟化，无此限制）。</li>
+<li>diff 行同样走虚拟滚动（复用 5.3 机制，行高 = 字体行高）。</li>
+</ul>
+
+<h3>7.3 二进制与大文件</h3>
+<ul>
+<li>numstat 中增删为 <code class="inline">-</code> 判定二进制：内联区显示占位卡（"二进制文件"），菜单仍可 reveal/打开工作区副本。</li>
+<li>图片 diff（P2）：Webview 内并排/滑块对比 <code class="inline">gitgraph:</code> 内容。</li>
+</ul>
+
+<hr class="sect">
+<h2 id="protocol">8. Webview 通信协议</h2>
+<p>全部消息为 JSON；<b>请求-响应</b>用 <code class="inline">reqId</code> 关联（Webview 生成自增 id，扩展侧回包携带同 id）；<b>事件</b>由扩展侧主动推送。两侧共享类型 <code class="inline">src/common/protocol.ts</code>。任何一侧收到非法结构一律丢弃并记日志（见 12 节守卫）。</p>
+
+<h3>8.1 扩展 → Webview（事件）</h3>
+<table class="tbl">
+<tr><th style="width:170px">type</th><th>payload</th><th style="width:260px">触发时机</th></tr>
+<tr><td>ready</td><td>{ theme, config, repos: RepoMeta[] }</td><td>Webview 首次加载完成</td></tr>
+<tr><td>repoState</td><td>RepoState（commits 首页 + refs + status + filter）</td><td>切换仓库 / 刷新重建</td></tr>
+<tr><td>commitsAppend</td><td>{ repoId, offset, commits: Commit[], hasMore }</td><td>loadMore 完成</td></tr>
+<tr><td>opProgress</td><td>{ opId, kind, phase, text, pct? }</td><td>fetch/pull/push 进度行</td></tr>
+<tr><td>opResult</td><td>{ opId, ok, message?, outputTail? }</td><td>操作结束</td></tr>
+<tr><td>notify</td><td>{ level, message, actions?: string[] }</td><td>提示/toast（动作经 opIntent 回发）</td></tr>
+<tr><td>configChanged</td><td>ConfigDto（全量）</td><td>用户改动设置</td></tr>
+<tr><td>themeChanged</td><td>{ theme }</td><td>VS Code 主题切换</td></tr>
+</table>
+
+<h3>8.2 Webview → 扩展（请求，带 reqId）</h3>
+<table class="tbl">
+<tr><th style="width:170px">cmd</th><th>args</th><th>响应</th></tr>
+<tr><td>selectRepo</td><td>{ repoId }</td><td>（随后推 repoState）</td></tr>
+<tr><td>loadMore</td><td>{ offset }</td><td>commitsAppend</td></tr>
+<tr><td>commitDetail</td><td>{ sha }</td><td>res: CommitDetail（含 files）</td></tr>
+<tr><td>diff</td><td>{ mode:'commit'|'worktree'|'range', sha, base?, path }</td><td>res: { diff?|binary|tooLarge }</td></tr>
+<tr><td>setFilter</td><td>{ ref: string|null }</td><td>repoState（过滤后）</td></tr>
+</table>
+
+<h3>8.3 Webview → 扩展（操作与 UI 委托）</h3>
+<table class="tbl">
+<tr><th style="width:170px">cmd</th><th>args</th><th>说明</th></tr>
+<tr><td>op:fetch</td><td>{ remote?|'--all', prune }</td><td rowspan="6">进入操作队列；进度经 opProgress 推送；取消发 op:cancel { opId }</td></tr>
+<tr><td>op:pull</td><td>{ remote, branch, strategy, autostash }</td></tr>
+<tr><td>op:push</td><td>{ remote, branch, setUpstream }</td></tr>
+<tr><td>op:reset</td><td>{ sha, mode:'soft'|'mixed'|'hard' }</td></tr>
+<tr><td>op:checkout</td><td>{ ref?, sha?, detached?, trackFrom? }</td></tr>
+<tr><td>op:cancel</td><td>{ opId }</td></tr>
+<tr><td>ui:openFile</td><td>{ path }</td><td>vscode.open（工作区版本）</td></tr>
+<tr><td>ui:openFileAt</td><td>{ sha, path }</td><td>只读打开 gitgraph: 历史版本</td></tr>
+<tr><td>ui:openDiffEditor</td><td>{ sha, path, base?, worktree? }</td><td>vscode.diff（7.1）</td></tr>
+<tr><td>ui:revealInFM</td><td>{ path }</td><td>revealFileInOS（系统文件管理器）</td></tr>
+<tr><td>ui:copy</td><td>{ text }</td><td>剪贴板</td></tr>
+<tr><td>ui:openSettings</td><td>—</td><td>打开 gitgraph.* 设置页</td></tr>
+</table>
+
+<h3>8.4 错误码</h3>
+<p><code class="inline">E_GIT_NOT_FOUND</code>（找不到可执行 git）、<code class="inline">E_NOT_A_REPO</code>、<code class="inline">E_GIT_EXIT</code>（携带 exitCode 与 stderr 尾部）、<code class="inline">E_TIMEOUT</code>、<code class="inline">E_CANCELLED</code>、<code class="inline">E_PATH_OUTSIDE</code>（路径越界，拒绝）、<code class="inline">E_TOO_LARGE</code>、<code class="inline">E_PROTOCOL</code>（消息校验失败）。</p>
+
+<hr class="sect">
+<h2 id="models">9. 数据模型（TypeScript，两侧共享）</h2>
+<pre class="code"><code>// common/models.ts
+interface RepoMeta { id: string; name: string; root: string; headBranch?: string }
+
+interface GitActor { name: string; email: string; date: string /* iso-strict */ }
+
+interface RefChip { name: string; kind: 'head' | 'remote' | 'tag'; isHead?: boolean }
+
+interface Commit {
+  sha: string; shortSha: string;
+  parents: string[];                 // 空数组 = 根提交
+  author: GitActor; committer: GitActor;
+  subject: string; body: string;
+  refs: RefChip[];                   // %D 解析结果
+  lane: number;                      // webview 侧 lanes.ts 填充
+  row: number;
+}
+
+interface BranchInfo {
+  name: string; fullName: string; sha: string;
+  upstream?: string;                 // origin/main
+  ahead?: number; behind?: number;   // rev-list 计数
+  isHead: boolean; subject?: string; lastAuthor?: string; lastDate?: string;
+}
+
+interface RepoState {
+  repoId: string;
+  head: { sha: string; branch?: string; detached: boolean };
+  branches: BranchInfo[]; remotes: { name: string; branches: BranchInfo[] }[];
+  tags: { name: string; sha: string; date: string }[];
+  status: { dirtyCount: number };
+  filterRef: string | null;          // FR-13
+  commits: Commit[];                 // 当前已加载页
+  commitsLoaded: number; hasMore: boolean;
+  stateVersion: number;              // 局部刷新对账用
+}
+
+interface FileChange {
+  path: string; oldPath?: string;    // R 状态
+  status: 'A' | 'M' | 'D' | 'R' | 'C' | 'T';
+  additions?: number; deletions?: number;   // 二进制为 undefined
+}
+
+interface CommitDetail extends Commit { files: FileChange[]; filesTruncated: boolean }
+
+interface DiffLine { kind: 'ctx' | 'add' | 'del'; oldNo?: number; newNo?: number; text: string }
+interface DiffHunk { header: string; oldStart: number; newStart: number; lines: DiffLine[] }
+interface UnifiedDiff { path: string; hunks: DiffHunk[]; truncated: boolean }</code></pre>
+
+<hr class="sect">
+<h2 id="manifest">10. 扩展清单（package.json）</h2>
+<pre class="code"><code>{
+  "name": "gitgraph",
+  "displayName": "GitGraph — Git 可视化提交图",
+  "publisher": "emon",                       // 发布前确定（市场已有同名 Git Graph，上架需查重）
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["SCM Providers", "Visualization"],
+  "activationEvents": [],                    // 由 commands 的启用条件隐式声明（1.74+）
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "gitgraph.open",    "title": "%cmd.open%" },
+      { "command": "gitgraph.fetch",   "title": "%cmd.fetch%" },
+      { "command": "gitgraph.pull",    "title": "%cmd.pull%" },
+      { "command": "gitgraph.push",    "title": "%cmd.push%" }
+    ],
+    "keybindings": [{
+      "command": "gitgraph.open",
+      "key": "ctrl+alt+g", "mac": "cmd+alt+g"
+    }],
+    "menus": {
+      "scm/title": [{
+        "command": "gitgraph.open", "group": "navigation",
+        "when": "scmProvider == git"
+      }]
+    },
+    "configuration": {
+      "title": "GitGraph",
+      "properties": {
+        "gitgraph.gitPath":        { "type": "string", "default": "",
+          "markdownDescription": "%cfg.gitPath%" },
+        "gitgraph.commitPageSize": { "type": "number", "default": 500,
+          "minimum": 100, "maximum": 5000 },
+        "gitgraph.maxAutoLoad":    { "type": "number", "default": 20000 },
+        "gitgraph.fetchOnOpen":    { "type": "boolean", "default": true },
+        "gitgraph.fetchPrune":     { "type": "boolean", "default": true },
+        "gitgraph.defaultPullStrategy": { "type": "string", "default": "merge",
+          "enum": ["merge", "rebase", "ff-only"] },
+        "gitgraph.dateFormat":     { "type": "string", "default": "relative",
+          "enum": ["relative", "iso", "isoStrict"] },
+        "gitgraph.rowHeight":      { "type": "string", "default": "default",
+          "enum": ["compact", "default", "loose"] },
+        "gitgraph.graphStyle":     { "type": "string", "default": "curved",
+          "enum": ["curved", "angular"] },
+        "gitgraph.graphColumnWidth": { "type": "number", "default": 180,
+          "minimum": 120, "maximum": 260 },
+        "gitgraph.showRemoteChips": { "type": "boolean", "default": true },
+        "gitgraph.maxTagChips":    { "type": "number", "default": 2 },
+        "gitgraph.detailPanelPosition": { "type": "string", "default": "bottom",
+          "enum": ["bottom", "right"] },
+        "gitgraph.language":       { "type": "string", "default": "auto",
+          "enum": ["auto", "zh-CN", "en"] }
+      }
+    }
+  }
+}</code></pre>
+<p>命令/配置标题经 <code class="inline">package.nls.zh-cn.json</code> / <code class="inline">package.nls.json</code> 本地化（%key% 占位）。状态栏：激活后显示当前分支名（点击打开 GitGraph），可设置关闭。</p>
+
+<hr class="sect">
+<h2 id="i18n">11. 国际化</h2>
+<ul>
+<li>运行时文案：键值表 <code class="inline">i18n/zh-cn.ts</code>、<code class="inline">i18n/en.ts</code>，接口 <code class="inline">t(key, params)</code>；语言解析：设置 <code class="inline">gitgraph.language</code> = auto 时跟随 <code class="inline">vscode.env.language</code>。</li>
+<li>清单文案：package.nls 机制（VS Code 原生）。</li>
+<li>时间/数字本地化：Intl.DateTimeFormat / NumberFormat；相对时间自实现（"3 分钟前"），避免引入库。</li>
+</ul>
+
+<hr class="sect">
+<h2 id="security">12. 安全设计</h2>
+<ul>
+<li><b>CSP（Webview HTML 头）</b>：<code class="inline">default-src 'none'; img-src ${cspSource} data:; font-src ${cspSource}; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'</code>。无任何外网资源。</li>
+<li><b>XSS 防线</b>（提交信息/作者名/分支名/文件路径均按不可信数据处理）：UI 层唯一文本出口为 <code class="inline">setText(el, text)</code>（走 textContent）与 <code class="inline">escapeHtml</code>（仅拼 HTML 模板处）；code review 检查项单列。</li>
+<li><b>消息守卫</b>：两侧 handler 以类型守卫逐字段校验（protocol.ts 提供 <code class="inline">isXxxMsg()</code>），非法消息丢弃计数，超阈值输出日志。</li>
+<li><b>路径越界</b>：openFile / reveal / diff 的 path 一律 <code class="inline">resolve</code> 后校验 <code class="inline">startsWith(repoRoot + sep)</code>；SHA/ref 校验 <code class="inline">/^[0-9a-f]{7,40}$/</code>、<code class="inline">refs/</code> 合法字符集。</li>
+<li><b>无遥测、无外联</b>：除 git 自身访问远端外，插件不发起网络请求。</li>
+</ul>
+
+<hr class="sect">
+<h2 id="testing">13. 测试与质量保障</h2>
+
+<h3>13.1 单元测试（vitest，纯函数）</h3>
+<ul>
+<li><code class="inline">lanes.ts</code>：见 13.2 矩阵，每类拓扑断言 lane 编号与 segments。</li>
+<li><code class="inline">parse.ts</code>：含中文/换行/分隔符字符的提交信息、%D 各种组合、空仓库输出。</li>
+<li><code class="inline">protocol.ts</code> 守卫：畸形消息必须被拒。</li>
+</ul>
+
+<h3>13.2 夹具与用例矩阵（<code class="inline">test/fixtures/make-repo.sh</code> 脚本生成）</h3>
+<table class="tbl">
+<tr><th>夹具仓库</th><th>覆盖点</th></tr>
+<tr><td>small-graph</td><td>线性、分支、merge、octopus（3 父）、criss-cross、多根（orphan）、tag/远程 ref、中文提交信息与中文/空格文件名</td></tr>
+<tr><td>scale-1k / 10k / 50k</td><td>分页、虚拟滚动、maxAutoLoad、--skip 性能采样</td></tr>
+<tr><td>edge-states</td><td>空仓库、单提交、detached HEAD、无上游分支、冲突状态（MERGE_HEAD 存在）、子目录符号链接</td></tr>
+</table>
+
+<h3>13.3 集成测试（@vscode/test-electron）</h3>
+<ul>
+<li>打开视图 → 首屏断言（行数、chips、HEAD 标记）；loadMore；过滤 ref；选中提交详情文件数。</li>
+<li>操作链路（本地 bare 远端仓库）：push → fetch --all --prune → checkout 分支 → reset mixed → 状态断言。</li>
+<li>性能断言（阈值来自 2.2，超限即失败，防回归）。</li>
+</ul>
+
+<h3>13.4 手工验收清单</h3>
+<ul>
+<li>Windows 中文用户名路径仓库、含 submodule 的仓库（只读不崩）、VS Code 重启后状态恢复、主题切换实时生效、断网时 fetch 的错误呈现与取消。</li>
+</ul>
+
+<hr class="sect">
+<h2 id="build">14. 构建与发布</h2>
+<ul>
+<li><b>构建</b>：esbuild 两个入口 —— 扩展 <code class="inline">out/extension.js</code>（platform=node，external: vscode，cjs）；Webview <code class="inline">out/webview.js</code>（iife + minify，target chrome120）。npm scripts：<code class="inline">build / watch / typecheck / test / package(vsce package)</code>。</li>
+<li><b>类型检查</b>：tsc --noEmit 双 tsconfig（ext 用 node 类型，ui 用 DOM 类型）。</li>
+<li><b>打包</b>：<code class="inline">.vscodeignore</code> 排除 src/test/node_modules/design；产物目标 &lt; 1.5MB（含 codicon 字体）。</li>
+<li><b>CI（GitHub Actions）</b>：push/PR → 三平台 matrix 的 typecheck + unit + integration + vsce package 产物归档。</li>
+</ul>
+
+<hr class="sect">
+<h2 id="milestones">15. 里程碑计划</h2>
+<table class="tbl">
+<tr><th style="width:120px">里程碑</th><th style="width:110px">周期</th><th>交付内容</th><th style="width:320px">验收标准</th></tr>
+<tr><td>M0 骨架</td><td>0.5 周</td><td>脚手架、esbuild/vitest/CI、GitExecutor、仓库发现、Webview 空面板 + 协议打通</td><td>命令打开空视图；git 版本探测与错误态；单测跑通</td></tr>
+<tr><td>M1 提交图（只读）</td><td>1 周</td><td>log 分页解析、lanes 算法、虚拟滚动 + Canvas、chips、主题、侧栏树与过滤</td><td>10k 夹具首屏 &lt; 800ms、滚动 60fps；拓扑用例全绿</td></tr>
+<tr><td>M2 详情与 Diff</td><td>1 周</td><td>详情面板（FR-05/06/07）、diffProvider、内联 diff、文件级操作（打开/定位/复制）</td><td>夹具矩阵详情断言；中文路径/文件名全链路正确</td></tr>
+<tr><td>M3 操作与自动刷新</td><td>1 周</td><td>fetch/pull/push/reset/checkout（FR-08~12/14）、进度/取消、watcher 防抖刷新、安全防护</td><td>本地 bare 远端全链路集成测试通过；hard reset 双确认生效</td></tr>
+<tr><td>M4 打磨</td><td>0.5–1 周</td><td>i18n 完整、设置项全量接线、性能调优、vsix 打包、用户文档</td><td>NFR 全表达标；三平台 CI 绿；vsix 可安装试用</td></tr>
+</table>
+<p>总计约 <b>4 周</b>。P1 项（创建/删除分支、合并、标签、搜索、区间对比）在 M4 后按周迭代，每项独立可发布。</p>
+
+<hr class="sect">
+<h2 id="risks">16. 风险与对策</h2>
+<table class="tbl">
+<tr><th style="width:280px">风险</th><th>对策</th></tr>
+<tr><td>SSH passphrase 等交互认证无法在子进程完成</td><td>60s 无进度检测 + 一键降级到集成终端执行同命令（6.2）</td></tr>
+<tr><td>超大仓库 <code class="inline">--skip</code> 翻页变慢</td><td>maxAutoLoad 上限 + 手动续载；FAQ 引导 commit-graph 加速；P2 研究 commit-graph 遍历优化</td></tr>
+<tr><td>watcher 在 Linux 上事件粒度粗/丢失</td><td>显式清单监听 + 操作后主动刷新兜底 + 手动刷新按钮</td></tr>
+<tr><td>Webview 被回收导致状态丢失</td><td>状态唯一事实来源在扩展侧，恢复时重发全量 repoState（3.3）</td></tr>
+<tr><td>市场名称冲突（已有 "Git Graph"）</td><td>上架前查重，必要时更名（如 GitGraph Plus / GitGraphite），代码侧无影响</td></tr>
+<tr><td>并发 git 调用造成 index.lock 冲突</td><td>--no-optional-locks + 每仓库读写队列（6.1）</td></tr>
+<tr><td>内置 git 扩展 askpass 变量在未来版本变动</td><td>启动时探测变量存在性；缺失时回退终端方案并提示</td></tr>
+</table>
+
+<hr class="sect">
+<h2 id="appendix">17. 附录</h2>
+
+<h3>17.1 需求 → 设计 追溯</h3>
+<table class="tbl">
+<tr><th>需求</th><th>设计章节</th></tr>
+<tr><td>图形指示提交 + 提交人/时间/SHA/说明（需求 1）</td><td>4.4、5（全部）、FR-02/03/04</td></tr>
+<tr><td>点击查看完整信息与文件、打开路径/所在文件夹（需求 1）</td><td>4.5、7、6.4（ui:* 协议 8.3）、FR-05/06</td></tr>
+<tr><td>GUI 基础操作 Fetch/Pull/Push/重置/切换分支（需求 2）</td><td>6.4、6.5、8.3 op:*、FR-08~12</td></tr>
+<tr><td>文本文件版本差异（需求 3）</td><td>7（全部）、FR-07/20</td></tr>
+<tr><td>界面美观、布局参考 SourceTree（需求 4）</td><td>4.1–4.8（含 mockup 与主题规范）</td></tr>
+<tr><td>加载性能（需求 4）</td><td>5.1/5.3/5.5、2.2 指标表</td></tr>
+</table>
+
+<h3>17.2 LOG_FORMAT 字段表</h3>
+<table class="tbl">
+<tr><th>占位</th><th>字段</th><th>占位</th><th>字段</th></tr>
+<tr><td>%H / %h</td><td>完整 / 短 SHA</td><td>%an %ae %ad</td><td>作者名 / 邮箱 / 时间</td></tr>
+<tr><td>%P</td><td>父提交 SHA（空格分隔）</td><td>%cn %ce %cd</td><td>提交者名 / 邮箱 / 时间</td></tr>
+<tr><td>%D</td><td>refs 装饰（chips 来源）</td><td>%s / %b</td><td>标题 / 正文</td></tr>
+<tr><td>%x1f / %x1e</td><td>字段 / 记录分隔符</td><td>--date=iso-strict</td><td>时区精确的时间格式</td></tr>
+</table>
+
+<h3>17.3 术语</h3>
+<p><b>Lane</b>：图形列中的纵向轨道编号，决定线条的 x 坐标。　<b>Chip</b>：提交行内的 ref 徽标。　<b>Segment</b>：两个 lane 之间一次行边界的连线。　<b>RepoState</b>：某仓库在 UI 呈现所需的全部数据快照。</p>
+
+<h3>17.4 参考资料</h3>
+<ul>
+<li>VS Code Extension API（Webview、TextDocumentContentProvider、菜单/配置贡献点）— code.visualstudio.com/api</li>
+<li>Pro Git（git log formats、for-each-ref、diff-tree）— git-scm.com/book</li>
+<li>Atlassian SourceTree（布局与交互参考）</li>
+<li>VS Code 市场扩展 Git Graph（性能策略参考；本项目为独立实现）</li>
+</ul>
+
+<footer>GitGraph 设计方案 v1.0 · 2026-08-19 · 配套仓库：09_GitGraph · 反馈后迭代 v1.1</footer>
+</main>
+
+</body>
+</html>
