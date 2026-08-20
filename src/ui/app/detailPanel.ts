@@ -160,12 +160,13 @@ export function createDetailPanel(app: App): DetailPanel {
     const num = el('span', 'gg-num');
     if (f.additions !== undefined) {
       num.appendChild(el('b', 'a', `+${f.additions}`));
-      num.appendChild(document.createTextNode(' '));
       num.appendChild(el('b', 'd', `−${f.deletions ?? 0}`));
     }
     row.appendChild(num);
-    const label = f.oldPath ? `${f.oldPath} → ${f.path}` : f.path;
+    const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
+    const label = f.oldPath ? `${base(f.oldPath)} → ${base(f.path)}` : base(f.path);
     const pathEl = el('span', 'gg-file-path', label);
+    pathEl.title = f.oldPath ? `${f.oldPath} → ${f.path}` : f.path;
     row.appendChild(pathEl);
     row.addEventListener('click', () => {
       S.selectedFile = f.path;

@@ -325,11 +325,11 @@ button.danger:hover { background: #c62121; }
 .gg-st.A, .gg-st.C { color: var(--vscode-charts-green); }
 .gg-st.D { color: var(--vscode-charts-red); }
 .gg-st.R { color: var(--vscode-charts-blue); }
-.gg-num { flex: none; width: 84px; font-size: 11px; color: var(--vscode-descriptionForeground); }
-.gg-num b { font-weight: 400; }
+.gg-num { flex: none; display: flex; justify-content: flex-end; gap: 6px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--vscode-descriptionForeground); }
+.gg-num b { flex: none; min-width: 40px; text-align: right; font-weight: 400; }
 .gg-num b.a { color: var(--vscode-charts-green); }
 .gg-num b.d { color: var(--vscode-charts-red); }
-.gg-file-path { overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.gg-file-path { overflow: hidden; text-overflow: ellipsis; }
 
 .gg-diff-head {
   flex: none;

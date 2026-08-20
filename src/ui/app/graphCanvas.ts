@@ -82,69 +82,73 @@ export class GraphCanvas {
     const last = Math.min(n - 1, Math.ceil((scrollTop + h) / R));
     const yc = (row: number) => row * R + R / 2 - scrollTop;
     const x = (lane: number) => PADDING + lane * LANE_W;
-    const laneColor = (lane: number) => this.colors[((lane % this.colors.length) + this.colors.length) % this.colors.length];
+    const segColor = (seg: number) => this.colors[((seg % this.colors.length) + this.colors.length) % this.colors.length];
     const angular = S.config.graphStyle === 'angular';
-    const k = R / 4;
 
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // 1) 竖线：activeBelow[r] 为第 r 行下方仍活跃的 lane
+    // 1) 竖线：activeBelow[r] 为第 r 行下方仍活跃的 lane。
+    //    本行 fork/mergeOut 的目标 lane 整段由 S 曲线接管（跳过竖线）；
+    //    下一行 mergeIn 收编的 lane，竖线提前半行收尾，余下交给肘形曲线。
     const { activeBelow } = S.graph;
     for (let r = Math.max(0, first - 1); r <= Math.min(n - 1, last); r++) {
       const yTop = yc(r);
       const yBottom = r === n - 1 ? yTop + R : yc(r + 1);
       if (yBottom < -R || yTop > h + R) continue;
-      for (const lane of activeBelow[r] ?? []) {
-        ctx.strokeStyle = laneColor(lane);
+      const takenHere = new Set<number>();
+      for (const cv of this.curvesByRow.get(r) ?? []) {
+        if (cv.kind !== 'mergeIn') takenHere.add(cv.toLane);
+      }
+      const stopEarly = new Map<number, number>();
+      for (const cv of this.curvesByRow.get(r + 1) ?? []) {
+        if (cv.kind === 'mergeIn') stopEarly.set(cv.fromLane, yBottom - R / 2);
+      }
+      for (const a of activeBelow[r] ?? []) {
+        if (takenHere.has(a.lane)) continue;
+        const yStop = Math.min(yBottom, stopEarly.get(a.lane) ?? yBottom);
+        if (yStop - yTop < 0.5) continue;
+        ctx.strokeStyle = segColor(a.seg);
         ctx.beginPath();
-        ctx.moveTo(x(lane), yTop);
-        ctx.lineTo(x(lane), yBottom);
+        ctx.moveTo(x(a.lane), yTop);
+        ctx.lineTo(x(a.lane), yStop);
         ctx.stroke();
       }
     }
 
-    // 2) 曲线：fork/mergeOut 从提交点向下半行高换轨；mergeIn 在提交行水平汇入
+    // 2) 曲线：fork/mergeOut 整行高 S 曲线（起止切线竖直）柔和换轨；
+    //    mergeIn 自上方竖线半行处以肘形曲线汇入提交点（替代生硬水平线）。
     for (let r = first; r <= last; r++) {
       const y0 = yc(r);
       if (y0 < -R || y0 > h + R) continue;
       for (const cv of this.curvesByRow.get(r) ?? []) {
+        const x1 = x(cv.fromLane);
+        const x2 = x(cv.toLane);
         if (cv.kind === 'mergeIn') {
-          ctx.strokeStyle = laneColor(cv.fromLane);
-          const x1 = x(cv.fromLane);
-          const x2 = x(cv.toLane);
+          ctx.strokeStyle = segColor(cv.seg);
           ctx.beginPath();
-          ctx.moveTo(x1, y0);
+          ctx.moveTo(x1, y0 - R / 2);
           if (angular) {
-            ctx.lineTo(x1, y0);
             ctx.lineTo(x2, y0);
           } else {
-            ctx.bezierCurveTo((x1 + x2) / 2, y0, (x1 + x2) / 2, y0, x2, y0);
+            ctx.bezierCurveTo(x1, y0, (x1 + x2) / 2, y0, x2, y0);
           }
           ctx.stroke();
         } else {
-          ctx.strokeStyle = laneColor(cv.toLane);
-          const x1 = x(cv.fromLane);
-          const x2 = x(cv.toLane);
-          const y1 = y0 + R / 2;
+          ctx.strokeStyle = segColor(cv.seg);
+          const y1 = y0 + R;
+          ctx.beginPath();
+          ctx.moveTo(x1, y0);
           if (angular) {
-            ctx.beginPath();
-            ctx.moveTo(x1, y0);
-            ctx.lineTo(x2, y0 + (x1 === x2 ? 0 : R / 4));
+            ctx.lineTo(x2, y0 + R / 2);
             ctx.lineTo(x2, y1);
-            ctx.stroke();
           } else if (x1 === x2) {
-            ctx.beginPath();
-            ctx.moveTo(x1, y0);
             ctx.lineTo(x2, y1);
-            ctx.stroke();
           } else {
-            ctx.beginPath();
-            ctx.moveTo(x1, y0);
-            ctx.bezierCurveTo(x1, y0 + k, x2, y1 - k, x2, y1);
-            ctx.stroke();
+            ctx.bezierCurveTo(x1, y0 + R / 2, x2, y0 + R / 2, x2, y1);
           }
+          ctx.stroke();
         }
       }
     }
@@ -159,7 +163,7 @@ export class GraphCanvas {
       const isHead = c.refs.some(ref => ref.isHead);
       const isMerge = c.parents.length > 1;
       const radius = Math.max(2.5, Math.min(4.5, R * 0.16));
-      const color = laneColor(c.lane ?? 0);
+      const color = segColor(c.seg ?? c.lane ?? 0);
       if (isMerge) {
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.5;

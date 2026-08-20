@@ -36,6 +36,7 @@ export interface Commit {
   /** Webview 侧 lanes.ts 填充 */
   lane?: number;
   row?: number;
+  seg?: number;          // 分支段 id（按分支着色，非 lane 槽位）
 }
 
 export interface BranchInfo {
