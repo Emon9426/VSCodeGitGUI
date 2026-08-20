@@ -2,7 +2,7 @@
   "name": "gitboard",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "publisher": "EmonZhang3438",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -71,6 +71,10 @@
       {
         "command": "gitboard.push",
         "title": "%cmd.push%"
+      },
+      {
+        "command": "gitboard.commit",
+        "title": "%cmd.commit%"
       }
     ],
     "keybindings": [
@@ -78,6 +82,11 @@
         "command": "gitboard.open",
         "key": "ctrl+alt+g",
         "mac": "cmd+alt+g"
+      },
+      {
+        "command": "gitboard.commit",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c"
       }
     ],
     "menus": {
@@ -225,6 +234,61 @@
           "type": "boolean",
           "default": true,
           "description": "%cfg.showStatusBarItem%"
+        },
+        "gitboard.startView": {
+          "type": "string",
+          "default": "graph",
+          "enum": [
+            "graph",
+            "work",
+            "last"
+          ],
+          "enumDescriptions": [
+            "%cfg.startView.graph%",
+            "%cfg.startView.work%",
+            "%cfg.startView.last%"
+          ],
+          "description": "%cfg.startView%"
+        },
+        "gitboard.ai.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%cfg.ai.enabled%"
+        },
+        "gitboard.ai.modelFamily": {
+          "type": "string",
+          "default": "",
+          "description": "%cfg.ai.modelFamily%"
+        },
+        "gitboard.ai.language": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "en",
+            "zh-cn"
+          ],
+          "description": "%cfg.ai.language%"
+        },
+        "gitboard.ai.learnFromHistory": {
+          "type": "boolean",
+          "default": true,
+          "description": "%cfg.ai.learnFromHistory%"
+        },
+        "gitboard.ai.useWorkspaceInstructions": {
+          "type": "boolean",
+          "default": true,
+          "description": "%cfg.ai.useWorkspaceInstructions%"
+        },
+        "gitboard.commit.clearMessage": {
+          "type": "boolean",
+          "default": true,
+          "description": "%cfg.commit.clearMessage%"
+        },
+        "gitboard.commit.pushAfter": {
+          "type": "boolean",
+          "default": false,
+          "description": "%cfg.commit.pushAfter%"
         }
       }
     }

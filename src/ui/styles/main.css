@@ -451,3 +451,143 @@ button.danger:hover { background: #c62121; }
 ::-webkit-scrollbar-thumb { background: rgba(121,121,121,0.4); border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(121,121,121,0.6); }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ================= 工作副本（Commit 功能，设计方案 v1.3） ================= */
+
+/* 视图切换分段控件（§3.1） */
+.gg-viewseg { display: flex; border: 1px solid var(--vscode-dropdown-border, #666); border-radius: 5px; overflow: hidden; flex: none; }
+.gg-viewseg-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: none; border-radius: 0; padding: 3px 11px;
+  background: transparent; color: var(--vscode-foreground); font-size: 12px; white-space: nowrap;
+}
+.gg-viewseg-btn + .gg-viewseg-btn { border-left: 1px solid var(--vscode-dropdown-border, #666); }
+.gg-viewseg-btn.on { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.gg-viewseg-badge {
+  min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; text-align: center;
+  font-size: 10.5px; line-height: 16px; font-weight: 600;
+  background: color-mix(in srgb, var(--vscode-charts-yellow) 75%, transparent); color: var(--vscode-editor-background);
+}
+
+/* 工作副本模式下隐藏侧栏，空间让给文件列表与 diff */
+.gg-body.work-mode .gg-side { display: none; }
+
+.gg-work-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.gg-work { flex: 1; display: flex; min-height: 0; }
+
+/* ---- 左：文件状态 ---- */
+.gg-work-files {
+  position: relative; flex: none; min-width: 200px; max-width: 420px;
+  display: flex; flex-direction: column; min-height: 0;
+  border-right: 1px solid var(--vscode-panel-border, #333);
+}
+.gg-work-resizer { position: absolute; top: 0; right: -3px; bottom: 0; width: 6px; cursor: col-resize; z-index: 3; }
+.gg-work-resizer:hover { background: color-mix(in srgb, var(--vscode-focusBorder) 55%, transparent); }
+.gg-work-fhead {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 8px;
+  font-size: 11.5px; color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+}
+.gg-work-ftitle { font-weight: 600; color: var(--vscode-foreground); font-size: 12px; }
+.gg-work-fbtns { margin-left: auto; display: flex; gap: 2px; }
+.gg-work-search {
+  flex: none; margin: 7px 8px 4px; height: 24px; padding: 2px 8px; font-size: 11.5px;
+  background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+  border-color: var(--vscode-input-border, transparent);
+}
+.gg-work-groups { flex: 1; overflow-y: auto; padding-bottom: 8px; }
+.gg-work-group-h {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px 3px 6px; cursor: pointer; user-select: none;
+  font-size: 11.5px; color: var(--vscode-descriptionForeground);
+}
+.gg-work-group-h b { color: var(--vscode-foreground); font-weight: 600; }
+.gg-work-group-h:hover { background: var(--vscode-list-hoverBackground); }
+.gg-work-cnt {
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 22%, transparent);
+  color: var(--vscode-foreground); border-radius: 8px; padding: 0 6px; font-size: 10.5px; line-height: 15px;
+}
+.gg-work-rows { display: flex; flex-direction: column; }
+.gg-work-row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 3px 10px 3px 14px; margin: 0 4px; border-radius: 4px;
+  cursor: default; white-space: nowrap;
+}
+.gg-work-row:hover { background: var(--vscode-list-hoverBackground); }
+.gg-work-row.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.gg-work-row input[type='checkbox'] { accent-color: var(--vscode-button-background); flex: none; cursor: pointer; }
+.gg-st.U { color: var(--vscode-descriptionForeground); }
+.gg-work-fpath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--vscode-editor-font-family); font-size: 12px; }
+.gg-work-fpath .gg-work-fdir { color: var(--vscode-descriptionForeground); }
+.gg-work-fnum { flex: none; display: flex; gap: 6px; font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--vscode-descriptionForeground); }
+.gg-work-fnum b { font-weight: 400; min-width: 34px; text-align: right; }
+.gg-work-fnum b.a { color: var(--vscode-charts-green); }
+.gg-work-fnum b.d { color: var(--vscode-charts-red); }
+.gg-work-fnum i { font-style: normal; font-size: 10.5px; }
+.gg-work-rowempty { padding: 3px 16px; color: var(--vscode-descriptionForeground); font-size: 11.5px; opacity: 0.8; }
+
+/* ---- 右：单文件 diff ---- */
+.gg-work-diff { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.gg-work-dhead {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  height: 30px; padding: 0 10px;
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+}
+.gg-work-dpath {
+  font-family: var(--vscode-editor-font-family); font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gg-work-dstats { flex: none; font-family: var(--vscode-editor-font-family); font-size: 11px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.gg-work-dspacer { flex: 1; }
+.gg-work-dbox {
+  flex: 1; overflow: auto; padding-bottom: 12px;
+  font-family: var(--vscode-editor-font-family); font-size: 12px; line-height: 1.5;
+}
+.gg-work-clean { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 40px 0; }
+.gg-work-clean-icon { font-size: 30px; color: var(--vscode-charts-green); }
+.gg-work-clean-title { font-size: 14px; font-weight: 600; color: var(--vscode-descriptionForeground); }
+.gg-work-clean-last { font-size: 12px; color: var(--vscode-descriptionForeground); max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gg-work-clean-btns { display: flex; gap: 8px; margin-top: 4px; }
+
+/* ---- 底：提交信息栏（单一输入框，§3.5） ---- */
+.gg-cbar {
+  flex: none; display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 10px 9px;
+  border-top: 1px solid var(--vscode-panel-border, #333);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+}
+.gg-cbar-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gg-ai-btn {
+  display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 12px;
+  border: 1px solid color-mix(in srgb, var(--vscode-charts-purple) 55%, transparent);
+  background: color-mix(in srgb, var(--vscode-charts-purple) 14%, transparent);
+  color: var(--vscode-charts-purple, var(--vscode-foreground));
+}
+.gg-ai-btn.busy { border-color: var(--vscode-dropdown-border, #666); background: transparent; color: var(--vscode-descriptionForeground); }
+.gg-cbar-select { max-width: 150px; font-size: 11.5px; padding: 2px 6px; }
+.gg-cbar-count { margin-left: auto; font-family: var(--vscode-editor-font-family); font-size: 11px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.gg-cbar-count.warn { color: var(--vscode-charts-yellow); }
+.gg-cbar-amend {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 10px; border-radius: 5px; font-size: 12px;
+  color: var(--vscode-charts-yellow);
+  background: color-mix(in srgb, var(--vscode-charts-yellow) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-charts-yellow) 40%, transparent);
+}
+.gg-cbar-amend a { margin-left: auto; color: var(--vscode-textLink-foreground); cursor: pointer; }
+.gg-cbar-input {
+  width: 100%; min-height: 58px; max-height: 240px; resize: vertical;
+  padding: 6px 8px; font-family: inherit; font-size: 12.5px; line-height: 1.5;
+  background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+  border-color: var(--vscode-input-border, transparent);
+}
+.gg-cbar-input:focus { outline: 1px solid var(--vscode-focusBorder); }
+.gg-cbar-input[readonly] { opacity: 0.85; }
+.gg-cbar-bottom { justify-content: flex-start; }
+.gg-cbar-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.gg-cbar-chk input { accent-color: var(--vscode-button-background); }
+.gg-cbar-commit { margin-left: auto; font-weight: 600; padding: 4px 16px; }
+.gg-cbar-caret { padding: 4px 7px; border-left: 1px solid color-mix(in srgb, var(--vscode-button-foreground) 35%, transparent); }
+.gg-cbar-commit:disabled, .gg-cbar-caret:disabled { opacity: 0.5; }

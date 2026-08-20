@@ -9,7 +9,8 @@ export type ResetMode = 'soft' | 'mixed' | 'hard';
 export type PullStrategy = 'merge' | 'rebase' | 'ff-only';
 
 export interface OpSpec {
-  kind: 'fetch' | 'pull' | 'push' | 'reset' | 'checkout';
+  kind: 'fetch' | 'pull' | 'push' | 'reset' | 'checkout'
+    | 'stage' | 'unstage' | 'discard' | 'discardClean' | 'commit';
   /** 依 kind 不同 */
   all?: boolean;               // fetch
   remote?: string;
@@ -23,6 +24,9 @@ export interface OpSpec {
   ref?: string;                // checkout
   detached?: boolean;          // checkout
   trackFrom?: { name: string; remoteBranch: string };  // checkout 远程分支为本地
+  paths?: string[];            // stage / unstage / discard / discardClean
+  messageFile?: string;        // commit：-F 临时文件（调用方负责创建与清理）
+  amend?: boolean;             // commit：修订上次提交
 }
 
 export interface OpOutcome {
@@ -81,8 +85,11 @@ export class OpRunner {
     let lastLine = '';
     try {
       const r = await this.exec.exec(root, args, {
-        timeoutMs: 0,   // 网络操作不设超时
+        // 网络/提交（hooks 可能耗时）不设超时；stage/discard 类秒级操作用默认 30s
+        timeoutMs: spec.kind === 'fetch' || spec.kind === 'pull' || spec.kind === 'push' || spec.kind === 'commit' ? 0 : undefined,
         maxBytes: 4 * 1024 * 1024,
+        // commit 类可能触发 hooks：禁止交互式提示防挂死（提示失败改走终端）
+        env: spec.kind === 'commit' ? { GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true' } : undefined,
         registerChild: (c) => this.children.set(opId, c),
         onStderrLine: (line) => {
           const cleaned = line.replace(/[\r ]+$/, '');
@@ -139,6 +146,21 @@ function buildArgs(spec: OpSpec): string[] {
       const args = ['checkout'];
       if (spec.detached) args.push('--detach');
       args.push(spec.ref ?? spec.sha ?? 'HEAD');
+      return args;
+    }
+    // ---------- 工作副本（Commit 功能） ----------
+    case 'stage':
+      return spec.all ? ['add', '-A'] : ['add', '--', ...(spec.paths ?? [])];
+    case 'unstage':
+      return ['restore', '--staged', '--', ...(spec.paths ?? [])];
+    case 'discard':
+      return ['restore', '--source=HEAD', '--staged', '--worktree', '--', ...(spec.paths ?? [])];
+    case 'discardClean':
+      return ['clean', '-fd', '--', ...(spec.paths ?? [])];
+    case 'commit': {
+      const args = ['commit', '--cleanup=strip'];
+      if (spec.amend) args.push('--amend');
+      if (spec.messageFile) args.push('-F', spec.messageFile);
       return args;
     }
   }

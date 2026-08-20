@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitBoard · Commit 提交功能设计方案 v1.3</title>
+<style>
+  :root{
+    --fg:#1f2328; --fg2:#57606a; --line:#d0d7de; --bg:#ffffff; --bg2:#f6f8fa;
+    --accent:#0969da; --green:#1a7f37; --red:#cf222e; --amber:#9a6700; --purple:#8250df;
+    --code-bg:#0d1117; --code-fg:#e6edf3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.75 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;color:var(--fg);background:var(--bg)}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code.inline{background:var(--bg2);border:1px solid var(--line);border-radius:4px;padding:0 5px;font:12.5px/1.6 Consolas,"Courier New",monospace;color:#953800;white-space:nowrap}
+  pre.code{background:var(--code-bg);color:var(--code-fg);border-radius:8px;padding:14px 16px;overflow:auto;font:12.5px/1.6 Consolas,"Courier New",monospace;tab-size:2}
+  pre.code code{background:none;border:none;color:inherit;padding:0;font-size:inherit;white-space:pre}
+  table.tbl{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  table.tbl th{background:var(--bg2);text-align:left}
+  table.tbl th,table.tbl td{border:1px solid var(--line);padding:6px 10px;vertical-align:top}
+  table.tbl tr:nth-child(even) td{background:#fbfcfd}
+  h1{font-size:28px;margin:.2em 0 .3em}
+  h2{font-size:21px;margin:2.2em 0 .6em;padding-left:12px;border-left:4px solid var(--accent)}
+  h3{font-size:17px;margin:1.6em 0 .5em;color:#24292f}
+  h4{font-size:15px;margin:1.2em 0 .4em;color:var(--fg2)}
+  p{margin:.6em 0}
+  ul,ol{padding-left:1.6em}
+  li{margin:.25em 0}
+  hr.sect{border:none;border-top:1px solid var(--line);margin:2.5em 0}
+  aside.toc{position:fixed;top:0;left:0;bottom:0;width:250px;overflow-y:auto;padding:20px 14px;border-right:1px solid var(--line);background:var(--bg2);font-size:13px}
+  aside.toc .toc-title{font-weight:600;margin-bottom:10px}
+  aside.toc a{display:block;color:var(--fg2);padding:2px 6px;border-radius:4px;line-height:1.5}
+  aside.toc a:hover{background:#eaeef2;text-decoration:none;color:var(--accent)}
+  aside.toc a.sub{padding-left:18px;font-size:12.3px}
+  main.doc{margin-left:250px;padding:36px 44px 80px;max-width:1060px}
+  .docmeta{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:12px 18px;margin:14px 0 8px;font-size:13.5px}
+  .box{border-radius:8px;padding:10px 16px;margin:14px 0;font-size:13.8px;border:1px solid}
+  .box.note{background:#ddf4ff;border-color:#54aeff66}
+  .box.warn{background:#fff8c5;border-color:#d4a72c66}
+  .box.decision{background:#dafbe1;border-color:#4ac26b66}
+  .box.assume{background:#fbefff;border-color:#c297ff66}
+  .prio{display:inline-block;border-radius:10px;padding:0 9px;font-size:12px;font-weight:600;line-height:20px}
+  .p0{background:#dafbe1;color:var(--green)}
+  .p1{background:#fff8c5;color:var(--amber)}
+  .p2{background:#fbefff;color:var(--purple)}
+  .kbd{display:inline-block;border:1px solid #c9d1d9;border-bottom-width:2px;border-radius:5px;padding:0 6px;font:12px/1.7 Consolas,monospace;background:#f6f8fa;color:#24292f}
+
+  /* ============ 高保真示意图（模拟 VS Code Dark Modern） ============ */
+  .mockwrap{margin:18px 0}
+  .mock-cap{font-size:12.5px;color:var(--fg2);margin:0 0 6px;display:flex;gap:8px;align-items:center}
+  .mock-cap .tag{background:#1f1f1f;color:#e6edf3;border-radius:4px;padding:0 8px;font-size:11.5px;font-weight:600;letter-spacing:.4px}
+  .mock{border:1px solid #30363d;border-radius:10px;overflow:hidden;background:#1f1f1f;color:#cccccc;
+        font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-size:12.5px;line-height:1.45;
+        box-shadow:0 10px 30px rgba(0,0,0,.22);text-align:left}
+  .mock *{box-sizing:border-box}
+  .ann{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;
+       background:#f0b72f;color:#1f1f1f;font-size:10.5px;font-weight:700;font-style:normal;margin-left:5px;flex:none;vertical-align:1px}
+  .ann-list{font-size:13px;color:var(--fg2);margin:8px 0 0;padding-left:0;list-style:none}
+  .ann-list li{margin:.15em 0}
+
+  /* 工具栏 */
+  .vs-toolbar{display:flex;align-items:center;gap:8px;height:38px;background:#181818;border-bottom:1px solid #2b2b2b;padding:0 10px;flex-wrap:nowrap}
+  .vs-seg{display:flex;border:1px solid #3c3c3c;border-radius:6px;overflow:hidden;flex:none}
+  .vs-seg .seg{display:flex;align-items:center;gap:5px;padding:3px 11px;background:#222;color:#bbb;border:none;cursor:pointer;font-size:12px;white-space:nowrap}
+  .vs-seg .seg + .seg{border-left:1px solid #3c3c3c}
+  .vs-seg .seg.on{background:#0078d4;color:#fff}
+  .vs-badge{background:#616161;border-radius:9px;min-width:17px;height:17px;padding:0 5px;font-size:10.5px;font-weight:600;text-align:center;line-height:17px;color:#fff;display:inline-block}
+  .vs-dd{background:#2a2a2a;border:1px solid #3c3c3c;border-radius:5px;padding:3px 9px;color:#ccc;font-size:12px;white-space:nowrap}
+  .vs-chip{display:inline-flex;align-items:center;gap:5px;background:#2a2a2a;border:1px solid #3c3c3c;border-radius:5px;padding:3px 9px;color:#ccc;font-size:12px;white-space:nowrap}
+  .vs-spacer{flex:1}
+  .tbtn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px;color:#bbb;border:1px solid transparent;font-size:13px}
+  .tbtn:hover{background:#2a2d2e;border-color:#3c3c3c}
+
+  /* 主体三列 */
+  .vs-body{display:flex;min-height:430px;align-items:stretch}
+  .vs-files{width:272px;flex:none;border-right:1px solid #2b2b2b;display:flex;flex-direction:column;background:#1f1f1f}
+  .vs-fhead{display:flex;align-items:center;gap:6px;height:30px;padding:0 8px;color:#9d9d9d;font-size:11.5px;border-bottom:1px solid #232323}
+  .vs-fhead b{color:#ccc;font-weight:600;font-size:12px}
+  .vs-search{margin:7px 8px 4px;background:#313131;border:1px solid #3c3c3c;border-radius:4px;height:24px;color:#8b8b8b;padding:0 8px;font-size:11.5px;display:flex;align-items:center;gap:6px}
+  .vs-groups{overflow:auto;flex:1;padding-bottom:6px}
+  .fgroup-h{display:flex;align-items:center;gap:6px;padding:6px 8px 3px 6px;color:#9d9d9d;font-size:11.5px;cursor:pointer}
+  .fgroup-h b{color:#cfcfcf;font-weight:600}
+  .fgroup-h .cnt{background:#333;border-radius:8px;padding:0 6px;font-size:10.5px;line-height:16px;color:#bbb}
+  .frow{display:flex;align-items:center;gap:7px;padding:3px 10px 3px 14px;cursor:default;border-radius:4px;margin:0 4px}
+  .frow:hover{background:#2a2d2e}
+  .frow.on{background:#04395e}
+  .frow input[type=checkbox]{accent-color:#0078d4;width:13px;height:13px;margin:0;flex:none;cursor:pointer}
+  .frow .st{width:14px;text-align:center;font-weight:700;font-size:11px;flex:none}
+  .st.M{color:#e2c08d}.st.A{color:#73c991}.st.D{color:#c74e39}.st.U{color:#8b8b8b}.st.R{color:#58a6ff}
+  .fpath{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;min-width:0}
+  .fpath .dir{color:#8b8b8b}
+  .fstat{font-size:10.5px;flex:none;font-family:Consolas,monospace}
+  .plus{color:#3fb950}.minus{color:#f85149}
+  .fempty{color:#6e6e6e;font-size:11.5px;padding:4px 16px;font-style:italic}
+  .frow.flash{animation:rowflash 1s ease-out}
+  @keyframes rowflash{0%{background:#0e639c}100%{background:transparent}}
+
+  /* Diff */
+  .vs-diff{flex:1;display:flex;flex-direction:column;min-width:0;background:#1f1f1f}
+  .vs-dhead{min-height:32px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #2b2b2b;padding:0 10px}
+  .vs-dtabs{display:flex;gap:2px;height:100%;align-items:stretch}
+  .dtab{display:flex;align-items:center;gap:6px;padding:0 11px;font-size:12px;color:#9d9d9d;border-top:2px solid transparent;cursor:pointer;white-space:nowrap}
+  .dtab.on{color:#e7e7e7;background:#1f1f1f;border-top-color:#0078d4}
+  .dtab .cnt{background:#333;border-radius:8px;padding:0 6px;font-size:10.5px;line-height:16px}
+  .dfname{color:#ccc;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dcode{flex:1;overflow:auto;padding:8px 0;font:12px/1.6 Consolas,"Courier New",monospace}
+  .dline{padding:0 14px;white-space:pre}
+  .dline .ln{color:#6e7681;margin-right:14px;user-select:none;display:inline-block;min-width:26px;text-align:right}
+  .dline.add{background:rgba(46,160,67,.14)}
+  .dline.del{background:rgba(248,81,73,.10)}
+  .dline.add .tk{color:#7ee787}
+  .dline.del .tk{color:#ffb3ab}
+  .dline.hunk{color:#58a6ff;background:rgba(88,166,255,.06)}
+  .dline.ctx .cm{color:#6a9955}
+  .dbin{color:#9d9d9d;padding:16px;font-style:italic}
+
+  /* 底部提交栏 */
+  .vs-bar{border-top:1px solid #2b2b2b;background:#181818;padding:8px 10px 9px;display:flex;flex-direction:column;gap:6px}
+  .vs-airow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .vs-aibtn{display:inline-flex;gap:6px;align-items:center;border:1px solid #6e40c7;background:linear-gradient(135deg,rgba(163,113,247,.22),rgba(63,185,80,.16));
+            color:#d2a8ff;border-radius:5px;padding:3px 11px;font-size:12px;font-weight:600;cursor:pointer}
+  .vs-aibtn.busy{border-color:#3c3c3c;background:#2a2a2a;color:#bbb}
+  .vs-aibtn.ok{border-color:#2ea04366;background:rgba(46,160,67,.15);color:#7ee787}
+  .vs-mini{background:#2a2a2a;border:1px solid #3c3c3c;border-radius:5px;padding:3px 9px;color:#bbb;font-size:11.5px;display:inline-flex;align-items:center;gap:5px}
+  .vs-count{margin-left:auto;color:#8b8b8b;font-size:11px;font-family:Consolas,monospace}
+  .vs-count.warn{color:#e3b341}
+  .vs-inp{background:#313131;border:1px solid #3c3c3c;border-radius:4px;height:26px;padding:0 8px;color:#ccc;font-size:12.5px;width:100%;font-family:inherit}
+  .vs-inp::placeholder{color:#6e6e6e}
+  .vs-ta{background:#313131;border:1px solid #3c3c3c;border-radius:4px;padding:5px 8px;color:#ccc;font-size:12.5px;width:100%;height:52px;resize:none;font-family:inherit;line-height:1.5}
+  .vs-btnrow{display:flex;align-items:center;gap:10px}
+  .chkrow{display:inline-flex;gap:6px;align-items:center;color:#bbb;font-size:12px;cursor:pointer}
+  .chkrow input{accent-color:#0078d4}
+  .vs-commit{display:inline-flex;border-radius:5px;overflow:hidden;margin-left:auto;flex:none}
+  .vs-commit .main{background:#0078d4;color:#fff;border:none;padding:4px 16px;font-size:12.5px;font-weight:600;cursor:pointer}
+  .vs-commit .caret{background:#026ec1;color:#fff;border:none;border-left:1px solid #ffffff33;width:20px;cursor:pointer;font-size:10px}
+
+  /* 修订提示条 */
+  .amendtip{display:flex;align-items:center;gap:8px;background:rgba(227,179,65,.12);border:1px solid rgba(227,179,65,.4);border-radius:5px;padding:4px 10px;font-size:12px;color:#e3b341}
+  .amendtip a{color:#58a6ff;margin-left:auto;cursor:pointer;text-decoration:none}
+
+  /* AI 状态三联图 */
+  .ai-demo .ai-tabs{display:flex;gap:6px;margin-bottom:8px}
+  .ai-demo .ai-tab{border:1px solid var(--line);background:var(--bg2);border-radius:6px;padding:3px 14px;font-size:13px;cursor:pointer}
+  .ai-demo .ai-tab.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .ai-demo .ai-panel{display:none}
+  .ai-demo .ai-panel.on{display:block}
+  .ai-stage .vs-inp.stream{color:#9d9d9d;border-color:#6e40c7}
+  .cursor{display:inline-block;width:7px;height:14px;background:#aeafad;vertical-align:-2px;animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .ai-meta{font-size:11px;color:#8b8b8b;padding:2px 2px 0}
+  .ai-meta .ok{color:#7ee787}
+
+  /* 右键菜单 / 对话框 */
+  .ctxmenu{width:230px;background:#1f1f1f;border:1px solid #454545;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.5);padding:4px;font-size:12.5px}
+  .ctxmenu .mi{display:flex;align-items:center;gap:8px;padding:4px 10px;border-radius:4px;color:#ccc;cursor:default}
+  .ctxmenu .mi:hover{background:#04395e}
+  .ctxmenu .mi .kb{margin-left:auto;color:#8b8b8b;font-size:11px}
+  .ctxmenu .mi.danger{color:#f14c4c}
+  .ctxmenu .sep{height:1px;background:#3c3c3c;margin:4px 6px}
+  .ctxmenu .sub{color:#6e6e6e;font-size:11px;padding:1px 10px 3px}
+  .vsmodal{background:#1f1f1f;border:1px solid #454545;border-radius:8px;max-width:430px;padding:16px 18px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .vsmodal h5{margin:0 0 8px;font-size:14px;color:#e7e7e7;font-weight:600}
+  .vsmodal p{margin:0 0 6px;font-size:12.5px;color:#bbb}
+  .vsmodal .btns{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+  .vsmodal .btn{border-radius:4px;padding:4px 16px;font-size:12.5px;border:1px solid #3c3c3c;background:#2a2a2a;color:#ccc;cursor:pointer}
+  .vsmodal .btn.danger{background:#a1260d;border-color:#a1260d;color:#fff}
+  .filelist-mini{background:#161616;border:1px solid #2b2b2b;border-radius:5px;padding:6px 10px;margin:8px 0;font:12px/1.7 Consolas,monospace;color:#ccc}
+
+  /* 空状态 */
+  .vsempty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#9d9d9d}
+  .vsempty .big{font-size:34px;color:#3fb950}
+  .vsempty .last{font-size:12px;color:#8b8b8b}
+  .vsempty .mono{font-family:Consolas,monospace}
+
+  /* 架构/流程图（浅色文档风格） */
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:14px 0}
+  .fbox{border:1.5px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--bg2);font-size:12.5px;line-height:1.5;min-width:120px}
+  .fbox b{display:block;font-size:12.5px;color:#24292f}
+  .fbox.wv{border-color:#54aeff;background:#ddf4ff66}
+  .fbox.host{border-color:#4ac26b;background:#dafbe166}
+  .fbox.ext{border-color:#c297ff;background:#fbefff66}
+  .fbox.dim{color:var(--fg2)}
+  .farr{display:flex;align-items:center;padding:0 7px;color:var(--fg2);font-size:11.5px;white-space:nowrap}
+  .farr b{color:var(--accent)}
+  .fcol{display:flex;flex-direction:column;gap:6px}
+  .fstack{display:flex;flex-direction:column;gap:0}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:1100px){.grid2{grid-template-columns:1fr}}
+  kbd.vs{background:#2a2a2a;border:1px solid #3c3c3c;color:#ccc}
+</style>
+</head>
+<body>
+
+<aside class="toc">
+  <div class="toc-title">GitBoard · Commit 功能设计</div>
+  <a href="#s1">1. 概述</a>
+  <a href="#s2">2. 总体设计</a>
+  <a href="#s3" class="sub">3. 界面设计</a>
+  <a href="#s3-1" class="sub">3.1 视图切换入口</a>
+  <a href="#s3-2" class="sub">3.2 工作副本视图（主界面）</a>
+  <a href="#s3-3" class="sub">3.3 文件状态列表</a>
+  <a href="#s3-4" class="sub">3.4 Diff 预览（单视图）</a>
+  <a href="#s3-5" class="sub">3.5 提交信息栏（单输入框）</a>
+  <a href="#s3-6" class="sub">3.6 AI 生成交互</a>
+  <a href="#s3-7" class="sub">3.7 状态、动效与空状态</a>
+  <a href="#s3-8" class="sub">3.8 快捷键</a>
+  <a href="#s4">4. 功能规格</a>
+  <a href="#s5">5. GitHub Copilot 集成</a>
+  <a href="#s6">6. 技术实现</a>
+  <a href="#s7">7. 里程碑与风险</a>
+  <a href="#sa" class="sub">附录 A · 提示词模板</a>
+  <a href="#sb" class="sub">附录 B · 配置项与 i18n</a>
+  <a href="#sc" class="sub">附录 C · 协议与类型定义</a>
+</aside>
+
+<main class="doc">
+
+<h1>GitBoard · Commit 提交功能设计方案</h1>
+<div class="docmeta">
+  <b>版本</b> v1.3（修订：双视图描述重写 · AI 遵循 .copilot/ 工程指示文件）&nbsp;·&nbsp; <b>日期</b> 2026-08-20 &nbsp;·&nbsp;
+  <b>基线</b> GitBoard v0.6.3（engines.vscode ^1.85）&nbsp;·&nbsp;
+  <b>参考</b> Sourcetree「工作副本 / File Status」交互 · GitHub Copilot Language Model API
+</div>
+
+<h2 id="s1">1. 概述</h2>
+
+<p>GitBoard 目前是一个<b>只读为主</b>的提交图可视化工具（fetch / pull / push / reset / checkout 已具备写操作），但日常最高频的动作——<b>暂存与提交</b>——仍需切回 VS Code 源代码管理视图或终端完成。本方案在现有 Webview 内新增一个<b>工作副本提交视图</b>，完整复刻 Sourcetree 的提交流心智模型，并接入 GitHub Copilot 一键生成提交信息。</p>
+
+<h3>1.1 目标</h3>
+<ul>
+  <li><b>Sourcetree 级提交体验</b>：文件状态分组（已暂存 / 未暂存）、复选框勾选暂存、选中即看 diff、底部信息栏 + 提交按钮，全程不离开 GitBoard。</li>
+  <li><b>Copilot 生成提交信息</b>：基于暂存 diff、<b>工程指示文件（<code>.copilot/</code> 及 Copilot 官方 <code>.github/</code> 约定，见 §5.7）</b>与仓库近期提交风格，一键（可流式）生成 <i>首行摘要 + 正文</i>，可停止、可重新生成、可编辑。</li>
+  <li><b>一步直达、状态不丢</b>（沿用既有产品原则）：工具栏一次点击进入工作副本视图；视图切换、面板隐藏均不丢失草稿与滚动位置。</li>
+  <li><b>零新增运行时依赖</b>：git 侧继续走既有 <code class="inline">GitExecutor / OpRunner</code> 管道；AI 侧直接用 VS Code 内置 <code class="inline">vscode.lm</code> API，不引入任何 npm 包。</li>
+</ul>
+
+<h3>1.2 非目标（本期不做）</h3>
+<ul>
+  <li>Stash 管理、merge 冲突解决器、交互式 rebase —— 属独立特性，另行立项。</li>
+  <li>行级（逐行勾选）部分暂存编辑器 —— VS Code 原生 SCM 已擅长，块级暂存（P2）已覆盖八成需求。</li>
+  <li>提交前 code review / lint 门禁 —— 交给 git hooks。</li>
+</ul>
+
+<h3>1.3 对 Sourcetree 的借鉴与取舍</h3>
+<table class="tbl">
+  <tr><th style="width:26%">Sourcetree 交互</th><th style="width:37%">GitBoard 方案</th><th>取舍说明</th></tr>
+  <tr><td>侧栏「工作副本 / History」双视图</td><td>工具栏左侧分段控件：<b>提交图 ⇄ 工作副本</b>（工作副本带脏文件徽标）</td><td>GitBoard 侧栏已承载分支/标签导航，视图切换放工具栏更贴近既有布局，一次点击直达</td></tr>
+  <tr><td>File Status：Staged / Unstaged 分组 + 复选框</td><td>完全一致：<b>已暂存 / 未暂存</b>两组，勾选即 <code>git add</code> / 取消勾选即 <code>git restore --staged</code>，乐观更新</td><td>这是 Sourcetree 最经典的心智模型，原样保留</td></tr>
+  <tr><td>选中文件右侧看 diff</td><td>右栏内联 diff（复用现有组件）：选中文件 HEAD↔工作副本的<b>完整差异</b></td><td>比 Sourcetree 更简：不做暂存态区分、无页签，一个文件一份差异（v1.2 修订）</td></tr>
+  <tr><td>底部 Message 输入 + Commit 按钮下拉</td><td>底部提交信息栏：<b>单一多行信息框</b>（首行=摘要）、首行计数、<b>提交 ▾</b> 下拉（提交 / 提交并推送 / 修订上次提交 / 提交全部）</td><td>下拉项对齐 Sourcetree，另加「提交全部更改」补齐 <code>commit -a</code> 语义</td></tr>
+  <tr><td>Discard / Ignore / Stage Hunks</td><td>丢弃（双重确认）P1；忽略（.gitignore）P2；块级暂存 P2</td><td>丢弃是高危操作，确认流程比 Sourcetree 更谨慎</td></tr>
+  <tr><td>（Sourcetree 无）AI 生成信息</td><td>Copilot 一键生成 + 流式填充 —— 本方案独有增量</td><td>结合仓库近期提交风格学习，语言与格式自动跟随</td></tr>
+</table>
+
+<h2 id="s2">2. 总体设计</h2>
+
+<h3>2.1 信息架构：主界面双视图</h3>
+<p>主界面由两个职能互补的并列视图组成，各自回答一个明确的问题（v1.3 重写描述）：</p>
+<ul>
+  <li><b>提交图 —— 「已经发生了什么？」</b>面向<b>已存在的历史提交</b>：左侧泳道图与提交列表呈现全部提交，详情面板查看某次提交的说明与文件差异；配合分支/作者/时间段筛选、检出、reset、fetch / pull / push。<b>以浏览和远端操作为主，不改动工作副本内容。</b></li>
+  <li><b>工作副本 —— 「接下来要提交什么？」</b>面向<b>尚未提交的本地更改</b>：左侧文件状态列表勾选暂存，右侧查看选中文件此次的差异，底部撰写（或让 Copilot 生成）提交信息并执行提交 / 推送 / 修订。即 Sourcetree 的「File Status / 工作副本」页，<b>本方案新增</b>。</li>
+</ul>
+<p>提交流程把两者串成闭环：在工作副本完成提交后，新提交立即出现在提交图中。两个视图是同一 Webview 内的兄弟 DOM 节点，切换只切 <code>display</code>，<b>不销毁、不重建</b>——提交图的选择/滚动/筛选，与工作副本的草稿/选中文件/分组展开态，在切换间全部保留。</p>
+
+<table class="tbl">
+  <tr><th style="width:16%"></th><th>提交图（现有）</th><th>工作副本（新增）</th></tr>
+  <tr><td><b>看待对象</b></td><td>已提交的历史（commit）</td><td>未提交的更改（工作区 / 暂存区）</td></tr>
+  <tr><td><b>回答的问题</b></td><td>仓库经历了哪些提交？某次提交改了什么？</td><td>这次提交哪些文件？提交信息怎么写？</td></tr>
+  <tr><td><b>主要区域</b></td><td>泳道图 · 提交列表 · 详情面板</td><td>文件状态列表 · 单文件 diff · 提交信息栏 + AI</td></tr>
+  <tr><td><b>高频操作</b></td><td>浏览 / 筛选 / 看详情 / 检出 / reset / fetch·pull·push</td><td>勾选暂存 / 看 diff / 生成·撰写提交信息 / 提交·推送·修订</td></tr>
+</table>
+
+<div class="flow">
+  <div class="fbox dim" style="min-width:110px"><b>GitBoard 主界面</b>（单一 WebviewPanel）</div>
+  <div class="farr">➜</div>
+  <div class="fcol">
+    <div class="fbox wv"><b>提交图视图（现有）</b>泳道图 · 提交列表 · 详情面板</div>
+    <div class="fbox host"><b>工作副本视图（新增）</b>文件状态 · diff 预览 · 提交信息栏 + AI</div>
+  </div>
+  <div class="farr">工具栏分段控件 <b>⇄</b> 一键切换<br>（徽标实时显示脏文件数）</div>
+</div>
+
+<div class="box decision"><b>决策：</b>提交界面采用「独立主视图」而非底部抽屉 / 模态对话框。理由：① diff 预览需要大尺寸可读空间，抽屉高度受限；② 模态对话框打断操作流，违背「直达交互」原则；③ 挂到现有详情面板位置会与「选中提交的详情」语义冲突。工作副本视图下自动隐藏左侧分支侧栏（220px），把空间让给文件列表与 diff；仓库切换不受影响（工具栏本就有仓库下拉）。</div>
+
+<h3>2.2 核心心智模型</h3>
+<ul>
+  <li><b>已暂存 = 将进入下一次提交的内容</b>。左栏勾选状态即 git index 状态，所见即所得。</li>
+  <li>同一文件可能<b>同时出现在两个分组</b>（已暂存一部分、工作区又改了）：两行各自独立勾选、各自独立 diff（index↔HEAD 与 worktree↔index），与 Sourcetree 行为一致。</li>
+  <li>右栏只显示<b>当前选中文件此次的完整差异</b>（HEAD ↔ 工作副本，已暂存与未暂存更改合并呈现；未跟踪文件显示为全新增）。不区分已暂存/未暂存、无页签，也不聚合多文件。</li>
+</ul>
+
+<h2 id="s3">3. 界面设计</h2>
+
+<h3 id="s3-1">3.1 视图切换入口（工具栏）</h3>
+<p>工具栏最左端新增分段控件，与现有 38px 工具栏同高；「工作副本」页签右侧挂脏文件计数徽标，数据复用现有 <code>statusOf</code> 的 <code>dirtyCount</code>。命令面板新增 <code>GitBoard: 提交更改</code>（建议键位 <span class="kbd">Ctrl+Alt+C</span>），从任意位置直达工作副本视图并聚焦信息栏。两个页签均带 hover 提示，向新用户说明分工：<b>提交图</b> =「浏览历史提交：图形、筛选、详情、拉取/推送」；<b>工作副本</b> =「处理未提交的更改：暂存、生成提交信息、提交」。</p>
+
+<div class="mockwrap">
+  <p class="mock-cap"><span class="tag">示意</span>工具栏 —— 分段控件 + 徽标（下图为真实比例局部）</p>
+  <div class="mock" style="max-width:860px">
+    <div class="vs-toolbar">
+      <div class="vs-seg">
+        <button class="seg">⎔ 提交图</button>
+        <button class="seg on">▣ 工作副本<i class="ann">1</i><span class="vs-badge">7</span></button>
+      </div>
+      <span class="vs-dd">仓库: GitBoard ▾</span>
+      <span class="vs-chip">⛓ main <span class="vs-badge">↑1 ↓2</span><i class="ann">2</i></span>
+      <span class="vs-spacer"></span>
+      <span class="tbtn" title="Fetch">⟳</span>
+      <span class="tbtn" title="Pull">↓</span>
+      <span class="tbtn" title="Push">↑</span>
+      <span class="tbtn" title="设置">⚙</span>
+    </div>
+  </div>
+  <ul class="ann-list">
+    <li>① 徽标 = 工作副本脏文件总数（已暂存 + 未暂存），随 git 状态实时刷新；干净时徽标隐藏。两页签的 hover 分工提示文案见 §3.1。</li>
+    <li>② 分支 chip 的 ↑↓ 与现有行为一致，提交/推送后自动更新。</li>
+  </ul>
+</div>
+
+<h3 id="s3-2">3.2 工作副本视图（主界面）</h3>
+<p>整体三段式：<b>左 · 文件状态</b>（默认 272px，可拖 200–420px，宽度持久化）｜<b>右 · diff 预览</b>（自适应）｜<b>底 · 提交信息栏</b>（通栏，默认 150px，可拖 104–320px、可折叠，高度持久化）。下图为核心高保真示意，<b>勾选框可点击体验暂存交互</b>：</p>
+
+<div class="mockwrap">
+  <p class="mock-cap"><span class="tag">高保真 · 可交互</span>工作副本视图（文件列表勾选框可以点击，文件会在两组间移动）</p>
+  <div class="mock" data-demo="stage">
+    <div class="vs-toolbar">
+      <div class="vs-seg">
+        <button class="seg">⎔ 提交图</button>
+        <button class="seg on">▣ 工作副本<span class="vs-badge" data-dirty>7</span></button>
+      </div>
+      <span class="vs-dd">仓库: GitBoard ▾</span>
+      <span class="vs-chip">⛓ main ↑1 ↓2</span>
+      <span class="vs-spacer"></span>
+      <span class="tbtn">⟳</span><span class="tbtn">↓</span><span class="tbtn">↑</span><span class="tbtn">⚙</span>
+    </div>
+    <div class="vs-body">
+      <div class="vs-files">
+        <div class="vs-fhead">
+          <b>文件状态</b><span style="margin-left:auto;display:flex;gap:2px">
+            <span class="tbtn" title="全部暂存" style="width:22px;height:22px;font-size:11px">⬇</span><i class="ann">3</i>
+            <span class="tbtn" title="全部取消暂存" style="width:22px;height:22px;font-size:11px">⬆</span>
+            <span class="tbtn" title="刷新" style="width:22px;height:22px;font-size:11px">⟳</span>
+          </span>
+        </div>
+        <div class="vs-search">⌕ 过滤文件…</div>
+        <div class="vs-groups">
+          <div class="fgroup-h grp-s-h">▾ <b>已暂存</b> <span class="cnt cnt-s">2</span></div>
+          <div class="grp-s">
+            <div class="rows">
+              <div class="frow on"><input type="checkbox" class="demockb" checked><span class="st M">M</span>
+                <span class="fpath"><span class="dir">src/ops/</span><b>runner.ts</b></span><span class="fstat"><span class="plus">+12</span> <span class="minus">−3</span></span></div>
+              <div class="frow"><input type="checkbox" class="demockb" checked><span class="st A">A</span>
+                <span class="fpath"><span class="dir">src/common/</span><b>protocol.ts</b></span><span class="fstat"><span class="plus">+48</span></span></div>
+            </div>
+          </div>
+          <div class="fgroup-h grp-u-h">▾ <b>未暂存</b> <span class="cnt cnt-u">5</span></div>
+          <div class="grp-u">
+            <div class="rows">
+              <div class="frow"><input type="checkbox" class="demockb"><span class="st M">M</span>
+                <span class="fpath"><span class="dir">src/webview/</span><b>panel.ts</b></span><span class="fstat"><span class="plus">+9</span> <span class="minus">−1</span></span></div>
+              <div class="frow"><input type="checkbox" class="demockb"><span class="st D">D</span>
+                <span class="fpath"><span class="dir">src/util/</span><b>legacy.ts</b></span><span class="fstat"><span class="minus">−30</span></span></div>
+              <div class="frow"><input type="checkbox" class="demockb"><span class="st R">R</span>
+                <span class="fpath"><span class="dir">lib/</span>util.ts <span style="color:#8b8b8b">→</span> <span class="dir">src/</span><b>util.ts</b></span></div>
+              <div class="frow"><input type="checkbox" class="demockb"><span class="st U">U</span>
+                <span class="fpath"><b>notes.md</b></span><span class="fstat" style="color:#6e6e6e">未跟踪</span></div>
+              <div class="frow"><input type="checkbox" class="demockb"><span class="st M">M</span>
+                <span class="fpath"><b>package.json</b></span><span class="fstat"><span class="plus">+2</span> <span class="minus">−2</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="vs-diff">
+        <div class="vs-dhead">
+          <span class="dfname"><span class="dir">src/ops/</span>runner.ts<i class="ann">4</i></span>
+          <span class="fstat"><span class="plus">+12</span> <span class="minus">−3</span></span>
+          <span class="vs-spacer"></span>
+          <span class="tbtn" title="上一个更改文件">‹<i class="ann">5</i></span>
+          <span class="tbtn" title="下一个更改文件">›</span>
+          <span class="tbtn" title="打开文件">↗</span>
+          <span class="tbtn" title="VS Code 原生 diff">⇄</span>
+          <span class="tbtn" title="复制路径">⧉</span>
+        </div>
+        <div class="dcode">
+          <div class="dline hunk"><span class="ln"></span>@@ -12,7 +12,9 @@ export type OpSpec = {</div>
+          <div class="dline ctx"><span class="ln">12</span>  kind: OpKind; root: string;</div>
+          <div class="dline ctx"><span class="ln">13</span>  <span class="cm">// fetch | pull | push | reset | checkout</span></div>
+          <div class="dline del"><span class="ln">14</span>- kind: <span class="tk">'fetch' | 'pull' | 'push' | 'reset' | 'checkout'</span>;</div>
+          <div class="dline add"><span class="ln">14</span>+ kind:</div>
+          <div class="dline add"><span class="ln">15</span>+   <span class="tk">| 'fetch' | 'pull' | 'push' | 'reset' | 'checkout'</span></div>
+          <div class="dline add"><span class="ln">16</span>+   <span class="tk">| 'stage' | 'unstage' | 'discard' | 'commit'</span>;</div>
+          <div class="dline ctx"><span class="ln">17</span>  args?: string[];</div>
+          <div class="dline ctx"><span class="ln">18</span>};</div>
+          <div class="dline hunk"><span class="ln"></span>@@ -109,6 +111,14 @@ function buildArgs(op: OpSpec): string[] {</div>
+          <div class="dline ctx"><span class="ln">111</span>      case 'checkout':</div>
+          <div class="dline add"><span class="ln">112</span>+     case <span class="tk">'stage':</span></div>
+          <div class="dline add"><span class="ln">113</span>+       return [<span class="tk">'add'</span>, ...]</div>
+        </div>
+      </div>
+    </div>
+    <div class="vs-bar">
+      <div class="vs-airow">
+        <span class="vs-aibtn">✨ AI 生成<i class="ann">6</i></span>
+        <span class="vs-mini">GPT-4.1 ▾</span>
+        <span class="vs-mini">🕘 最近信息 ▾<i class="ann">7</i></span>
+        <span class="vs-count">首行 38 / 50</span>
+      </div>
+      <textarea class="vs-ta" style="height:78px" spellcheck="false">feat(commit): 新增工作副本暂存与提交操作
+
+- 文件状态面板：已暂存/未暂存分组，勾选即暂存
+- 提交栏：AI 生成 / 最近信息复用 / 提交并推送</textarea>
+      <div class="vs-btnrow">
+        <label class="chkrow"><input type="checkbox"> 提交后推送<i class="ann">8</i></label>
+        <span class="vs-commit"><button class="main">提交 ⏎<i class="ann">9</i></button><button class="caret">▾</button></span>
+      </div>
+    </div>
+  </div>
+  <ul class="ann-list">
+    <li>③ 全部暂存 / 全部取消暂存：作用于当前过滤结果（有搜索词时仅作用于匹配项），按钮悬浮显示快捷键。</li>
+    <li>④ 无页签、无暂存态标记：整块 diff 区只显示选中文件 <b>HEAD↔工作副本的完整差异</b>（此次已暂存+未暂存更改合并），除文件名与增删统计外无更多信息。</li>
+    <li>⑤ ‹ › 在更改文件间逐个切换；文件名 hover 显示完整路径。</li>
+    <li>⑥ 暂存区为空时按钮降级为「基于全部更改生成」并给出行内提示；生成中变为停止按钮（见 3.6）。</li>
+    <li>⑦ 最近 8 条提交信息（按 subject 去重），点击填入后可继续编辑。</li>
+    <li>⑧ 勾选状态持久化（globalState），下次打开面板记住上次选择；选项等价于下拉中的「提交并推送」。</li>
+    <li>⑨ 主按钮即「提交」，右侧 ▾ 展开下拉（提交 / 提交并推送 / 修订上次提交… / 提交全部更改）；<span class="kbd">Ctrl</span>+<span class="kbd">Enter</span> 触发主按钮。</li>
+  </ul>
+</div>
+
+<h3 id="s3-3">3.3 文件状态列表细节</h3>
+<ul>
+  <li><b>分组与排序</b>：「已暂存」在上、「未暂存」在下（Sourcetree 同序）；组头可折叠（展开态持久化）；组内按路径字母序；每组计数实时更新。未跟踪文件（U）归入「未暂存」组。</li>
+  <li><b>状态徽标</b>：字母 + 语义色，与 VS Code SCM 惯例一致 —— <span style="color:#9a6700"><b>M</b></span> 修改、<span style="color:#1a7f37"><b>A</b></span> 新增、<span style="color:#cf222e"><b>D</b></span> 删除、<span style="color:#0969da"><b>R</b></span> 重命名（显示 <code>old → new</code>）、<span style="color:#57606a"><b>U</b></span> 未跟踪。</li>
+  <li><b>勾选即暂存（乐观更新）</b>：点击复选框立刻勾选/移动分组（150ms 过渡高亮），同时发 <code>git add</code> / <code>git restore --staged</code>；失败则回滚 UI 并 toast 报错（含 git stderr 首行）。操作经 OpRunner 串行队列，与 fetch/push 自然互斥。</li>
+  <li><b>右键菜单</b>：见下图。丢弃为红色高危项，仅出现在「未暂存」行；「已暂存」行提供「取消暂存」。</li>
+  <li><b>双态文件</b>：同一路径在两组各有一行，互不影响；tooltip 注明「该文件另有已暂存的更改」。</li>
+  <li><b>过滤框</b>：对两组联通过滤（子串匹配路径），无结果时显示空提示；「全部暂存」在有过滤时仅作用于匹配项（菜单悬浮提示说明）。</li>
+</ul>
+
+<div class="grid2">
+  <div class="mockwrap">
+    <p class="mock-cap"><span class="tag">示意</span>文件右键菜单</p>
+    <div class="mock" style="padding:14px;background:#161616">
+      <div class="ctxmenu">
+        <div class="mi">✓ 暂存所选文件 <span class="kb">Space</span></div>
+        <div class="mi">⬆ 取消暂存</div>
+        <div class="sep"></div>
+        <div class="mi danger">✕ 丢弃更改…<span class="kb">Del</span></div>
+        <div class="mi">🚫 忽略（.gitignore）<span style="margin-left:auto;color:#8b8b8b">▸</span></div>
+        <div class="sep"></div>
+        <div class="mi">↗ 打开文件</div>
+        <div class="mi">🗂 在资源管理器中显示</div>
+        <div class="mi">⧉ 复制路径</div>
+        <div class="mi">⎔ 在提交图中定位该文件</div>
+        <div class="sub">多选：列表支持 Ctrl/Shift 多选后批量操作</div>
+      </div>
+    </div>
+  </div>
+  <div class="mockwrap">
+    <p class="mock-cap"><span class="tag">示意</span>丢弃确认对话框（双重防护）</p>
+    <div class="mock" style="padding:24px;background:#161616">
+      <div class="vsmodal">
+        <h5>丢弃 3 个文件的更改？</h5>
+        <div class="filelist-mini">M&nbsp;src/webview/panel.ts<br>D&nbsp;src/util/legacy.ts<br>U&nbsp;notes.md</div>
+        <p>已暂存的更改将一并丢弃，未跟踪文件将被删除。该操作<b style="color:#f14c4c">不可撤销</b>。</p>
+        <div class="btns">
+          <button class="btn">取消</button>
+          <button class="btn danger">丢弃</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 id="s3-4">3.4 Diff 预览（单文件 · 单视图）</h3>
+<ul>
+  <li><b>只显示选中文件此次的差异（v1.2 修订简化）</b>：diff 区渲染<b>当前选中文件 HEAD ↔ 工作副本的完整差异</b>（该文件本次已暂存 + 未暂存更改的合并结果），命令为 <code>git diff HEAD -- &lt;path&gt;</code>。<b>不区分已暂存/未暂存，无页签</b>，除文件名与增删统计外不显示其他信息。点击左栏任意行即整体切换；无选中时显示空态「在左侧选择一个文件查看差异」。</li>
+  <li><b>文件切换</b>：文件头右侧 ‹ › 按钮在更改文件列表中逐个切换，无需来回点左栏。</li>
+  <li><b>未跟踪文件预览</b>：直接读文件内容渲染为「全新增」视图（文本 ≤1MB；二进制显示「二进制文件」占位），不改动 index。</li>
+  <li><b>操作按钮</b>：打开文件（编辑器）；<b>VS Code 原生 diff</b>（复用 <code>gitboard:</code> scheme：HEAD 版本 ↔ 磁盘文件）；复制路径；在资源管理器中显示（沿用原生 spawn 方案）。</li>
+  <li><b>超大 diff</b>：沿用现有 5000 行截断 + 「显示更多」策略；diff 结果按 <code>path + HEAD sha</code> 缓存，HEAD 未变且文件未再编辑时不重拉。</li>
+  <li><b>与 AI 上下文的区别</b>：AI 生成提交信息仍基于<b>已暂存差异</b>（<code>git diff --cached</code>，只送将进入下次提交的内容，见 §5.3）；预览区面向「看这个文件这次改了什么」，两者数据源独立、互不影响。</li>
+</ul>
+
+<h3 id="s3-5">3.5 提交信息栏（单一输入框）</h3>
+<ul>
+  <li><b>结构（v1.2 修订：单一输入框）</b>：操作行（AI 生成 / 模型 / 最近信息 / 首行字数）→ <b>唯一一个多行提交信息输入框</b> → 底行（提交后推送复选框 + 提交按钮组）。不再拆分 subject / body 两个输入；首行即摘要、空行后即正文（git 原生约定），placeholder 给出提示。整栏可折叠为一条 32px 窄条（点标题重新展开）。</li>
+  <li><b>字符向导</b>：仅对首行计数（38 / 50，超 50 变琥珀色）；正文 72 列软换行不强制。</li>
+  <li><b>提交校验</b>：已暂存为空且非「提交全部」时按钮禁用（tooltip 说明）；首行为空时聚焦并红框提示；合并冲突进行中（存在未解决路径）时禁用并提示。</li>
+  <li><b>提交成功</b>：toast 显示新提交摘要；提交图刷新并高亮新提交（不强制切回提交图视图）；信息栏按配置清空（默认清空）；「提交后推送」按勾选链式推送并沿用现有进度条。</li>
+  <li><b>修订上次提交（amend）</b>：从下拉进入，信息栏载入 HEAD 提交信息并出现琥珀色提示条：</li>
+</ul>
+
+<div class="mockwrap">
+  <p class="mock-cap"><span class="tag">示意</span>修订模式下的信息栏顶部</p>
+  <div class="mock" style="max-width:860px;padding:10px">
+    <div class="amendtip">⚠ 正在修订 <span class="mono" style="font-family:Consolas,monospace">abc1234</span> —— 已暂存的更改将并入该提交<a>退出修订</a></div>
+    <div class="vs-bar" style="border:none;background:transparent;padding:6px 0 0">
+      <textarea class="vs-ta" style="height:64px" spellcheck="false">refactor: 更名 GitMap → GitBoard
+
+（载入上次提交信息，编辑后点「修订提交」）</textarea>
+      <div class="vs-btnrow"><span style="color:#8b8b8b;font-size:11.5px">若 abc1234 已推送到远程，推送时将请求 --force-with-lease 确认</span>
+        <span class="vs-commit"><button class="main">修订提交 ⏎</button><button class="caret">▾</button></span></div>
+    </div>
+  </div>
+</div>
+
+<h3 id="s3-6">3.6 AI 生成交互（Copilot）</h3>
+<p>三个状态：空闲 → 生成中（流式）→ 完成。生成结果<b>直接落入唯一的提交信息输入框</b>（非聊天面板），用户随手可改；模型输出首行即摘要、空行后即正文，与输入框约定一致。</p>
+
+<div class="mockwrap ai-demo">
+  <p class="mock-cap"><span class="tag">可交互</span>点击页签切换三个状态</p>
+  <div class="ai-tabs">
+    <button class="ai-tab on" data-i="0">① 空闲</button>
+    <button class="ai-tab" data-i="1">② 生成中（流式）</button>
+    <button class="ai-tab" data-i="2">③ 完成 / 错误</button>
+  </div>
+
+  <div class="ai-panel on">
+    <div class="mock ai-stage">
+      <div class="vs-bar">
+        <div class="vs-airow">
+          <span class="vs-aibtn">✨ AI 生成</span>
+          <span class="vs-mini">GPT-4.1 ▾</span>
+          <span class="vs-mini">🕘 最近信息 ▾</span>
+          <span class="vs-count">0 / 50</span>
+        </div>
+        <textarea class="vs-ta" style="height:84px" placeholder="提交信息：首行 = 摘要（50 字内），空行后为正文 — 试试点击上方 ✨ 由 Copilot 生成" spellcheck="false"></textarea>
+        <div class="vs-btnrow"><label class="chkrow"><input type="checkbox"> 提交后推送</label>
+          <span class="vs-commit"><button class="main" style="background:#4d4d4d">提交 ⏎</button><button class="caret" style="background:#4d4d4d">▾</button></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ai-panel">
+    <div class="mock ai-stage">
+      <div class="vs-bar">
+        <div class="vs-airow">
+          <span class="vs-aibtn busy"><span style="display:inline-block;width:11px;height:11px;border:2px solid #888;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite"></span> 生成中… 2.1s · 点击停止</span>
+          <span class="vs-mini">GPT-4.1 ▾</span>
+          <span class="vs-count" style="color:#a371f7">✦ Copilot 正在阅读 2 个已暂存文件</span>
+        </div>
+        <textarea class="vs-ta stream" style="height:84px;color:#9d9d9d" readonly>feat(commit): 新增工作副本暂存与提交操▍</textarea>
+        <div class="vs-btnrow"><label class="chkrow"><input type="checkbox"> 提交后推送</label>
+          <span class="vs-commit"><button class="main" style="background:#4d4d4d">提交 ⏎</button><button class="caret" style="background:#4d4d4d">▾</button></span></div>
+      </div>
+    </div>
+    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+  </div>
+
+  <div class="ai-panel">
+    <div class="mock ai-stage">
+      <div class="vs-bar">
+        <div class="vs-airow">
+          <span class="vs-aibtn ok">↻ 重新生成</span>
+          <span class="vs-mini">GPT-4.1 ▾</span>
+          <span class="vs-mini">🕘 最近信息 ▾</span>
+          <span class="vs-count">38 / 50</span>
+        </div>
+        <textarea class="vs-ta" style="height:84px" spellcheck="false">feat(commit): 新增工作副本暂存与提交操作
+
+- 文件状态面板：已暂存/未暂存分组，勾选即暂存
+- 提交栏：AI 生成 / 最近信息复用 / 提交并推送</textarea>
+        <div class="ai-meta"><span class="ok">✓</span> 由 Copilot 生成，可直接编辑 · 已遵循项目指示（.copilot/ 等 2 份） · 失败时此处显示错误与「重试 / 换模型」</div>
+        <div class="vs-btnrow"><label class="chkrow"><input type="checkbox"> 提交后推送</label>
+          <span class="vs-commit"><button class="main">提交 ⏎</button><button class="caret">▾</button></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 id="s3-7">3.7 状态、动效与空状态</h3>
+<ul>
+  <li><b>状态保持</b>：视图切换用 <code>display:none</code> 保留两侧 DOM；信息草稿、选中文件、分组展开态、diff 模式全部在会话内保留；草稿另以 500ms 防抖写入 globalState（按仓库路径区分），Webview 被回收重建后自动恢复。</li>
+  <li><b>动效</b>：文件在两组间移动时 150ms 高亮渐隐；徽标数字变化轻微弹跳；AI 流式输入带光标闪烁。全部 &lt;200ms，不拖慢操作。</li>
+  <li><b>空状态</b>：工作副本干净时显示居中提示与上次提交摘要，提供「拉取 / 推送」快捷按钮：</li>
+</ul>
+
+<div class="mockwrap">
+  <p class="mock-cap"><span class="tag">示意</span>工作副本干净的空状态</p>
+  <div class="mock" style="max-width:760px">
+    <div class="vs-body" style="min-height:210px">
+      <div class="vsempty">
+        <div class="big">✓</div>
+        <div style="color:#ccc;font-size:13.5px">工作副本干净</div>
+        <div class="last">上次提交 <span class="mono">0fc18e3</span> · feat: 图形走线柔化并按分支段着色… · 2 小时前</div>
+        <div style="display:flex;gap:8px;margin-top:6px"><span class="vs-mini">↓ 拉取</span><span class="vs-mini">↑ 推送</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 id="s3-8">3.8 快捷键</h3>
+<table class="tbl">
+  <tr><th>快捷键</th><th>动作</th><th>备注</th></tr>
+  <tr><td><span class="kbd">Ctrl</span>+<span class="kbd">Enter</span></td><td>提交（主按钮）</td><td>信息栏聚焦时触发；与 VS Code SCM 惯例一致</td></tr>
+  <tr><td><span class="kbd">Ctrl</span>+<span class="kbd">Alt</span>+<span class="kbd">C</span></td><td>打开工作副本视图并聚焦信息栏</td><td>命令 <code class="inline">gitboard.commit</code>，与现有 <code class="inline">Ctrl+Alt+G</code> 呼应</td></tr>
+  <tr><td><span class="kbd">Space</span></td><td>勾选/取消勾选焦点行（暂存切换）</td><td>列表键盘导航 ↑↓</td></tr>
+  <tr><td><span class="kbd">Delete</span></td><td>丢弃焦点行更改（弹确认）</td><td>仅未暂存行</td></tr>
+  <tr><td><span class="kbd">Esc</span></td><td>停止 AI 生成 / 关闭下拉</td><td>生成中优先级最高</td></tr>
+</table>
+
+<h2 id="s4">4. 功能规格</h2>
+
+<h3>4.1 优先级总表</h3>
+<table class="tbl">
+  <tr><th style="width:12%">优先级</th><th>功能</th><th style="width:44%">验收要点</th></tr>
+  <tr><td><span class="prio p0">P0 · M1</span></td><td>文件状态分组列表（含重命名/未跟踪）、勾选暂存/取消、全部暂存/取消</td><td>勾选乐观更新，失败回滚+toast；双态文件两行并存；路径含空格/中文正确（-z 解析）</td></tr>
+  <tr><td><span class="prio p0">P0 · M1</span></td><td>diff 预览（单文件单视图：HEAD↔工作副本完整差异）</td><td>无页签、无暂存态区分；复用现有渲染组件；超大 diff 截断</td></tr>
+  <tr><td><span class="prio p0">P0 · M1</span></td><td>提交（单一多行信息框，<code>-F</code> 文件提交保留换行）</td><td>hook 失败展示 stderr；成功后图刷新+高亮新提交+按配置清空信息</td></tr>
+  <tr><td><span class="prio p0">P0 · M1</span></td><td>AI 生成（默认模型，一次性返回填入）；<b>遵循工程指示文件</b>（§5.7：<code>.copilot/</code> 与 <code>.github/</code>，存在即注入）</td><td>三处扫描、预算截断、tooltip / meta 行提示；语言跟随近期提交；无暂存时提示；未登录 Copilot 时隐藏入口</td></tr>
+  <tr><td><span class="prio p1">P1 · M2</span></td><td>提交 ▾ 下拉：提交并推送 / 修订上次提交 / 提交全部更改</td><td>推送链式沿用进度条；amend 载入旧信息+警示条+已推送时 force-with-lease 确认</td></tr>
+  <tr><td><span class="prio p1">P1 · M2</span></td><td>丢弃（含未跟踪，双重确认）</td><td>红色确认框列文件清单；确认后 <code>restore --staged --worktree</code> / <code>clean</code></td></tr>
+  <tr><td><span class="prio p1">P1 · M2</span></td><td>最近信息复用（8 条去重）、AI 流式+停止+重新生成+模型下拉、首次隐私确认</td><td>流式填充单一信息框；切换模型立即生效并记忆</td></tr>
+  <tr><td><span class="prio p1">P1 · M2</span></td><td>草稿/布局持久化（per-repo）、右键菜单（暂存/丢弃/打开/复制路径）</td><td>Webview 回收重建后草稿恢复</td></tr>
+  <tr><td><span class="prio p2">P2 · M3</span></td><td>块级暂存/块级丢弃（diff 内 hover 块操作按钮）</td><td><code>git apply --cached</code> 管道；块级取消暂存 <code>apply -R</code></td></tr>
+  <tr><td><span class="prio p2">P2 · M3</span></td><td>忽略（.gitignore：文件/目录/扩展名三选项）</td><td>追加后刷新列表；无 .gitignore 时创建</td></tr>
+  <tr><td><span class="prio p2">P2 · M3</span></td><td>提交模板与 Sign-off、右键「在提交图中定位该文件」、hook 输出面板</td><td>—</td></tr>
+</table>
+
+<h3>4.2 关键行为细则</h3>
+<h4>暂存 / 取消暂存</h4>
+<ul>
+  <li>多选（Ctrl/Shift）后右键或 <span class="kbd">Space</span> 批量操作；未跟踪文件勾选即 <code>git add</code>（等价其被纳入暂存）。</li>
+  <li>「全部暂存」= <code>git add -A</code>；「全部取消」= <code>git restore --staged .</code>（有过滤时仅对匹配路径逐个操作，并提示数量）。</li>
+  <li>操作期间行复选框禁点（同一行防抖），避免竞态；队列天然串行化。</li>
+</ul>
+<h4>提交 / 提交并推送</h4>
+<ul>
+  <li>信息经临时文件提交（<code>os.tmpdir()</code> 下随机名，用后即删），避免 argv 转义与换行问题；<code>--cleanup=strip</code> 去尾部空白。</li>
+  <li>「提交并推送」= commit 成功后自动入队 push；任一失败即停并 toast（push 失败时提交已成功，明确提示）。</li>
+  <li>「提交全部更改」= <code>git add -A</code> + commit，按钮始终可用（有任意更改时），避免用户被空暂存卡住。</li>
+  <li>hooks（pre-commit / commit-msg / husky）正常执行；失败时展示 stderr 摘要并提供「查看完整输出」。</li>
+</ul>
+<h4>AI 生成（行为）</h4>
+<ul>
+  <li>默认基于<b>已暂存</b> diff；暂存为空时按钮文案变为「基于全部更改生成」并在确认后按未暂存内容生成（此时提示建议先暂存）。</li>
+  <li>生成前自动加载工程指示文件（<code>.copilot/</code>、<code>.github/</code>，§5.7），以「MUST follow」小节注入提示词；生成完成的 meta 行注明已应用份数，tooltip 可见来源路径。</li>
+  <li>生成完成自动 focus 到输入框末尾；重新生成覆盖前若用户已手改且非上次生成结果，弹轻量确认（行内，非模态）。</li>
+  <li>生成失败（未登录 / 配额 / 超时）：信息栏下方显示错误行 +「重试」「换模型」；不弹模态。</li>
+</ul>
+
+<h2 id="s5">5. GitHub Copilot 集成</h2>
+
+<h3>5.1 能力来源与前置条件</h3>
+<ul>
+  <li>使用 VS Code <b>Language Model API</b>（<code class="inline">vscode.lm.selectChatModels</code> / <code class="inline">model.sendRequest</code>），该 API 自 VS Code <b>1.99（2025-03）</b>起稳定；本次随功能将 <code class="inline">engines.vscode</code> 提升至 <code class="inline">^1.99</code>（距当前已逾 17 个月，市场覆盖率安全）。</li>
+  <li>前置条件：用户已安装并登录 GitHub Copilot。<code class="inline">selectChatModels({vendor:'copilot'})</code> 返回空数组即视为不可用 —— <b>AI 按钮整体隐藏</b>，其余提交功能不受影响；监听 <code class="inline">lm.onDidChangeLanguageModels</code> 动态显隐。</li>
+  <li>运行时特性探测（<code class="inline">typeof vscode.lm === 'undefined'</code> 兜底），理论上兼容老版本 VS Code 的降级路径仍保留。</li>
+</ul>
+
+<div class="box decision"><b>账户分析（需求确认：直接使用当前 VS Code 登录的 Copilot 账户）——原生满足，无需任何改造：</b>
+<ul style="margin:.4em 0 0">
+  <li><b>同一登录态</b>：<code class="inline">vscode.lm</code> 的 copilot 模型由 VS Code 内置的 Copilot 服务提供，鉴权完全复用 VS Code 当前登录的 GitHub 账号（与日常使用 Copilot Chat 同一账号、同一订阅、同一配额池）。用户在本机 VS Code 登录 Copilot 后，本功能即刻可用。</li>
+  <li><b>扩展零凭证</b>：GitBoard 不需要、也不接触 PAT / API Key / OAuth 流程，不存储任何令牌；凭据生命周期全部由 VS Code 与 GitHub 认证会话管理。</li>
+  <li><b>订阅与组织策略自动生效</b>：账号档位（Free / Pro / Business / Enterprise）与组织策略（如可用模型限制、内容排除）自动体现在 <code class="inline">selectChatModels</code> 返回的模型清单中——模型下拉里出现的就是这个账号能用的，不会请求越权模型。</li>
+  <li><b>配额按该账号计划计费</b>：请求消耗账号的 Copilot 配额（premium requests / chat 额度），超额返回 429 —— 已按 §5.2 / §7.2 分类提示处理。</li>
+  <li><b>登录状态联动</b>：登出或订阅失效 → <code class="inline">selectChatModels</code> 返回空 → AI 入口自动隐藏；重新登录经 <code class="inline">lm.onDidChangeLanguageModels</code> 自动恢复。</li>
+</ul>
+结论：LM API 正是为「扩展复用宿主内 Copilot 登录」设计；若改走「直连 Copilot REST API」路线，反而必须自建 GitHub PAT 凭证管理（体验与安全性均差，已排除）。</div>
+
+<h3>5.2 调用链路</h3>
+<div class="flow">
+  <div class="fbox wv"><b>Webview 提交栏</b>点击 ✨ / 停止 / 换模型</div>
+  <div class="farr">RPC<br><b>work.aiGenerate</b></div>
+  <div class="fbox host"><b>GraphPanel（宿主）</b>组装上下文：<br>暂存 diff（截断）+ 文件统计 + 近 10 条提交<br>＋ 项目指示文件（§5.7）</div>
+  <div class="farr">selectChatModels<br>+ sendRequest</div>
+  <div class="fbox ext"><b>vscode.lm → Copilot</b>流式返回文本块</div>
+  <div class="farr">事件推送<br><b>aiChunk / aiDone / aiError</b></div>
+  <div class="fbox wv"><b>Webview 流式填充</b>信息框：首行=摘要，其余=正文<br>可编辑 / 停止 / 重新生成</div>
+</div>
+<p style="font-size:13px;color:var(--fg2)">取消：Webview 发 <code class="inline">work.aiCancel</code> → 宿主 <code class="inline">CancellationTokenSource.cancel()</code>，同时中止流与后续 chunk 推送。LM 请求消耗用户 Copilot 聊天配额，失败按 403（未登录/无权限）与 429（配额）分类提示。</p>
+
+<h3>5.3 上下文预算（长 diff 截断策略）</h3>
+<table class="tbl">
+  <tr><th>层级</th><th>策略</th></tr>
+  <tr><td>单文件 diff</td><td>保留头 300 行 + 尾 100 行，中间以 <code>@@ …省略 N 行… @@</code> 标注；单文件上限约 8K 字符</td></tr>
+  <tr><td>整体预算</td><td>≈ 12K token；超限时按「小文件全量、大文件降级为：路径 + 增删统计 + 块头（@@ 行）」逐个降级</td></tr>
+  <tr><td>排除项</td><td>锁文件（package-lock / yarn.lock / pnpm-lock）、二进制、<code>.min.</code> 产物直接以统计行呈现</td></tr>
+  <tr><td>风格样本</td><td>近 10 条提交 subject（<code>learnFromHistory</code> 可关）</td></tr>
+  <tr><td>项目指示文件</td><td><code>.copilot/*.md</code> → <code>.github/copilot-instructions.md</code> → <code>.github/instructions/*.instructions.md</code>，存在即注入；单文件 4K / 合计 8K 字符截断，预算独立核算（详见 §5.7）</td></tr>
+</table>
+
+<h3>5.4 模型选择</h3>
+<ul>
+  <li>下拉列出 <code class="inline">vendor:'copilot'</code> 全部可用模型（显示 <code class="inline">model.name</code>），默认取 <code class="inline">isDefault</code> 模型或配置的 family；选择记忆到 globalState。</li>
+  <li>每次生成时重新 <code class="inline">selectChatModels</code>（模型可用性随登录/版本变化），失败自动回退默认模型并提示。</li>
+</ul>
+
+<h3>5.5 隐私与合规</h3>
+<div class="box warn"><b>隐私提示：</b>首次点击「AI 生成」弹出确认——「生成提交信息会将<b>已暂存差异与工程指示文件内容</b>发送至 GitHub Copilot 服务」，勾选「不再询问」记入 globalState；设置项 <code class="inline">gitboard.ai.enabled=false</code> 可整体关闭并隐藏入口。截断策略同时是成本与隐私保护：超限文件只送统计不送内容。</div>
+
+<h3>5.6 核心代码形态（宿主侧）</h3>
+<pre class="code"><code>// panel.ts —— AI 生成提交信息（流式转发给 Webview）
+private aiCts?: vscode.CancellationTokenSource;
+
+async aiGenerateCommitMessage(modelId?: string): Promise&lt;void&gt; {
+  const models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+  const model = modelId ? models.find(m => m.id === modelId) ?? models[0] : models[0];
+  if (!model) { this.post({ t: 'aiError', data: { code: 'noModel' } }); return; }
+
+  const ctx = await this.git.buildCommitContext(this.root);   // diff(截断)+文件统计+近10条+项目指示(§5.7)
+  const prompt = buildPrompt(ctx, this.cfg.ai);               // 附录 A 模板
+
+  this.aiCts = new vscode.CancellationTokenSource();
+  try {
+    const res = await model.sendRequest(
+      [vscode.LanguageModelChatMessage.User(prompt)], {}, this.aiCts.token);
+    for await (const chunk of res.text) {
+      this.post({ t: 'aiChunk', data: { text: chunk } });      // Webview 流式填充
+    }
+    this.post({ t: 'aiDone' });
+  } catch (e) {
+    this.post({ t: 'aiError', data: classifyLmError(e) });      // auth | quota | canceled | error
+  } finally { this.aiCts.dispose(); this.aiCts = undefined; }
+}</code></pre>
+
+<h3>5.7 项目指示文件：遵循 .copilot / Copilot 指示定义（v1.3 新增）</h3>
+<p><b>需求</b>：调用 Copilot 生成提交信息时，若当前工程定义了指示文件（instructions），必须读取并<b>遵守其中约定</b>，再结合本次修改内容生成。</p>
+<div class="box note"><b>关键事实：</b><code class="inline">vscode.lm</code> 是裸语言模型 API，<b>不会自动附加</b> Copilot Chat 在聊天层注入的指示文件（<code>.github/copilot-instructions.md</code> 等只对 Copilot Chat / Coding Agent 界面生效）。因此 GitBoard 必须<b>自行扫描工程内指示文件并注入提示词</b>——这正是本节的设计内容；效果上等价于"让 Copilot Agent 遵守同一套工程指示"。</div>
+<ul>
+  <li><b>扫描位置（可选、存在即用，按优先级合并注入）</b>：
+    <ol>
+      <li><code>.copilot/</code> 目录下全部 <code>*.md</code>（按文件名排序）—— 工程自定义指示，最高优先；</li>
+      <li><code>.github/copilot-instructions.md</code> —— GitHub Copilot 官方指示文件（Chat / Coding Agent 通用约定）；</li>
+      <li><code>.github/instructions/*.instructions.md</code> —— Copilot 分域指示文件（含 <code>applyTo</code> front-matter；不做 glob 匹配，整篇注入并标注来源）。</li>
+    </ol>
+  </li>
+  <li><b>注入方式</b>：作为 user prompt 的 <code># Repository custom instructions (MUST follow)</code> 独立小节，位于风格样本之后、变更内容之前；每份内容带来源路径标注（见附录 A）。</li>
+  <li><b>预算</b>：单文件截断 4K 字符、合计 8K（截断时在提示词内注明「已截断」）；与 diff 预算（§5.3）独立核算，指示文件优先保量——它定义的是"必须怎么写"。</li>
+  <li><b>缓存与刷新</b>：按文件 mtime 缓存；每次生成前做一次轻量 mtime 检查（指示文件通常只有几份，开销可忽略），不引入实时 watch。</li>
+  <li><b>UI 呈现（极简，不打扰）</b>：检测到指示文件时——✨ 按钮 tooltip 追加「已加载 N 份项目指示」；生成完成后的 meta 行显示「已遵循项目指示（.copilot/ 等 N 份）」；未检测到则完全无感、不占任何空间。</li>
+  <li><b>开关</b>：设置 <code class="inline">gitboard.ai.useWorkspaceInstructions</code>（默认开）可整体关闭读取。</li>
+  <li><b>隐私</b>：指示文件内容将随 diff 一并发送至 Copilot 服务，已并入 §5.5 首次确认文案。</li>
+</ul>
+
+<h2 id="s6">6. 技术实现</h2>
+
+<h3>6.1 数据流与刷新</h3>
+<div class="flow">
+  <div class="fstack">
+    <div class="fbox wv"><b>勾选 / 按钮</b>（Webview）</div>
+    <div class="farr" style="padding:2px 0">RPC ↓</div>
+    <div class="fbox host"><b>OpRunner 串行队列</b>git add / restore / commit / push</div>
+    <div class="farr" style="padding:2px 0">成功回调 ↓</div>
+    <div class="fbox host"><b>statusTick()（新增·轻量）</b>status -z 快照对比，变化才推</div>
+    <div class="farr" style="padding:2px 0">事件 ↓</div>
+    <div class="fbox wv"><b>workState → UI 更新</b>（徽标/分组/diff 缓存失效）</div>
+  </div>
+  <div class="farr">并行兜底</div>
+  <div class="fstack">
+    <div class="fbox dim"><b>.git watcher</b>（已有，250ms 防抖）</div>
+    <div class="farr" style="padding:2px 0">↓</div>
+    <div class="fbox dim"><b>statusTick 优先</b>；index/HEAD 变化再触发整图 refresh（buildState）</div>
+  </div>
+</div>
+<div class="box note"><b>要点：</b>暂存类操作不需要重建整张提交图。新增轻量 <code class="inline">statusTick()</code> 只跑 <code>status --porcelain -z</code> 并与缓存字节对比，变化才推送 <code class="inline">workState</code>；提交完成后才触发全量 <code class="inline">refresh()</code>（新提交入图）。这样勾选暂存的反馈延迟 ≈ 单次 status 耗时，操作跟手。</div>
+
+<h3>6.2 模块改动清单</h3>
+<table class="tbl">
+  <tr><th style="width:30%">文件</th><th>改动</th><th style="width:14%">规模</th></tr>
+  <tr><td><code class="inline">src/git/parse.ts</code></td><td><code>parseStatus</code> 扩展为逐文件 <code>FileEntry</code>（XY 双列码、rename origPath、untracked），保留旧 <code>dirtyCount</code> 派生以兼容工具栏徽标</td><td>~80 行</td></tr>
+  <tr><td><code class="inline">src/git/service.ts</code></td><td>新增 <code>workingCopyOf()</code>（status 分组矩阵 + ahead/behind）、<code>buildCommitContext()</code>（AI 上下文：截断 <code>--cached</code> diff + 统计 + 近 10 条 + <b>工程指示文件</b>）、<code>collectInstructions()</code>（扫描 <code>.copilot/*.md</code> 与 <code>.github/</code> 指示文件，mtime 缓存 + 4K/8K 截断）；<code>diffOf</code> 增加 <code>head</code> 模式（<code>diff HEAD --</code>，预览区单视图：已暂存+未暂存合并）；未跟踪文件内容读取</td><td>~180 行</td></tr>
+  <tr><td><code class="inline">src/ops/runner.ts</code></td><td><code>OpSpec.kind</code> 扩展 <code>'stage'|'unstage'|'discard'|'commit'</code>；<code>buildArgs</code> 对应分支；commit 走临时文件（<code>os.tmpdir()</code>，Windows 下勿用 /tmp）；<code>env.GIT_TERMINAL_PROMPT=0</code> 防 hook 交互卡死</td><td>~90 行</td></tr>
+  <tr><td><code class="inline">src/webview/panel.ts</code></td><td><code>route()</code> 新增 9 个 case；<code>aiGenerate</code>（§5.6）；<code>statusTick</code> 推送；首次隐私确认；草稿/布局 globalState 读写；<code>gitboard:</code> provider 支持 <code>:path</code>（index 版本）</td><td>~260 行</td></tr>
+  <tr><td><code class="inline">src/common/protocol.ts</code></td><td><code>WVCommand</code> +9、<code>ExtEvent</code> +4（附录 C 全量定义）</td><td>~40 行</td></tr>
+  <tr><td><code class="inline">src/ui/app/workView.ts</code> <b>（新增）</b></td><td>文件状态列表：分组/勾选/右键/过滤/多选/空状态</td><td>~420 行</td></tr>
+  <tr><td><code class="inline">src/ui/app/commitBar.ts</code> <b>（新增）</b></td><td>信息栏：输入/计数/下拉提交/amend 模式/AI 状态机/最近信息</td><td>~320 行</td></tr>
+  <tr><td><code class="inline">src/ui/main.ts</code> · <code class="inline">state.ts</code></td><td>视图模式 <code>'graph'|'work'</code> 切换（display 保留 DOM）；<code>S.work</code> 呈现缓存；diff 缓存 key 扩展</td><td>~120 行</td></tr>
+  <tr><td><code class="inline">src/ui/diff/render.ts</code></td><td>复用；新增 HEAD↔工作副本单视图与未跟踪文件的数据源适配（无页签头）</td><td>~40 行</td></tr>
+  <tr><td><code class="inline">src/common/i18n.ts</code> · <code class="inline">package*.json</code></td><td>约 45 个新 i18n key；6 个新配置项；1 个新命令；engines → ^1.99，<code>@types/vscode</code> 同步升级</td><td>~100 行</td></tr>
+</table>
+
+<h3>6.3 git 命令映射</h3>
+<table class="tbl">
+  <tr><th>操作</th><th>命令</th><th>说明</th></tr>
+  <tr><td>状态矩阵</td><td><code>status --porcelain=v1 -z --untracked-files=all</code></td><td>NUL 分隔防空格/中文路径陷阱；R 状态含 orig 路径；复用既有 <code>core.quotepath=false</code></td></tr>
+  <tr><td>暂存</td><td><code>add -- &lt;paths&gt;</code></td><td>未跟踪文件同命令；全部：<code>add -A</code></td></tr>
+  <tr><td>取消暂存</td><td><code>restore --staged -- &lt;paths&gt;</code></td><td>git ≥ 2.23（现代环境已普及）</td></tr>
+  <tr><td>丢弃（已跟踪）</td><td><code>restore --source=HEAD --staged --worktree -- &lt;paths&gt;</code></td><td>一步回到 HEAD（含已暂存部分），与 Sourcetree Discard 语义一致</td></tr>
+  <tr><td>丢弃（未跟踪）</td><td><code>clean -fd -- &lt;paths&gt;</code></td><td>仅作用于确认清单中的路径</td></tr>
+  <tr><td>提交</td><td><code>commit --cleanup=strip -F &lt;tmpfile&gt;</code></td><td>临时文件位于 <code>os.tmpdir()</code>，用后删除；argv 数组传参无注入风险</td></tr>
+  <tr><td>修订</td><td><code>commit --amend --cleanup=strip -F &lt;tmpfile&gt;</code></td><td>保持原作者信息；已推送时推送前确认 <code>--force-with-lease</code></td></tr>
+  <tr><td>选中文件 diff（预览区）</td><td><code>diff HEAD --unified=3 -- &lt;path&gt;</code></td><td>已暂存+未暂存合并为一份差异；复用现有解析与 5000 行截断</td></tr>
+  <tr><td>AI 上下文 diff</td><td><code>diff --cached --unified=3</code></td><td>只送将进入下次提交的内容（§5.3 截断策略）</td></tr>
+  <tr><td>AI 上下文</td><td>同上 + <code>log -10 --pretty=%s</code></td><td>复用 <code>commitsPage</code></td></tr>
+</table>
+
+<h3>6.4 状态与持久化</h3>
+<table class="tbl">
+  <tr><th>状态</th><th>存放</th><th>键</th></tr>
+  <tr><td>提交草稿（message/勾选推送/修订模式）</td><td>globalState（500ms 防抖）</td><td><code>gitboard.commitDraft:&lt;repoRoot&gt;</code></td></tr>
+  <tr><td>文件列宽 / 信息栏高 / 分组展开态</td><td>globalState</td><td><code>gitboard.workLayout:&lt;repoRoot&gt;</code></td></tr>
+  <tr><td>AI 模型选择 / 隐私确认 / 最近信息</td><td>globalState</td><td><code>gitboard.ai.model / aiConsent / recentMsgs:&lt;repoRoot&gt;</code></td></tr>
+  <tr><td>视图模式（graph/work）</td><td>会话内 + <code>gitboard.startView</code> 配置（graph|work|last）</td><td>—</td></tr>
+</table>
+<p>Webview 回收重建路径沿用现有 bootstrap → <code>ready</code> 握手：ready 事件增携 <code>workState</code> 与草稿，前端一次性恢复；<code>retainContextWhenHidden: true</code> 继续保证切换标签页不丢状态。</p>
+
+<h2 id="s7">7. 里程碑与风险</h2>
+
+<h3>7.1 里程碑</h3>
+<table class="tbl">
+  <tr><th>阶段</th><th>内容</th><th>预估</th></tr>
+  <tr><td><b>M1</b> 最小闭环 <span class="prio p0">P0</span></td><td>状态矩阵解析 + 工作副本视图 + 勾选暂存 + diff 三源预览 + 提交 + AI 一次性生成（默认模型）</td><td>5–7 天</td></tr>
+  <tr><td><b>M2</b> 完整体验 <span class="prio p1">P1</span></td><td>提交下拉（并推/修订/全部）、丢弃、最近信息、AI 流式+模型选择+隐私确认、草稿与布局持久化、右键菜单</td><td>4–5 天</td></tr>
+  <tr><td><b>M3</b> 进阶打磨 <span class="prio p2">P2</span></td><td>块级暂存/丢弃、忽略菜单、模板与 sign-off、文件历史定位、hook 输出面板</td><td>3–4 天</td></tr>
+</table>
+
+<h3>7.2 风险与对策</h3>
+<table class="tbl">
+  <tr><th style="width:30%">风险</th><th>对策</th></tr>
+  <tr><td>engines 升至 ^1.99 排除老版本用户</td><td>仅 AI 能力依赖 1.99；运行时特性探测兜底隐藏；提交功能本身在 1.85+ 完整可用（如需，可拆分 engines 提升与 AI 落地为两个版本）</td></tr>
+  <tr><td>超长 diff 撑爆模型输入 / 生成慢</td><td>§5.3 三级截断；流式反馈等待感；停止随时可按</td></tr>
+  <tr><td>Windows 路径与编码（空格/中文/GBK）</td><td><code>-z</code> NUL 分隔 + 既有 <code>core.quotepath=false</code>；临时文件用 <code>os.tmpdir()</code>（本机已知 /tmp 陷阱）</td></tr>
+  <tr><td>hook 交互式输入导致挂起</td><td><code>GIT_TERMINAL_PROMPT=0</code> + 30s 超时；失败提示改用终端提交</td></tr>
+  <tr><td>watcher 高频刷新造成分组抖动</td><td>workState 走 statusTick 字节对比去重；行移动仅 150ms 高亮，不整表重建（行级 DOM 复用）</td></tr>
+  <tr><td>Copilot 配额（429）/ 未登录（403）</td><td>错误分类 toast + 「换模型 / 重试」；配额耗尽时提示等待或改用手写</td></tr>
+  <tr><td>丢弃误操作</td><td>红色确认框列出完整文件清单；未跟踪文件删除单独点明；不做「不再确认」开关</td></tr>
+</table>
+
+<h2 id="sa">附录 A · 提示词模板</h2>
+<pre class="code"><code>// —— system（角色与输出契约，英文编写以稳定指令遵循；输出语言动态指定）——
+You are an expert assistant that writes git commit messages.
+STRICT OUTPUT CONTRACT:
+1. Plain text only. First line = subject. Then ONE blank line. Then optional body.
+   No markdown, no code fences, no explanations outside the message.
+2. Subject: max 50 characters, imperative mood, no trailing period.
+3. Body: wrap at 72 characters; explain WHAT and WHY (motivation, impact),
+   never narrate the diff line by line. Omit the body if the change is trivial.
+4. Language: write in {lang} — resolved from the majority language of the
+   recent commits below (fallback: English).
+5. If the recent commits follow Conventional Commits (feat|fix|docs|refactor|…),
+   reuse the same `type(scope): subject` pattern; otherwise do not invent one.
+
+// —— user（仓库上下文 + 变更）——
+# Recent commits (style reference, latest first)
+{recent 10 subjects, learnFromHistory=false 时省略本节}
+
+# Repository custom instructions (MUST follow)
+{.copilot/*.md 与 .github/ 指示文件内容，逐份标注来源路径；
+ 无任何指示文件时省略本节 —— v1.3 新增，见 §5.7}
+
+# Staged changes summary
+ M src/ops/runner.ts        +12 −3
+ A src/common/protocol.ts   +48 −0
+ R lib/util.ts → src/util.ts
+
+# Staged diff (truncated to fit)
+{truncated `git diff --cached`}
+
+Write the commit message.</code></pre>
+<p style="font-size:13px;color:var(--fg2)">选择纯文本契约而非 JSON：流式期间即可逐字填入输入框（JSON 须等完整响应），解析规则只需「首行 → subject，其余去首空行 → body」，出错兜底为整体落 body。</p>
+
+<h2 id="sb">附录 B · 配置项与 i18n</h2>
+<table class="tbl">
+  <tr><th>配置项</th><th>类型 / 默认</th><th>说明</th></tr>
+  <tr><td><code class="inline">gitboard.ai.enabled</code></td><td>bool · true</td><td>AI 总开关；false 隐藏入口</td></tr>
+  <tr><td><code class="inline">gitboard.ai.modelFamily</code></td><td>string · ""</td><td>首选模型 family（空 = 默认模型）</td></tr>
+  <tr><td><code class="inline">gitboard.ai.language</code></td><td>auto | en | zh-cn · auto</td><td>生成语言；auto 跟随近期提交</td></tr>
+  <tr><td><code class="inline">gitboard.ai.useWorkspaceInstructions</code></td><td>bool · true</td><td>是否读取并遵循工程指示文件（<code>.copilot/</code>、<code>.github/</code>，§5.7）</td></tr>
+  <tr><td><code class="inline">gitboard.ai.learnFromHistory</code></td><td>bool · true</td><td>是否用近 10 条提交学习风格/语言</td></tr>
+  <tr><td><code class="inline">gitboard.commit.clearMessage</code></td><td>bool · true</td><td>提交成功后清空信息栏</td></tr>
+  <tr><td><code class="inline">gitboard.commit.pushAfter</code></td><td>bool · false</td><td>「提交后推送」复选框默认值</td></tr>
+  <tr><td><code class="inline">gitboard.startView</code></td><td>graph | work | last · graph</td><td>打开面板时的初始视图</td></tr>
+</table>
+<p>i18n 新增约 45 个 key（<code>work.title / work.staged / work.unstaged / work.stageAll / work.discardConfirm.* / commit.messagePlaceholder / commit.submit / commit.andPush / commit.amend / ai.generate / ai.generating / ai.stop / ai.regenerate / ai.signinRequired / ai.quotaExceeded / …</code>），中英同步，沿用 <code>package.nls*.json</code> + <code>createT</code> 机制。</p>
+
+<h2 id="sc">附录 C · 协议与类型定义（新增部分）</h2>
+<pre class="code"><code>// ---------- common/protocol.ts 新增 ----------
+// WVCommand 新增：
+| { cmd: 'work.stage';        args: { paths: string[] } }
+| { cmd: 'work.unstage';      args: { paths: string[] } }
+| { cmd: 'work.discard';      args: { paths: string[] } }        // 已跟踪 restore + 未跟踪 clean
+| { cmd: 'work.diff';         args: { path: string } }            // HEAD↔工作副本完整差异（单视图）
+| { cmd: 'work.commit';       args: { subject: string; body: string;
+                                       push?: boolean; amend?: boolean; all?: boolean } }
+| { cmd: 'work.recentMessages' }
+| { cmd: 'work.aiModels' }                                       // 可用 Copilot 模型列表
+| { cmd: 'work.aiGenerate';   args: { modelId?: string } }
+| { cmd: 'work.aiCancel' }
+
+// ExtEvent 新增：
+| { t: 'workState'; data: WorkState }       // 分组文件矩阵 + dirty + ahead/behind（statusTick 触发）
+| { t: 'aiChunk';  data: { text: string } }
+| { t: 'aiDone' }
+| { t: 'aiError';  data: { code: 'noModel' | 'auth' | 'quota' | 'canceled' | 'error'; message?: string } }
+
+// ---------- common/models.ts 新增 ----------
+interface FileEntry {          // parseStatus 产物
+  path: string; origPath?: string;          // R 状态的原路径
+  staged: 'M' | 'A' | 'D' | 'R' | null;     // X 列（index 相对 HEAD）
+  unstaged: 'M' | 'D' | null;               // Y 列（worktree 相对 index）
+  untracked: boolean;                       // '??'
+}
+interface WorkState {
+  staged: FileEntry[]; unstaged: FileEntry[];
+  dirtyCount: number; ahead: number; behind: number;
+  merging: boolean;                          // 合并进行中 → 禁止普通提交
+}
+interface CommitDraft { message: string; pushAfter: boolean; amend: boolean }</code></pre>
+
+<hr class="sect">
+<p style="color:var(--fg2);font-size:13px">GitBoard Commit 功能设计方案 v1.0 · 2026-08-20 · 本文档为设计交付物，界面示意图中的文件与提交数据均为演示用途。</p>
+
+</main>
+
+<script>
+// —— 文件列表勾选演示：行在两组间移动，计数/徽标联动 ——
+document.querySelectorAll('.mock[data-demo="stage"]').forEach(function (m) {
+  m.addEventListener('change', function (e) {
+    var cb = e.target;
+    if (!cb.classList || !cb.classList.contains('demockb')) return;
+    var row = cb.closest('.frow');
+    var target = cb.checked
+      ? m.querySelector('.grp-s .rows')
+      : m.querySelector('.grp-u .rows');
+    if (!target || !row) return;
+    row.remove();
+    target.appendChild(row);
+    row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+    var cs = m.querySelectorAll('.grp-s .frow').length;
+    var cu = m.querySelectorAll('.grp-u .frow').length;
+    var s = m.querySelector('.cnt-s'), u = m.querySelector('.cnt-u'), b = m.querySelector('[data-dirty]');
+    if (s) s.textContent = cs;
+    if (u) u.textContent = cu;
+    if (b) b.textContent = cs + cu;
+    [[m.querySelector('.grp-s .rows'), cs, '（无已暂存文件）'],
+     [m.querySelector('.grp-u .rows'), cu, '（无未暂存文件）']].forEach(function (p) {
+      if (p[0] && p[1] === 0 && !p[0].querySelector('.fempty')) {
+        var d = document.createElement('div');
+        d.className = 'fempty'; d.textContent = p[2]; p[0].appendChild(d);
+      }
+    });
+  });
+});
+
+// —— AI 状态三联演示页签 ——
+document.querySelectorAll('.ai-demo').forEach(function (d) {
+  d.querySelectorAll('.ai-tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      d.querySelectorAll('.ai-tab').forEach(function (x) { x.classList.toggle('on', x === t); });
+      d.querySelectorAll('.ai-panel').forEach(function (p, i) { p.classList.toggle('on', i === +t.dataset.i); });
+    });
+  });
+});
+</script>
+</body>
+</html>

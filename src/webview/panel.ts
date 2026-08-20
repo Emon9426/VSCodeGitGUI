@@ -2,11 +2,12 @@
  * GraphPanel —— WebviewPanel 生命周期、消息路由、操作编排（设计方案 3/6/8 节）。
  */
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { exec, spawn } from 'child_process';
 import * as vscode from 'vscode';
 import { createT, resolveLang, type Lang, type Translate } from '../common/i18n';
-import type { Commit, LogFilter, RepoMeta, RepoState } from '../common/models';
+import type { Commit, FileEntry, LogFilter, RepoMeta, RepoState, WorkState } from '../common/models';
 import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, WVRequest } from '../common/protocol';
 import { GitError, GitExecutor } from '../git/executor';
 import { discoverRepos, repoIdOf } from '../git/discovery';
@@ -14,6 +15,8 @@ import { GitService, EMPTY_TREE } from '../git/service';
 import { RepoWatcher } from '../git/watcher';
 import { OpRunner, type OpSpec, type PullStrategy } from '../ops/runner';
 import { DiffContentProvider, GITBOARD_SCHEME, EMPTY_REF, gitboardUri } from './diffProvider';
+import { lmApi, userMessage, classifyLmError } from '../ai/lm';
+import { buildSystemPrompt, buildUserPrompt, type CommitPromptCtx } from '../ai/prompt';
 
 function readConfig(): ConfigDto {
   const cfg = vscode.workspace.getConfiguration('gitboard');
@@ -32,6 +35,13 @@ function readConfig(): ConfigDto {
     fetchOnOpen: cfg.get('fetchOnOpen', true),
     fetchPrune: cfg.get('fetchPrune', true),
     defaultPullStrategy: cfg.get('defaultPullStrategy', 'merge'),
+    aiEnabled: cfg.get('ai.enabled', true),
+    aiLanguage: cfg.get('ai.language', 'auto'),
+    aiLearnFromHistory: cfg.get('ai.learnFromHistory', true),
+    aiUseWorkspaceInstructions: cfg.get('ai.useWorkspaceInstructions', true),
+    commitClearMessage: cfg.get('commit.clearMessage', true),
+    commitPushAfter: cfg.get('commit.pushAfter', false),
+    startView: cfg.get('startView', 'graph'),
   };
 }
 
@@ -87,6 +97,11 @@ export class GraphPanel {
   private statusBarItem?: vscode.StatusBarItem;
   private disposed = false;
   private readonly channel = vscode.window.createOutputChannel('GitBoard');
+  // 工作副本（Commit 功能）
+  private lastWorkJson = '';
+  private lastWorkEntries?: { staged: FileEntry[]; unstaged: FileEntry[] };
+  private aiCts?: vscode.CancellationTokenSource;
+  private pendingWorkView = false;
 
   static show(context: vscode.ExtensionContext, repoId?: string): GraphPanel {
     if (GraphPanel.current) {
@@ -152,6 +167,8 @@ export class GraphPanel {
 
   private dispose(): void {
     this.disposed = true;
+    this.aiCts?.cancel();
+    this.aiCts?.dispose();
     for (const w of this.watchers.values()) w.dispose();
     this.watchers.clear();
     this.statusBarItem?.dispose();
@@ -298,6 +315,78 @@ export class GraphPanel {
       case 'ui:openSettings':
         await vscode.commands.executeCommand('workbench.action.openSettings', 'gitboard');
         return null;
+
+      // ---------- 工作副本（Commit 功能） ----------
+      case 'work.state':
+        return this.workStateNow();
+      case 'work.stage':
+        this.workStagePaths(Array.isArray(args.paths) ? args.paths.map(String) : [], true);
+        return null;
+      case 'work.unstage':
+        this.workStagePaths(Array.isArray(args.paths) ? args.paths.map(String) : [], false);
+        return null;
+      case 'work.stageAll':
+        this.startWorkOp({ kind: 'stage', all: true });
+        return null;
+      case 'work.unstageAll':
+        this.startWorkOp({ kind: 'unstage', paths: ['.'] });
+        return null;
+      case 'work.discard':
+        this.workDiscard(Array.isArray(args.paths) ? args.paths.map(String) : []);
+        return null;
+      case 'work.diff': {
+        const rel = String(args.path);
+        const untracked = (this.lastWorkEntries?.unstaged ?? []).some(e => e.path === rel && e.untracked);
+        if (untracked) return this.service!.untrackedDiffOf(this.safeJoin(this.currentRoot(), rel));
+        return this.service!.diffOf(this.currentRoot(), 'worktree', 'HEAD', rel);
+      }
+      case 'work.commit':
+        return this.workCommit(args);
+      case 'work.recentMessages': {
+        const list = await this.service!.recentMessages(this.currentRoot(), 12);
+        const seen = new Set<string>();
+        const out: { subject: string; body: string }[] = [];
+        for (const m of list) {
+          if (seen.has(m.subject)) continue;
+          seen.add(m.subject);
+          out.push(m);
+          if (out.length >= 8) break;
+        }
+        return out;
+      }
+      case 'work.amendLoad': {
+        const head = await this.service!.headCommitOf(this.currentRoot());
+        if (!head) throw new Error(this.t('noCommits'));
+        return { shortSha: head.shortSha, message: head.subject + (head.body ? `\n\n${head.body}` : '') };
+      }
+      case 'work.aiModels':
+        return this.aiModels();
+      case 'work.aiGenerate':
+        return this.aiGenerate(args.modelId ? String(args.modelId) : undefined);
+      case 'work.aiCancel':
+        this.aiCts?.cancel();
+        return null;
+      case 'work.saveDraft':
+        await this.context.globalState.update(`gitboard.commitDraft:${this.currentRepoId}`, {
+          message: String(args.draft?.message ?? '').slice(0, 60000),
+          pushAfter: !!args.draft?.pushAfter,
+          amend: !!args.draft?.amend,
+        });
+        return null;
+      case 'work.loadDraft':
+        return this.context.globalState.get(`gitboard.commitDraft:${this.currentRepoId}`) ?? null;
+      case 'work.saveLayout': {
+        const clamp = (v: unknown, def: number, min: number, max: number) =>
+          typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, Math.round(v))) : def;
+        await this.context.globalState.update('gitboard.workLayout', {
+          filesW: clamp(args.filesW, 272, 200, 420),
+          barH: clamp(args.barH, 150, 104, 320),
+        });
+        return null;
+      }
+      case 'ui:setView':
+        await this.context.globalState.update('gitboard.lastView', args.view === 'work' ? 'work' : 'graph');
+        return null;
       default:
         throw new Error(`unknown command: ${cmd}`);
     }
@@ -334,6 +423,12 @@ export class GraphPanel {
     } else if (this.repos.length) {
       await this.selectRepo(this.repos[0].id);
     }
+    // 初始视图：命令直达 / startView 配置（work | last）
+    let showWork = this.pendingWorkView;
+    this.pendingWorkView = false;
+    if (this.config.startView === 'work') showWork = true;
+    else if (this.config.startView === 'last' && this.context.globalState.get<string>('gitboard.lastView') === 'work') showWork = true;
+    if (showWork) this.post({ t: 'showWork' });
   }
 
   private currentRoot(): string {
@@ -380,6 +475,7 @@ export class GraphPanel {
       this.post({ t: 'repoState', state });
       this.updateStatusBar();
       GraphPanel.onDidStateChange.fire();
+      void this.workStateNow().catch(() => undefined);   // 顺带轻量推送工作副本状态
     } catch (e) {
       this.post({ t: 'notify', level: 'error', message: String((e as Error)?.message ?? e) });
     }
@@ -477,6 +573,188 @@ export class GraphPanel {
     if (kind === 'push') {
       this.startOp({ kind: 'push', remote, branch: head?.branch ?? 'HEAD', setUpstream: !upstream });
     }
+  }
+
+  // ---------- 工作副本（Commit 功能，设计方案 v1.3） ----------
+
+  /** 命令面板「提交更改」：打开主界面并切到工作副本视图 */
+  openWorkView(): void {
+    if (this.ready) this.post({ t: 'showWork' });
+    else this.pendingWorkView = true;
+  }
+
+  /** 计算当前 WorkState；变化才推送（轻量 statusTick，不重建提交图） */
+  private async workStateNow(): Promise<WorkState> {
+    if (!this.service || !this.currentRepoId) throw new Error('not ready');
+    const repoId = this.currentRepoId;
+    const root = this.roots.get(repoId)!;
+    const [wc, head] = await Promise.all([
+      this.service.workingCopyOf(root),
+      this.service.headCommitOf(root),
+    ]);
+    const state: WorkState = {
+      repoId,
+      staged: wc.staged,
+      unstaged: wc.unstaged,
+      dirtyCount: wc.dirtyCount,
+      merging: wc.merging,
+      headShortSha: head?.shortSha ?? '',
+      headSubject: head?.subject ?? '',
+      headDate: head?.date ?? '',
+    };
+    this.lastWorkEntries = wc;
+    const json = JSON.stringify(state);
+    if (json !== this.lastWorkJson) {
+      this.lastWorkJson = json;
+      this.post({ t: 'workState', state });
+    }
+    return state;
+  }
+
+  /** stage / unstage / discard 类：成功只推 workState（不整图刷新，watcher 兜底）；成功不弹 toast */
+  private startWorkOp(spec: OpSpec): void {
+    if (!this.runner || !this.currentRepoId) return;
+    const root = this.roots.get(this.currentRepoId)!;
+    const opId = ++this.opSeq;
+    const kind = spec.kind;
+    const quiet = spec.kind === 'stage' || spec.kind === 'unstage';
+    void this.runner.run(root, spec, opId,
+      (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
+      ok => ok ? this.t(`${kind}Done`) : this.t('opFailed', { op: this.t(kind) }),
+    ).then(outcome => {
+      if (quiet && outcome.ok) {
+        this.post({ t: 'opResult', opId, kind, ok: true });   // 无 message：前端进度条收起且不弹 toast
+      } else if (outcome.message === 'cancelled') {
+        this.post({ t: 'opResult', opId, kind, ok: false, message: this.t('opCancelled') });
+      } else {
+        this.post({ t: 'opResult', opId, kind, ok: outcome.ok, message: outcome.message, outputTail: outcome.outputTail });
+      }
+      if (outcome.ok) void this.workStateNow();
+    });
+  }
+
+  private workStagePaths(paths: string[], stage: boolean): void {
+    if (!paths.length) return;
+    this.startWorkOp({ kind: stage ? 'stage' : 'unstage', paths });
+  }
+
+  /** 丢弃：已跟踪 restore 回 HEAD（含已暂存），未跟踪 clean -fd */
+  private workDiscard(paths: string[]): void {
+    if (!paths.length) return;
+    const untracked = new Set((this.lastWorkEntries?.unstaged ?? []).filter(e => e.untracked).map(e => e.path));
+    const tracked = paths.filter(p => !untracked.has(p));
+    const clean = paths.filter(p => untracked.has(p));
+    if (tracked.length) this.startWorkOp({ kind: 'discard', paths: tracked });
+    if (clean.length) this.startWorkOp({ kind: 'discardClean', paths: clean });
+  }
+
+  /** 提交（可 all=/amend=/push= 链式推送）；成功后清草稿并整图刷新 */
+  private async workCommit(args: any): Promise<{ ok: true; shortSha?: string }> {
+    const message = String(args.message ?? '');
+    if (!message.split('\n')[0].trim()) throw new Error(this.t('needMessage'));
+    const amend = !!args.amend;
+    const all = !!args.all;
+    const push = !!args.push;
+    if (!amend && !all && !(this.lastWorkEntries?.staged.length)) throw new Error(this.t('needStage'));
+
+    if (all) this.startWorkOp({ kind: 'stage', all: true });
+    // 临时文件经 os.tmpdir（Windows 下 /tmp 对 Node 不可见）；提交完即删
+    const file = path.join(os.tmpdir(), `gitboard-commit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`);
+    fs.writeFileSync(file, message, 'utf8');
+
+    const root = this.currentRoot();
+    const opId = ++this.opSeq;
+    let outcome;
+    try {
+      outcome = await this.runner!.run(root, { kind: 'commit', messageFile: file, amend }, opId,
+        (text, pct) => this.post({ t: 'opProgress', opId, kind: 'commit', text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
+        ok => ok ? this.t(amend ? 'amendDone' : 'commitDone') : this.t('opFailed', { op: this.t('commit') }),
+      );
+    } finally {
+      try { fs.unlinkSync(file); } catch { /* best effort */ }
+    }
+    this.post({ t: 'opResult', opId, kind: 'commit', ok: outcome.ok, message: outcome.message, outputTail: outcome.outputTail });
+    if (!outcome.ok) throw new Error(outcome.message ?? 'commit failed');
+
+    await this.context.globalState.update(`gitboard.commitDraft:${this.currentRepoId}`, undefined);
+    void this.refresh();
+    void this.workStateNow();
+    if (push) this.quickOp('push');
+    const head = await this.service!.headCommitOf(root);
+    return { ok: true, shortSha: head?.shortSha };
+  }
+
+  /** 可用 Copilot 模型列表（未安装/未登录返回空数组 → 前端隐藏 AI 入口） */
+  private async aiModels(): Promise<{ id: string; name: string; family: string; isDefault: boolean }[]> {
+    const lm = lmApi(vscode);
+    if (!lm || !this.config.aiEnabled) return [];
+    try {
+      const models = await lm.selectChatModels({ vendor: 'copilot' });
+      return models.map(m => ({ id: m.id, name: m.name, family: m.family, isDefault: !!m.isDefault }));
+    } catch {
+      return [];
+    }
+  }
+
+  /** AI 生成提交信息：上下文（暂存 diff + 指示文件 + 风格）→ sendRequest 流式转发 aiChunk */
+  private async aiGenerate(modelId?: string): Promise<null> {
+    const fail = (code: 'noModel' | 'auth' | 'quota' | 'canceled' | 'error', message?: string): null => {
+      this.post({ t: 'aiError', code, message });
+      return null;
+    };
+    if (!this.config.aiEnabled) return fail('error', this.t('aiDisabled'));
+    const lm = lmApi(vscode);
+    if (!lm) return fail('noModel');
+
+    // 首次使用隐私确认（暂存差异与工程指示文件将发送至 GitHub Copilot 服务）
+    if (this.context.globalState.get<boolean>('gitboard.aiConsent') !== true) {
+      const allow = await vscode.window.showInformationMessage(
+        this.t('aiPrivacyText'), { modal: true }, this.t('aiPrivacyAllow'),
+      );
+      if (allow !== this.t('aiPrivacyAllow')) return fail('error', this.t('aiDeclined'));
+      await this.context.globalState.update('gitboard.aiConsent', true);
+    }
+
+    let models;
+    try {
+      models = await lm.selectChatModels({ vendor: 'copilot' });
+    } catch (e) {
+      return fail(classifyLmError(e), String((e as Error)?.message ?? e).slice(0, 200));
+    }
+    if (!models.length) return fail('noModel');
+    const family = vscode.workspace.getConfiguration('gitboard').get<string>('ai.modelFamily', '');
+    const model = (modelId ? models.find(m => m.id === modelId) : undefined)
+      ?? (family ? models.find(m => m.family === family) : undefined)
+      ?? models.find(m => m.isDefault) ?? models[0];
+
+    const root = this.currentRoot();
+    const useInstructions = this.config.aiUseWorkspaceInstructions;
+    const ctx = await this.service!.buildCommitContext(root, { learnFromHistory: this.config.aiLearnFromHistory, useInstructions });
+    const pctx: CommitPromptCtx & { useInstructions?: boolean } = {
+      ...ctx,
+      instructions: useInstructions ? ctx.instructions : [],
+      language: this.config.aiLanguage,
+    };
+    const prompt = `${buildSystemPrompt(pctx)}\n\n${buildUserPrompt(pctx)}`;
+
+    this.aiCts?.cancel();
+    const cts = new vscode.CancellationTokenSource();
+    this.aiCts = cts;
+    this.channel.appendLine(`[ai] model=${model.name} instructions=${pctx.instructions.length} diffChars=${ctx.stagedDiff.length}`);
+    try {
+      const res = await model.sendRequest([userMessage(vscode, prompt)], {}, cts.token);
+      for await (const chunk of res.text) {
+        this.post({ t: 'aiChunk', text: chunk });
+      }
+      this.post({ t: 'aiDone', model: model.name, instructions: pctx.instructions.length });
+    } catch (e) {
+      const code = classifyLmError(e);
+      fail(code, code === 'error' ? String((e as Error)?.message ?? e).slice(0, 200) : undefined);
+    } finally {
+      cts.dispose();
+      if (this.aiCts === cts) this.aiCts = undefined;
+    }
+    return null;
   }
 
   // ---------- 杂项 ----------

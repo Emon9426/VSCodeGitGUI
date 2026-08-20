@@ -27,5 +27,17 @@
   "cfg.maxTagChips": "单个提交行最多显示的标签徽标数。",
   "cfg.detailPanelPosition": "提交详情面板的位置。",
   "cfg.language": "界面语言。",
-  "cfg.showStatusBarItem": "在状态栏显示当前分支。"
+  "cfg.showStatusBarItem": "在状态栏显示当前分支。",
+  "cmd.commit": "GitBoard: 提交更改",
+  "cfg.startView": "打开 GitBoard 时显示的视图。",
+  "cfg.startView.graph": "提交图",
+  "cfg.startView.work": "工作副本（提交）",
+  "cfg.startView.last": "上次使用的视图",
+  "cfg.ai.enabled": "启用 AI 生成提交信息（GitHub Copilot，复用 VS Code 当前登录账号；不可用时自动隐藏入口）。",
+  "cfg.ai.modelFamily": "首选 Copilot 模型 family（留空 = 默认模型）。",
+  "cfg.ai.language": "生成提交信息的语言（auto = 跟随近期提交语言）。",
+  "cfg.ai.learnFromHistory": "生成时学习最近 10 条提交的风格与语言。",
+  "cfg.ai.useWorkspaceInstructions": "生成时遵循工程指示文件（.copilot/、.github/copilot-instructions.md、.github/instructions/*.instructions.md）。",
+  "cfg.commit.clearMessage": "提交成功后清空提交信息输入框。",
+  "cfg.commit.pushAfter": "「提交后推送」复选框的默认状态。"
 }

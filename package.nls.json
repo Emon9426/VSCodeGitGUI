@@ -27,5 +27,17 @@
   "cfg.maxTagChips": "Maximum tag chips shown on one commit row.",
   "cfg.detailPanelPosition": "Position of the commit detail panel.",
   "cfg.language": "UI language.",
-  "cfg.showStatusBarItem": "Show the current branch in the status bar."
+  "cfg.showStatusBarItem": "Show the current branch in the status bar.",
+  "cmd.commit": "GitBoard: Commit Changes",
+  "cfg.startView": "Which view to show when opening GitBoard.",
+  "cfg.startView.graph": "Commit graph",
+  "cfg.startView.work": "Working copy (commit)",
+  "cfg.startView.last": "Last used view",
+  "cfg.ai.enabled": "Enable AI-generated commit messages via GitHub Copilot (uses your VS Code Copilot sign-in; entry is hidden when unavailable).",
+  "cfg.ai.modelFamily": "Preferred Copilot model family (empty = default model).",
+  "cfg.ai.language": "Language of generated commit messages (auto = follow recent commits).",
+  "cfg.ai.learnFromHistory": "Learn style/language from the 10 most recent commits when generating.",
+  "cfg.ai.useWorkspaceInstructions": "Follow workspace instruction files (.copilot/, .github/copilot-instructions.md, .github/instructions/*.instructions.md) when generating.",
+  "cfg.commit.clearMessage": "Clear the commit message box after a successful commit.",
+  "cfg.commit.pushAfter": "Default state of the \"Push after commit\" checkbox."
 }

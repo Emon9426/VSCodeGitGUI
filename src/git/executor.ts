@@ -11,6 +11,8 @@ export interface ExecOpts {
   maxBytes?: number;                      // stdout 上限，默认 8MB
   onStderrLine?: (line: string) => void;  // --progress 进度行走 stderr
   registerChild?: (c: ChildProcess) => void;
+  /** 追加/覆盖环境变量（合并进 process.env），如 hook 防卡死的 GIT_TERMINAL_PROMPT=0 */
+  env?: Record<string, string>;
 }
 
 export interface ExecResult {
@@ -69,7 +71,7 @@ export class GitExecutor {
     const fullArgs = ['-C', root, '--no-optional-locks', '-c', 'core.quotepath=false', ...args];
     return new Promise<ExecResult>((resolve, reject) => {
       const child = spawn(this.gitPath, fullArgs, {
-        env: process.env,
+        env: opts.env ? { ...process.env, ...opts.env } : process.env,
         windowsHide: true,
       });
       opts.registerChild?.(child);

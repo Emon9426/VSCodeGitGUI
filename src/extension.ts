@@ -26,6 +26,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('gitboard.fetch', () => GraphPanel.show(context).quickOp('fetch')),
     vscode.commands.registerCommand('gitboard.pull', () => GraphPanel.show(context).quickOp('pull')),
     vscode.commands.registerCommand('gitboard.push', () => GraphPanel.show(context).quickOp('push')),
+    vscode.commands.registerCommand('gitboard.commit', () => {
+      const p = GraphPanel.show(context);
+      p.openWorkView();
+    }),
     GraphPanel.onDidState(() => tree.refresh()),
     vscode.workspace.onDidChangeWorkspaceFolders(() => tree.refresh()),
   );

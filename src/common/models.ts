@@ -127,3 +127,45 @@ export type DiffPayload =
   | { kind: 'binary' }
   | { kind: 'tooLarge' }
   | { kind: 'empty' };
+
+// ---------- 工作副本（Commit 功能，设计方案 v1.3） ----------
+
+/** status --porcelain -z 单文件条目：XY 双列码派生出的暂存/未暂存矩阵 */
+export interface FileEntry {
+  path: string;
+  origPath?: string;                                  // R 状态的原路径
+  staged: 'M' | 'A' | 'D' | 'R' | null;               // X 列（index 相对 HEAD）
+  unstaged: 'M' | 'D' | null;                         // Y 列（worktree 相对 index）
+  untracked: boolean;                                 // '??'
+  additions?: number;                                 // 对应侧 numstat（二进制 undefined）
+  deletions?: number;
+}
+
+export interface WorkState {
+  repoId: string;
+  staged: FileEntry[];
+  unstaged: FileEntry[];
+  dirtyCount: number;
+  merging: boolean;                                   // 存在未解决冲突路径
+  headShortSha: string;                               // 空状态 / amend 提示用
+  headSubject: string;
+  headDate: string;                                   // iso-strict
+}
+
+export interface CommitDraft {
+  message: string;
+  pushAfter: boolean;
+  amend: boolean;
+}
+
+export interface AiModelInfo {
+  id: string;
+  name: string;
+  family: string;
+  isDefault: boolean;
+}
+
+export interface RecentMessage {
+  subject: string;
+  body: string;
+}

@@ -81,8 +81,18 @@ export function createToolbar(app: App): Toolbar {
   });
   progress.append(progressText, progressCancel);
 
+  // 视图切换：提交图 ⇄ 工作副本（设计方案 §2.1/§3.1）
+  const viewSeg = el('div', 'gg-viewseg');
+  const graphBtn = el('button', 'gg-viewseg-btn', `⎔ ${S.t('viewGraph')}`) as HTMLButtonElement;
+  const workBtn = el('button', 'gg-viewseg-btn', `▣ ${S.t('viewWork')}`) as HTMLButtonElement;
+  const workBadge = el('span', 'gg-viewseg-badge hidden');
+  workBtn.append(workBadge);
+  graphBtn.addEventListener('click', () => app.setView('graph'));
+  workBtn.addEventListener('click', () => app.setView('work'));
+  viewSeg.append(graphBtn, workBtn);
+
   const left = el('div', 'gg-toolbar-left');
-  left.append(repoSel, branchLabel, filterSel, filterBox);
+  left.append(viewSeg, repoSel, branchLabel, filterSel, filterBox);
   const right = el('div', 'gg-toolbar-right');
   right.append(fetchBtn, pullBtn, pushBtn, refreshBtn, gearBtn, versionLabel, progress);
   root.append(left, right);
@@ -95,6 +105,14 @@ export function createToolbar(app: App): Toolbar {
 
   function update(): void {
     versionLabel.textContent = S.version ? `v${S.version}` : '';
+    // 视图分段控件
+    graphBtn.classList.toggle('on', S.view === 'graph');
+    workBtn.classList.toggle('on', S.view === 'work');
+    graphBtn.title = S.t('viewGraphTip');
+    workBtn.title = S.t('viewWorkTip');
+    const dirty = S.work.state?.dirtyCount ?? S.state?.status.dirtyCount ?? 0;
+    workBadge.textContent = String(dirty);
+    workBadge.classList.toggle('hidden', dirty <= 0);
     // 仓库下拉
     const multi = S.repos.length > 1;
     repoSel.classList.toggle('hidden', !multi);

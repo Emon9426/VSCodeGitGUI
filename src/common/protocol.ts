@@ -3,7 +3,7 @@
  * 请求-响应：Webview 生成自增 id，扩展侧回 res 携带同 id。
  * 事件：扩展侧主动推送。
  */
-import type { RepoMeta, RepoState, Commit, CommitDetail, DiffPayload } from './models';
+import type { RepoMeta, RepoState, Commit, CommitDetail, DiffPayload, WorkState } from './models';
 
 export interface ConfigDto {
   language: 'auto' | 'zh-CN' | 'en';
@@ -19,9 +19,18 @@ export interface ConfigDto {
   fetchOnOpen: boolean;
   fetchPrune: boolean;
   defaultPullStrategy: 'merge' | 'rebase' | 'ff-only';
+  // Commit 功能（v0.7）
+  aiEnabled: boolean;
+  aiLanguage: 'auto' | 'en' | 'zh-cn';
+  aiLearnFromHistory: boolean;
+  aiUseWorkspaceInstructions: boolean;
+  commitClearMessage: boolean;
+  commitPushAfter: boolean;
+  startView: 'graph' | 'work' | 'last';
 }
 
-export type OpKind = 'fetch' | 'pull' | 'push' | 'reset' | 'checkout';
+export type OpKind = 'fetch' | 'pull' | 'push' | 'reset' | 'checkout'
+  | 'stage' | 'unstage' | 'discard' | 'discardClean' | 'commit';
 
 export interface OpProgress {
   t: 'opProgress';
@@ -56,7 +65,13 @@ export type ExtEvent =
   | OpResult
   | { t: 'notify'; level: 'info' | 'warn' | 'error'; message: string }
   | { t: 'configChanged'; config: ConfigDto; language: string }
-  | { t: 'themeChanged' };
+  | { t: 'themeChanged' }
+  // 工作副本（Commit 功能）
+  | { t: 'workState'; state: WorkState }
+  | { t: 'showWork' }
+  | { t: 'aiChunk'; text: string }
+  | { t: 'aiDone'; model: string; instructions: number }
+  | { t: 'aiError'; code: 'noModel' | 'auth' | 'quota' | 'canceled' | 'error'; message?: string };
 
 export interface WVRequest {
   id: number;
@@ -94,7 +109,25 @@ export type WVCommand =
   | 'ui:revealInFM'         // { path }
   | 'ui:copy'               // { text }
   | 'ui:saveColWidths'      // { widths: ColWidths }
-  | 'ui:openSettings';
+  | 'ui:openSettings'
+  // 工作副本（Commit 功能）
+  | 'work.state'            // {} -> WorkState
+  | 'work.stage'            // { paths: string[] }
+  | 'work.unstage'          // { paths: string[] }
+  | 'work.stageAll'         // {}
+  | 'work.unstageAll'       // {}
+  | 'work.discard'          // { paths: string[] }
+  | 'work.diff'             // { path } -> DiffPayload（HEAD↔工作副本；未跟踪=全新增）
+  | 'work.commit'           // { message, push?, amend?, all? }
+  | 'work.recentMessages'   // {} -> RecentMessage[]
+  | 'work.amendLoad'        // {} -> { shortSha, message }
+  | 'work.aiModels'         // {} -> AiModelInfo[]
+  | 'work.aiGenerate'       // { modelId? }
+  | 'work.aiCancel'         // {}
+  | 'work.saveDraft'        // { draft: CommitDraft }
+  | 'work.loadDraft'        // {} -> CommitDraft | null
+  | 'work.saveLayout'        // { filesW, barH }
+  | 'ui:setView';            // { view: 'graph' | 'work' } —— 记忆上次视图（startView=last）
 
 export interface Pending {
   resolve: (v: any) => void;

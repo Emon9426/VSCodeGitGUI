@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  parseLog, parseDecorations, parseForEachRef, parseStatus, parseFiles, parseUnifiedDiff, countDiffLines,
+  parseLog, parseDecorations, parseForEachRef, parseStatus, parseStatusEntries, parseFiles, parseUnifiedDiff, countDiffLines,
 } from '../../src/git/parse';
 
 const FS = '\x1f';
@@ -120,5 +120,59 @@ describe('parseFiles / parseUnifiedDiff', () => {
     expect(h.lines[1].oldNo).toBe(2);
     expect(h.lines[2].newNo).toBe(2);
     expect(h.lines.every(l => l.text !== undefined)).toBe(true);
+  });
+});
+
+describe('parseStatusEntries（porcelain -z 状态矩阵）', () => {
+  const NUL = '\0';
+  it('XY 双列码 → staged/unstaged/untracked 派生', () => {
+    const out = [
+      'M  src/a.ts',       // 仅已暂存
+      ' M src/b.ts',       // 仅未暂存
+      'MM src/c.ts',       // 双态：两组各一行
+      'A  new.ts',         // 已暂存新增
+      'D  gone.ts',        // 已暂存删除
+      '?? notes.md',       // 未跟踪
+      ' D del2.ts',        // 未暂存删除
+    ].map(s => s + NUL).join('');
+    const { entries, merging } = parseStatusEntries(out);
+    expect(merging).toBe(false);
+    const by = (p: string) => entries.find(e => e.path === p)!;
+    expect(by('src/a.ts')).toMatchObject({ staged: 'M', unstaged: null, untracked: false });
+    expect(by('src/b.ts')).toMatchObject({ staged: null, unstaged: 'M' });
+    expect(by('src/c.ts')).toMatchObject({ staged: 'M', unstaged: 'M' });
+    expect(by('new.ts')).toMatchObject({ staged: 'A' });
+    expect(by('gone.ts')).toMatchObject({ staged: 'D' });
+    expect(by('notes.md')).toMatchObject({ staged: null, unstaged: null, untracked: true });
+    expect(by('del2.ts')).toMatchObject({ staged: null, unstaged: 'D' });
+    expect(entries).toHaveLength(7);
+  });
+
+  it('重命名 R：origPath 取后续 NUL 记录', () => {
+    const out = 'R  src/new.ts' + NUL + 'lib/old.ts' + NUL + '?? x' + NUL;
+    const { entries } = parseStatusEntries(out);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({ path: 'src/new.ts', origPath: 'lib/old.ts', staged: 'R' });
+    expect(entries[1]).toMatchObject({ path: 'x', untracked: true });
+  });
+
+  it('冲突状态标记 merging（UU），冲突字母归并为 M', () => {
+    const out = 'UU both.ts' + NUL + 'DD dd.ts' + NUL;
+    const { entries, merging } = parseStatusEntries(out);
+    expect(merging).toBe(true);
+    expect(entries[0]).toMatchObject({ staged: 'M', unstaged: 'M' });
+    expect(entries[1]).toMatchObject({ staged: 'D', unstaged: 'D' });
+  });
+
+  it('路径含空格/中文正常（-z 无引号转义）', () => {
+    const out = 'M  my file 名.md' + NUL;
+    const { entries } = parseStatusEntries(out);
+    expect(entries[0].path).toBe('my file 名.md');
+  });
+
+  it('空输出与忽略条目', () => {
+    expect(parseStatusEntries('')).toEqual({ entries: [], merging: false });
+    const { entries } = parseStatusEntries('!! ignored/' + NUL);
+    expect(entries).toHaveLength(0);
   });
 });

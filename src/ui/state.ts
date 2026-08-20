@@ -1,6 +1,6 @@
 /** Webview 侧全局 UI 状态（唯一事实来源在扩展宿主，这里只是呈现缓存）。 */
 import { createT, type Lang, type Translate } from '../common/i18n';
-import type { Commit, CommitDetail, DiffPayload, RepoMeta, RepoState } from '../common/models';
+import type { AiModelInfo, Commit, CommitDetail, DiffPayload, RecentMessage, RepoMeta, RepoState, WorkState } from '../common/models';
 import type { ConfigDto } from '../common/protocol';
 import type { GraphData } from '../graph/lanes';
 
@@ -28,6 +28,20 @@ export interface App {
   checkoutDetached(sha: string): void;
   resetTo(sha: string): void;
   requestDiff(sha: string, path: string): void;
+  // 工作副本（Commit 功能）
+  setView(view: 'graph' | 'work'): void;
+  workStage(paths: string[], stage: boolean): void;
+  workStageAll(): void;
+  workUnstageAll(): void;
+  workDiscard(paths: string[]): void;
+  requestWorkDiff(path: string): void;
+  workCommit(opts: { message: string; push?: boolean; amend?: boolean; all?: boolean }): Promise<{ ok: boolean; shortSha?: string }>;
+  workAmendLoad(): Promise<{ shortSha: string; message: string } | null>;
+  workRecentMessages(): Promise<RecentMessage[]>;
+  aiGenerate(modelId?: string): void;
+  aiCancel(): void;
+  saveDraft(draft: { message: string; pushAfter: boolean; amend: boolean }): void;
+  openWorkDiffEditor(path: string): void;
 }
 
 export const S = {
@@ -57,6 +71,30 @@ export const S = {
   detailLoading: undefined as string | undefined,
   /** 进行中的操作（opId → 最近进度） */
   activeOps: new Map<number, { kind: string; text: string; pct?: number }>(),
+
+  // ---------- 工作副本（Commit 功能） ----------
+  /** 当前主视图：graph 提交图 | work 工作副本（display 切换，DOM 不销毁） */
+  view: 'graph' as 'graph' | 'work',
+  work: {
+    state: undefined as WorkState | undefined,
+    /** 选中行：path + 所在分组（决定 optimistic 勾选语义） */
+    selectedPath: undefined as string | undefined,
+    selectedStaged: false,
+    diff: undefined as DiffPayload | undefined,
+    diffLoading: undefined as string | undefined,
+    filter: '',
+    /** AI 状态机 */
+    aiBusy: false,
+    aiText: '',
+    aiModels: [] as AiModelInfo[],
+    aiModelId: undefined as string | undefined,
+    aiMeta: undefined as string | undefined,
+    /** 信息草稿（防抖持久化到宿主 globalState） */
+    message: '',
+    pushAfter: false,
+    amend: false,
+    amendSha: '',
+  },
 
   resetList(): void {
     this.commits = [];

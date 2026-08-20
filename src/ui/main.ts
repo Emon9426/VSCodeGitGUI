@@ -12,6 +12,8 @@ import { createCommitList } from './app/commitList';
 import { createDetailPanel } from './app/detailPanel';
 import { createSidebar } from './app/sidebar';
 import { createToolbar } from './app/toolbar';
+import { createWorkView } from './app/workView';
+import { createCommitBar } from './app/commitBar';
 import { confirmDialog, promptDialog, resetDialog, toast } from './app/overlays';
 
 // ---------- App 实现 ----------
@@ -144,6 +146,77 @@ const app: App = {
       })
       .catch(showErr);
   },
+  // ---------- 工作副本（Commit 功能） ----------
+  setView(view) {
+    if (S.view === view) return;
+    S.view = view;
+    void rpc('ui:setView', { view }).catch(() => undefined);
+    applyView();
+    if (view === 'work') {
+      void rpc('work.state').catch(showErr);
+      loadDraftOnce();
+      refreshAiModels();   // Copilot 登录状态可能变化，进出视图时刷新
+    }
+  },
+  workStage(paths, stage) {
+    void rpc(stage ? 'work.stage' : 'work.unstage', { paths }).catch(showErr);
+  },
+  workStageAll() {
+    void rpc('work.stageAll').catch(showErr);
+  },
+  workUnstageAll() {
+    void rpc('work.unstageAll').catch(showErr);
+  },
+  workDiscard(paths) {
+    void rpc('work.discard', { paths }).catch(showErr);
+  },
+  requestWorkDiff(path) {
+    S.work.diffLoading = path;
+    workview.updateDiff();
+    void rpc('work.diff', { path })
+      .then(p => {
+        if (S.work.selectedPath !== path) return;   // 已切换文件，丢弃过期响应
+        S.work.diffLoading = undefined;
+        S.work.diff = p;
+        workview.updateDiff();
+      })
+      .catch(e => {
+        if (S.work.selectedPath === path) {
+          S.work.diffLoading = undefined;
+          workview.updateDiff();
+        }
+        showErr(e);
+      });
+  },
+  workCommit(opts) {
+    return rpc('work.commit', { message: opts.message, push: opts.push, amend: opts.amend, all: opts.all });
+  },
+  workAmendLoad() {
+    return rpc('work.amendLoad');
+  },
+  workRecentMessages() {
+    return rpc('work.recentMessages');
+  },
+  aiGenerate(modelId) {
+    // 长流式请求：结果经 aiChunk/aiDone/aiError 事件驱动 UI；RPC 超时（>120s）不算错误
+    void rpc('work.aiGenerate', modelId ? { modelId } : {})
+      .catch(e => { if (!/timeout/i.test(String((e as Error)?.message))) showErr(e); });
+  },
+  aiCancel() {
+    void rpc('work.aiCancel').catch(() => undefined);
+  },
+  saveDraft(draft) {
+    void rpc('work.saveDraft', { draft }).catch(() => undefined);
+  },
+  openWorkDiffEditor(path) {
+    // 已删除文件（工作区已不存在）无法作为右侧打开
+    const entry = [...(S.work.state?.staged ?? []), ...(S.work.state?.unstaged ?? [])].find(e => e.path === path);
+    if (entry && !entry.untracked && !entry.staged && entry.unstaged === 'D') {
+      toast('warn', S.t('workDeletedFile'));
+      return;
+    }
+    void rpc('ui:openDiffEditor', { sha: 'HEAD', base: 'HEAD', path, worktree: true }).catch(showErr);
+  },
 };
 
 function showErr(e: unknown): void {
@@ -157,9 +230,13 @@ const toolbar = createToolbar(app);
 const sidebar = createSidebar(app);
 const list = createCommitList(app);
 const detail = createDetailPanel(app);
+const workview = createWorkView(app);
+const commitBar = createCommitBar(app);
 
 const mainEl = el('div', 'gg-main');
-mainEl.append(list.el, detail.el);
+const workWrap = el('div', 'gg-work-wrap hidden');
+workWrap.append(workview.el, commitBar.el);
+mainEl.append(list.el, detail.el, workWrap);
 const bodyEl = el('div', 'gg-body');
 bodyEl.append(sidebar.el, mainEl);
 const host = document.getElementById('app');
@@ -172,6 +249,42 @@ if (host) {
 function applyLayout(): void {
   mainEl.classList.toggle('detail-right', S.config.detailPanelPosition === 'right');
 }
+
+/** 视图切换：display 切换不销毁 DOM（草稿/滚动/选中全部保留） */
+function applyView(): void {
+  const work = S.view === 'work';
+  bodyEl.classList.toggle('work-mode', work);
+  list.el.classList.toggle('hidden', work);
+  detail.el.classList.toggle('hidden', work);
+  workWrap.classList.toggle('hidden', !work);
+  toolbar.update();
+}
+
+/** 每仓库只恢复一次草稿；此后由输入侧防抖保存 */
+let draftLoadedFor: string | undefined;
+function loadDraftOnce(): void {
+  if (draftLoadedFor === S.repoId) return;
+  draftLoadedFor = S.repoId;
+  void rpc('work.loadDraft')
+    .then(d => {
+      if (d && S.repoId) commitBar.applyDraft(d);
+      else commitBar.update();
+    })
+    .catch(() => undefined);
+}
+
+/** AI 模型列表（Copilot 可用时填充下拉） */
+function refreshAiModels(): void {
+  if (!S.config.aiEnabled) { S.work.aiModels = []; commitBar.update(); return; }
+  void rpc('work.aiModels')
+    .then(models => { S.work.aiModels = models ?? []; commitBar.update(); })
+    .catch(() => undefined);
+}
+
+// Esc 停止 AI 生成
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && S.work.aiBusy) app.aiCancel();
+});
 applyLayout();
 
 /** 原生日期选择器等控件跟随 VS Code 明暗主题 */
@@ -210,6 +323,8 @@ window.addEventListener('message', e => {
       sidebar.update();
       detail.update();
       applyLayout();
+      applyView();
+      refreshAiModels();
       break;
     case 'repoState': {
       const st = m.state;
@@ -220,6 +335,11 @@ window.addEventListener('message', e => {
         S.detail = undefined;
         S.diff = undefined;
         S.selectedFile = undefined;
+        // 工作副本：换仓库 → 选中/diff 失效，草稿待重载
+        S.work.state = undefined;
+        S.work.selectedPath = undefined;
+        S.work.diff = undefined;
+        draftLoadedFor = undefined;
       } else if (S.selectedSha && !st.commits.some(c => c.sha === S.selectedSha)) {
         S.selectedSha = undefined;
         S.detail = undefined;
@@ -290,10 +410,36 @@ window.addEventListener('message', e => {
       toolbar.update();
       sidebar.update();
       detail.configChanged();
+      commitBar.update();
+      refreshAiModels();
       break;
     case 'themeChanged':
       applyThemeKind();
       list.selectionChanged();   // 触发 Canvas 用新主题色重绘
+      break;
+
+    // ---------- 工作副本（Commit 功能） ----------
+    case 'workState': {
+      const prevRepo = S.work.state?.repoId;
+      if (m.state.repoId !== S.repoId && m.state.repoId !== prevRepo) break;   // 过期的其他仓库推送
+      S.work.state = m.state;
+      workview.update();
+      toolbar.update();
+      commitBar.update();
+      break;
+    }
+    case 'showWork':
+      app.setView('work');
+      commitBar.focusInput();
+      break;
+    case 'aiChunk':
+      commitBar.onAiChunk(m.text);
+      break;
+    case 'aiDone':
+      commitBar.onAiDone(m.model, m.instructions);
+      break;
+    case 'aiError':
+      commitBar.onAiError(m.code, m.message);
       break;
   }
 });

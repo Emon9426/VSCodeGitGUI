@@ -1,7 +1,7 @@
 /**
  * git 输出解析器（纯函数，设计方案 13.1 单测对象）。
  */
-import type { Commit, RefChip, BranchInfo, TagInfo, RemoteGroup, FileChange, FileStatus, UnifiedDiff, DiffHunk, DiffLine } from '../common/models';
+import type { Commit, RefChip, BranchInfo, TagInfo, RemoteGroup, FileChange, FileStatus, UnifiedDiff, DiffHunk, DiffLine, FileEntry } from '../common/models';
 
 export const FS = '\x1f';   // 字段分隔符
 export const RS = '\x1e';   // 记录分隔符
@@ -126,6 +126,41 @@ export interface StatusInfo {
   detached: boolean;
   noCommitsYet: boolean;
   dirtyCount: number;
+}
+
+/**
+ * git status --porcelain=v1 -z（NUL 分隔）→ 逐文件 FileEntry 矩阵 + 冲突标记。
+ * 条目格式："XY␠path\0"；重命名/复制为 "XY␠new\0old\0"（紧随其后一个 NUL 记录原路径）。
+ * 未跟踪 "??␠path"；忽略 "!..." 跳过；冲突字母（U 等）不在 M/A/D/R/C 白名单时归并为 M。
+ */
+export function parseStatusEntries(out: string): { entries: FileEntry[]; merging: boolean } {
+  const entries: FileEntry[] = [];
+  let merging = false;
+  if (!out) return { entries, merging };
+  const CONFLICTS = new Set(['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU']);
+  const toks = out.split('\0');
+  for (let i = 0; i < toks.length; i++) {
+    const rec = toks[i];
+    if (!rec || rec.length < 4) continue;
+    const x = rec[0];
+    const y = rec[1];
+    if (x === '!') continue;
+    if (CONFLICTS.has(x + y)) merging = true;
+    if (x === '?') {
+      entries.push({ path: rec.slice(3), staged: null, unstaged: null, untracked: true });
+      continue;
+    }
+    const path = rec.slice(3);
+    let origPath: string | undefined;
+    if (x === 'R' || x === 'C') {
+      const orig = toks[++i];
+      if (orig) origPath = orig;
+    }
+    const staged = x !== ' ' && x !== '.' ? ('MADRC'.includes(x) ? (x as FileEntry['staged']) : 'M') : null;
+    const unstaged = y !== ' ' && y !== '.' ? (y === 'D' ? 'D' : 'M') : null;
+    entries.push({ path, origPath, staged, unstaged, untracked: false });
+  }
+  return { entries, merging };
 }
 
 /** git status --porcelain=v1 -b 首行 + 脏文件计数 */
