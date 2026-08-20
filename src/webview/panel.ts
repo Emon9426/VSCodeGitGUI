@@ -9,7 +9,7 @@ import * as vscode from 'vscode';
 import { createT, resolveLang, type Lang, type Translate } from '../common/i18n';
 import type { Commit, FileEntry, LogFilter, RepoMeta, RepoState, WorkState } from '../common/models';
 import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, WVRequest } from '../common/protocol';
-import { GitError, GitExecutor } from '../git/executor';
+import { GitError, GitExecutor, isGitError } from '../git/executor';
 import { discoverRepos, repoIdOf } from '../git/discovery';
 import { GitService, EMPTY_TREE } from '../git/service';
 import { RepoWatcher } from '../git/watcher';
@@ -350,6 +350,8 @@ export class GraphPanel {
       case 'work.discard':
         this.workDiscard(Array.isArray(args.paths) ? args.paths.map(String) : []);
         return null;
+      case 'work.deleteFile':
+        return this.deleteFiles(Array.isArray(args.paths) ? args.paths.map(String) : []);
       case 'work.diff': {
         const rel = String(args.path);
         const untracked = (this.lastWorkEntries?.unstaged ?? []).some(e => e.path === rel && e.untracked);
@@ -891,6 +893,40 @@ export class GraphPanel {
     if (clean.length) this.startWorkOp({ kind: 'discardClean', paths: clean });
   }
 
+  /**
+   * 删除文件：从磁盘移除（非 git rm——不动暂存区）。
+   * 未跟踪文件删除后直接消失；已跟踪文件转「未暂存」D 状态，暂存后才计入提交。
+   * 顺带关闭这些文件的编辑器标签，避免悬空脏编辑器。
+   */
+  private async deleteFiles(paths: string[]): Promise<{ ok: true; deleted: number }> {
+    const root = this.currentRoot();
+    let deleted = 0;
+    const failures: string[] = [];
+    for (const rel of paths.slice(0, 500)) {
+      try {
+        const abs = this.safeJoin(root, rel);
+        if (abs === path.resolve(root)) continue;   // 防御：不接受仓库根本身
+        fs.rmSync(abs, { recursive: true, force: true });
+        for (const tg of vscode.window.tabGroups.all) {
+          for (const tab of tg.tabs) {
+            const uri = (tab.input as { uri?: vscode.Uri } | undefined)?.uri;
+            if (uri && path.resolve(uri.fsPath) === abs) void vscode.window.tabGroups.close(tab);
+          }
+        }
+        deleted++;
+      } catch (e) {
+        failures.push(rel);
+        this.channel.appendLine(`[delete] ${rel}: ${String((e as Error)?.message ?? e).slice(0, 200)}`);
+      }
+    }
+    if (failures.length) throw new Error(this.t('deleteFileFailed', { n: failures.length }) + failures.slice(0, 5).join('、'));
+    if (deleted) {
+      void this.workStateNow();
+      void this.refresh(true);   // 脏计数变化影响侧栏徽标与提交图
+    }
+    return { ok: true, deleted };
+  }
+
   /** 提交（可 all=/amend=/push= 链式推送）；成功后清草稿并整图刷新 */
   private async workCommit(args: any): Promise<{ ok: true; shortSha?: string }> {
     const message = String(args.message ?? '');
@@ -974,30 +1010,48 @@ export class GraphPanel {
       ?? (family ? models.find(m => m.family === family) : undefined)
       ?? models.find(m => m.isDefault) ?? models[0];
 
-    const root = this.currentRoot();
-    const useInstructions = this.config.aiUseWorkspaceInstructions;
-    const ctx = await this.service!.buildCommitContext(root, { learnFromHistory: this.config.aiLearnFromHistory, useInstructions });
-    const pctx: CommitPromptCtx & { useInstructions?: boolean } = {
-      ...ctx,
-      instructions: useInstructions ? ctx.instructions : [],
-      language: this.config.aiLanguage,
-    };
-    const prompt = `${buildSystemPrompt(pctx)}\n\n${buildUserPrompt(pctx)}`;
-
     this.aiCts?.cancel();
     const cts = new vscode.CancellationTokenSource();
     this.aiCts = cts;
-    this.channel.appendLine(`[ai] model=${model.name} instructions=${pctx.instructions.length} diffChars=${ctx.stagedDiff.length}`);
+    // 看门狗：60s 无输出（含首字节）自动取消——LM 请求无内建超时，
+    // 大 prompt 挂起时若无兜底，前端 aiBusy 永久卡死
+    let watchdog: NodeJS.Timeout | undefined;
+    let timedOut = false;
+    const armWatchdog = (): void => {
+      if (watchdog) clearTimeout(watchdog);
+      watchdog = setTimeout(() => { timedOut = true; cts.cancel(); }, 60_000);
+    };
     try {
+      const root = this.currentRoot();
+      const useInstructions = this.config.aiUseWorkspaceInstructions;
+      const ctx = await this.service!.buildCommitContext(root, { learnFromHistory: this.config.aiLearnFromHistory, useInstructions });
+      const pctx: CommitPromptCtx & { useInstructions?: boolean } = {
+        ...ctx,
+        instructions: useInstructions ? ctx.instructions : [],
+        language: this.config.aiLanguage,
+      };
+      const prompt = `${buildSystemPrompt(pctx)}\n\n${buildUserPrompt(pctx)}`;
+      this.channel.appendLine(`[ai] model=${model.name} instructions=${pctx.instructions.length} diffChars=${ctx.stagedDiff.length} summaryChars=${ctx.stagedSummary.length}`);
+      armWatchdog();
       const res = await model.sendRequest([userMessage(vscode, prompt)], {}, cts.token);
       for await (const chunk of res.text) {
+        armWatchdog();
         this.post({ t: 'aiChunk', text: chunk });
       }
       this.post({ t: 'aiDone', model: model.name, instructions: pctx.instructions.length });
     } catch (e) {
-      const code = classifyLmError(e);
-      fail(code, code === 'error' ? String((e as Error)?.message ?? e).slice(0, 200) : undefined);
+      // 上下文构建（git diff 超时等）与 LM 调用统一兜底：必须发 aiError，否则前端永久 busy
+      if (timedOut) {
+        fail('error', this.t('aiTimeout'));
+      } else if (isGitError(e)) {
+        this.channel.appendLine(`[ai] context build failed: ${e.message}`);
+        fail('error', this.t('aiContextFailed'));
+      } else {
+        const code = classifyLmError(e);
+        fail(code, code === 'error' ? String((e as Error)?.message ?? e).slice(0, 200) : undefined);
+      }
     } finally {
+      if (watchdog) clearTimeout(watchdog);
       cts.dispose();
       if (this.aiCts === cts) this.aiCts = undefined;
     }

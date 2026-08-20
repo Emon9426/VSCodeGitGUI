@@ -9,6 +9,7 @@ import { el, clearChildren } from '../util';
 import { rpc } from '../rpc';
 import { renderDiff } from '../diff/render';
 import { showContextMenu, confirmDialog } from './overlays';
+import { setIcon } from '../icons';
 
 export interface WorkView {
   el: HTMLElement;
@@ -25,8 +26,10 @@ export function createWorkView(app: App): WorkView {
   const fhead = el('div', 'gg-work-fhead');
   const ftitle = el('span', 'gg-work-ftitle');
   const fbtns = el('div', 'gg-work-fbtns');
-  const stageAllBtn = el('button', 'gg-icon-btn', '⬇');
-  const unstageAllBtn = el('button', 'gg-icon-btn', '⬆');
+  const stageAllBtn = el('button', 'gg-icon-btn');
+  const unstageAllBtn = el('button', 'gg-icon-btn');   // 清单勾选/空框：与行内"勾选即暂存"直接对应
+  setIcon(stageAllBtn, 'checklist');
+  setIcon(unstageAllBtn, 'checklistEmpty');
   const fsearch = el('input', 'gg-work-search') as HTMLInputElement;
   const groups = el('div', 'gg-work-groups');
   const conflictHead = mkGroupHead(true);
@@ -111,12 +114,18 @@ export function createWorkView(app: App): WorkView {
   const dpath = el('span', 'gg-work-dpath');
   const dstats = el('span', 'gg-work-dstats');
   const dspace = el('span', 'gg-work-dspacer');
-  const prevBtn = el('button', 'gg-icon-btn', '‹');
-  const nextBtn = el('button', 'gg-icon-btn', '›');
-  const openBtn = el('button', 'gg-icon-btn', '↗');
-  const nativeBtn = el('button', 'gg-icon-btn', '⇄');
-  const copyBtn = el('button', 'gg-icon-btn', '⧉');
-  const revealBtn = el('button', 'gg-icon-btn', '📂');
+  const prevBtn = el('button', 'gg-icon-btn');
+  const nextBtn = el('button', 'gg-icon-btn');
+  const openBtn = el('button', 'gg-icon-btn');
+  const nativeBtn = el('button', 'gg-icon-btn');
+  const copyBtn = el('button', 'gg-icon-btn');
+  const revealBtn = el('button', 'gg-icon-btn');
+  setIcon(prevBtn, 'chevronLeft');
+  setIcon(nextBtn, 'chevronRight');
+  setIcon(openBtn, 'goToFile');
+  setIcon(nativeBtn, 'compare');
+  setIcon(copyBtn, 'copy');
+  setIcon(revealBtn, 'folder');
   const modeBtn = el('button', 'gg-btn small');
   const dbox = el('div', 'gg-work-dbox');
   dhead.append(dpath, dstats, dspace, prevBtn, nextBtn, openBtn, nativeBtn, revealBtn, copyBtn, modeBtn);
@@ -310,6 +319,13 @@ export function createWorkView(app: App): WorkView {
     }
     r.appendChild(num);
 
+    // 行内删除（hover 显示）：从磁盘移除，语义与「丢弃」（恢复内容）相反
+    const delBtn = el('button', 'gg-work-del');
+    setIcon(delBtn, 'trash');
+    delBtn.title = S.t('deleteFile');
+    delBtn.addEventListener('click', ev => { ev.stopPropagation(); askDelete([e.path]); });
+    r.appendChild(delBtn);
+
     r.addEventListener('click', () => selectEntry(e));
     r.addEventListener('contextmenu', ev => {
       ev.preventDefault();
@@ -321,6 +337,7 @@ export function createWorkView(app: App): WorkView {
       }
       items.push(
         { sep: true },
+        { label: `${S.t('deleteFile')}…`, danger: true, run: () => askDelete([e.path]) },
         { label: S.t('openFile'), run: () => app.openFile(e.path) },
         { label: S.t('revealInFM'), run: () => app.revealInFM(e.path) },
         { label: S.t('copyPath'), run: () => app.copy(e.path) },
@@ -328,6 +345,16 @@ export function createWorkView(app: App): WorkView {
       showContextMenu(items, ev.clientX, ev.clientY);
     });
     return r;
+  }
+
+  function askDelete(paths: string[]): void {
+    const n = paths.length;
+    void confirmDialog(
+      S.t('deleteFileConfirmTitle', { n }),
+      S.t('deleteFileConfirmText', { n }) + '\n\n' + paths.slice(0, 8).join('\n') + (n > 8 ? `\n…(+${n - 8})` : ''),
+      S.t('deleteFile'),
+      true,
+    ).then(ok => { if (ok) app.deleteFile(paths); });
   }
 
   function askDiscard(paths: string[]): void {

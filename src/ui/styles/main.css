@@ -57,6 +57,8 @@ button.danger:hover { background: #c62121; }
 .gg-dirty-badge { margin-left: 6px; color: var(--vscode-charts-yellow); font-size: 11px; }
 .gg-tb-btn { min-width: 34px; font-size: 14px; line-height: 1; padding: 4px 8px; transition: color .15s ease; }
 .gg-icon-btn { min-width: 24px; padding: 2px 6px; }
+/* 内联 SVG 图标（v0.8.1）：描边跟随按钮前景色，明暗主题自适应 */
+.gg-ic { width: 13px; height: 13px; display: block; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
 /* 操作按钮状态反馈（v0.7.1）：进行中=蓝色脉冲，成功=短暂绿色 */
 .gg-tb-btn.busy { color: var(--vscode-charts-blue); animation: gg-pulse 1s ease-in-out infinite; pointer-events: none; }
 .gg-tb-btn.ok { color: var(--vscode-charts-green); }
@@ -532,6 +534,15 @@ button.danger:hover { background: #c62121; }
 .gg-work-fnum b.a { color: var(--vscode-charts-green); }
 .gg-work-fnum b.d { color: var(--vscode-charts-red); }
 .gg-work-fnum i { font-style: normal; font-size: 10.5px; }
+/* 行内删除按钮：hover 才现身，与「丢弃」相反的语义（移除文件 vs 恢复内容） */
+.gg-work-row .gg-work-del {
+  visibility: hidden; flex: none; display: flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; border: none; background: none; cursor: pointer;
+  color: var(--vscode-descriptionForeground); border-radius: 4px;
+}
+.gg-work-row:hover .gg-work-del, .gg-work-row .gg-work-del:focus-visible { visibility: visible; }
+.gg-work-row .gg-work-del:hover { color: var(--vscode-charts-red); background: color-mix(in srgb, var(--vscode-charts-red) 14%, transparent); }
+.gg-work-row .gg-work-del .gg-ic { width: 12px; height: 12px; }
 .gg-work-rowempty { padding: 3px 16px; color: var(--vscode-descriptionForeground); font-size: 11.5px; opacity: 0.8; }
 
 /* ---- 右：单文件 diff ---- */

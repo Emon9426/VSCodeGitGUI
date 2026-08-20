@@ -34,6 +34,7 @@ export interface App {
   workStageAll(): void;
   workUnstageAll(): void;
   workDiscard(paths: string[]): void;
+  deleteFile(paths: string[]): void;
   requestWorkDiff(path: string): void;
   workCommit(opts: { message: string; push?: boolean; amend?: boolean; all?: boolean }): Promise<{ ok: boolean; shortSha?: string }>;
   workAmendLoad(): Promise<{ shortSha: string; message: string } | null>;

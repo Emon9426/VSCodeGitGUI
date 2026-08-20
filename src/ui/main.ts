@@ -177,6 +177,11 @@ const app: App = {
   workDiscard(paths) {
     void rpc('work.discard', { paths }).catch(showErr);
   },
+  deleteFile(paths) {
+    void rpc('work.deleteFile', { paths })
+      .then(r => { if (r?.deleted > 0) toast('info', S.t('deleteFileDone', { n: r.deleted })); })
+      .catch(showErr);
+  },
   requestWorkDiff(path) {
     S.work.diffLoading = path;
     workview.updateDiff();

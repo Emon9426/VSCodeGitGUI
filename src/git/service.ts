@@ -322,11 +322,12 @@ export class GitService {
   }> {
     const diffArgs = (cached: boolean) =>
       cached ? ['diff', '--cached', '--numstat', '-M'] : ['diff', '--numstat', '-M'];
-    let num = await this.exec.exec(root, diffArgs(true));
+    // numstat 上限 512KB：万级文件场景防巨量输出（行数仅供统计，截断无损）
+    let num = await this.exec.exec(root, diffArgs(true), { maxBytes: 512 * 1024 });
     let cached = true;
     if (!num.stdout.trim()) {
       // 暂存区为空：回退 HEAD↔工作副本 全部更改（§4.2「基于全部更改生成」）
-      num = await this.exec.exec(root, diffArgs(false));
+      num = await this.exec.exec(root, diffArgs(false), { maxBytes: 512 * 1024 });
       cached = false;
     }
     const [recent, instructions] = await Promise.all([
@@ -341,11 +342,14 @@ export class GitService {
       const binary = f[0] === '-' || f[1] === '-';
       summaryLines.push(` ${binary ? 'B' : '+' + f[0] + '/-' + f[1]}\t${f[2]}`);
     }
-    const stagedSummary = summaryLines.join('\n');
-    // staged diff：全量拉取后按文件截断（锁文件/产物只保留统计行）
+    const stagedSummary = clampSummary(summaryLines);
+    // staged diff：全量拉取后按文件截断（锁文件/产物只保留统计行）。
+    // 文件多时收紧上下文（unified=1）并降拉取上限至 1MB——最终预算仅 24K 字符，
+    // 4MB 全量 diff 在大改动下生成慢且白费（Windows 上 git diff 是主要耗时点）
+    const unified = summaryLines.length > 60 ? 1 : 3;
     const full = await this.exec.exec(root, cached
-      ? ['diff', '--cached', '--unified=3', '-M']
-      : ['diff', '--unified=3', '-M'], { maxBytes: 4 * 1024 * 1024 });
+      ? ['diff', '--cached', `--unified=${unified}`, '-M']
+      : ['diff', `--unified=${unified}`, '-M'], { maxBytes: 1024 * 1024 });
     const { text: stagedDiff, truncated } = truncateCachedDiff(full.stdout, stagedSummary);
     return {
       stagedSummary,
@@ -359,6 +363,25 @@ export class GitService {
 
 /** 锁文件/压缩产物：不送 diff 内容 */
 const NOISE_RE = /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|Cargo\.lock|go\.sum)(\/|$)|\.min\.(js|css)$/;
+
+/**
+ * 文件统计截断：最多 400 行 / 8K 字符，其余聚合计数。
+ * 万级文件时 numstat 全量进 prompt 会撑爆模型上下文（请求挂起），必须封顶。
+ */
+export function clampSummary(lines: string[]): string {
+  const MAX_LINES = 400, MAX_CHARS = 8_000;
+  const out: string[] = [];
+  let len = 0, i = 0;
+  for (; i < lines.length; i++) {
+    if (i >= MAX_LINES || len + lines[i].length + 1 > MAX_CHARS) break;
+    out.push(lines[i]);
+    len += lines[i].length + 1;
+  }
+  const rest = lines.length - i;
+  return rest > 0
+    ? out.join('\n') + `\n…(另有 ${rest} 个文件未逐一列出)`
+    : out.join('\n');
+}
 
 /**
  * 已暂存 diff 截断（设计方案 §5.3）：

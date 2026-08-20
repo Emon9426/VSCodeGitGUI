@@ -124,6 +124,7 @@ export type WVCommand =
   | 'work.stageAll'         // {}
   | 'work.unstageAll'       // {}
   | 'work.discard'          // { paths: string[] }
+  | 'work.deleteFile'       // { paths: string[] }（从磁盘删除；已跟踪文件删除后转未暂存 D，需暂存生效）
   | 'work.diff'             // { path } -> DiffPayload（HEAD↔工作副本；未跟踪=全新增）
   | 'work.commit'           // { message, push?, amend?, all? }
   | 'work.recentMessages'   // {} -> RecentMessage[]

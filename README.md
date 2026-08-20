@@ -21,8 +21,8 @@ GitBoard is a VS Code extension (desktop) that visualizes and operates Git repos
 | 差异对比 | 面板内联 diff（紧凑模式只看增删行，`⋯` 折叠无差异段落）+ VS Code 内置差异编辑器（语法高亮） |
 | 文件操作 | 打开工作区文件、查看任意历史版本（只读）、在系统文件管理器中定位（已删除文件自动回退父目录）、复制路径 |
 | GUI Git 操作 | Fetch（--all --prune）、Pull（merge/rebase/ff-only）、Push（含设置上游）、重置到提交（soft/mixed/hard）、切换分支、检出远程分支、分离 HEAD |
-| 工作副本提交（v0.7.0） | 已暂存/未暂存分组，勾选即暂存/取消；单文件 HEAD↔工作副本差异（无页签）；提交 / 提交并推送 / 修订上次提交 / 暂存全部并提交；最近 8 条信息复用；丢弃（双重确认）；草稿按仓库持久化 |
-| AI 提交信息（v0.7.0） | GitHub Copilot 生成提交信息：流式填充、可停止/重新生成/选模型；基于已暂存差异 + 近 10 条提交学习风格与语言；自动遵循 `.copilot/`、`.github/copilot-instructions.md` 等工程指示文件；复用 VS Code 当前登录账号，扩展零凭证 |
+| 工作副本提交（v0.7.0） | 已暂存/未暂存分组，勾选即暂存/取消；单文件 HEAD↔工作副本差异（无页签）；提交 / 提交并推送 / 修订上次提交 / 暂存全部并提交；最近 8 条信息复用；丢弃（双重确认）；删除文件（v0.9.0，行内回收站按钮 / 右键，已跟踪文件删除后转未暂存 D）；草稿按仓库持久化 |
+| AI 提交信息（v0.7.0） | GitHub Copilot 生成提交信息：流式填充、可停止/重新生成/选模型；基于已暂存差异 + 近 10 条提交学习风格与语言；自动遵循 `.copilot/`、`.github/copilot-instructions.md` 等工程指示文件；复用 VS Code 当前登录账号，扩展零凭证。v0.8.1 大批量提交加固：统计与差异封顶截断（防超长 prompt 挂起）、60s 无响应自动停止、失败必解除界面锁定 |
 | 筛选 | 分支/远程/标签过滤 + 作者 + 时间段（可叠加，条件按仓库记忆） |
 | 大仓库性能 | 分页加载（500/页，自动上限可配）、DOM 虚拟滚动 + Canvas 只绘视口、.git 监视防抖自动刷新 |
 | 界面 | 跟随 VS Code 明暗主题、列宽拖拽并持久化、中英双语、状态栏当前分支 |
@@ -40,14 +40,14 @@ code --install-extension EmonZhang3438.gitboard
 **方式一：命令行安装 vsix（推荐）**
 
 ```bash
-code --install-extension gitboard-0.8.0.vsix
+code --install-extension gitboard-0.9.0.vsix
 ```
 
 安装后执行 **Ctrl+Shift+P → “开发者：重新加载窗口”**（每次覆盖安装新版本后都需要）。
 
 **方式二：VS Code 界面安装**
 
-扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.8.0.vsix` → 重新加载窗口。
+扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.9.0.vsix` → 重新加载窗口。
 
 **方式三：从源码构建**
 
@@ -115,8 +115,9 @@ SourceTree 式提交流程，全程不离开 GitBoard：
 - **看差异**：点击任一文件行，右栏显示该文件 **HEAD ↔ 工作副本的完整差异**（本次已暂存+未暂存合并，无页签）；`‹ ›` 在更改文件间逐个切换；未跟踪文件显示为全新增；
 - **写提交信息**：单一多行输入框，首行即摘要（计数 50 提示）、空行后为正文；`🕘` 复用最近 8 条提交信息；草稿按仓库自动保存，切视图/重开不丢；
 - **提交**：`Ctrl+Enter` 或「提交 ⏎」按钮；下拉可选 **提交并推送 / 修订上次提交**（自动载入上次信息并警示）/ **暂存全部并提交**；hooks 失败会展示完整输出；
-- **AI 生成**：点 **✨** 由 GitHub Copilot 基于已暂存差异生成提交信息——流式填入输入框，可 `Esc` 停止、重新生成、切换模型；语言与风格自动学习近 10 条提交；若工程定义了 `.copilot/*.md`、`.github/copilot-instructions.md`、`.github/instructions/*.instructions.md` 指示文件将自动遵循；首次使用会请求确认（差异将发送至 Copilot 服务）；
-- **丢弃**：右键文件 →「丢弃更改…」，红色双重确认后回到 HEAD（未跟踪文件直接删除）。
+- **AI 生成**：点 **✨** 由 GitHub Copilot 基于已暂存差异生成提交信息——流式填入输入框，可 `Esc` 停止、重新生成、切换模型；语言与风格自动学习近 10 条提交；若工程定义了 `.copilot/*.md`、`.github/copilot-instructions.md`、`.github/instructions/*.instructions.md` 指示文件将自动遵循；首次使用会请求确认（差异将发送至 Copilot 服务）。v0.8.1 针对一次性提交大量代码加固：文件统计与差异均封顶截断（防超长 prompt 挂起）、60 秒无响应自动停止并提示可重试、任何失败都会解除界面锁定；
+- **丢弃**：右键文件 →「丢弃更改…」，红色双重确认后回到 HEAD（未跟踪文件直接删除）；
+- **删除文件**（v0.9.0）：文件行悬停出现 🗑 按钮或右键 →「删除文件…」，确认后从磁盘移除——未跟踪文件直接消失，已跟踪文件转「未暂存」（状态 D），暂存后才计入提交；已打开该文件的编辑器标签会自动关闭。操作按钮均为达意的 SVG 图标（如「全部暂存」= 清单全勾选，与行内勾选暂存的交互直接对应）。
 
 ### 快捷键
 
@@ -170,6 +171,7 @@ npm run build && npm run package
 - **超大仓库卡吗？** 分页 + 虚拟滚动保证流畅；可运行 `git commit-graph write --reachable` 进一步加速翻页。
 - **✨ AI 生成按钮没出现？** 需要 VS Code ≥ 1.99 且已登录 GitHub Copilot（与 Copilot Chat 同一账号）；未登录或不可用时按钮自动隐藏，其余提交功能不受影响。也可检查 `gitboard.ai.enabled` 是否开启。
 - **AI 会发送什么内容？** 已暂存差异（暂存为空时为全部更改）与工程指示文件内容，经 GitHub Copilot 服务处理（使用你当前登录的账号与配额）；首次使用会弹窗确认，超限文件只发送统计不发送内容。
+- **一次性提交很多代码时 AI 会卡死吗？** 不会（v0.8.1 起）：文件统计与差异均封顶截断，prompt 始终在模型上下文内；Copilot 60 秒无响应会自动停止并提示重试/换模型；即使 git 读取差异失败也会立即报错并解锁界面，不会永久转圈。
 
 ---
 
@@ -190,8 +192,8 @@ GitBoard brings a SourceTree-style commit graph to VS Code (desktop): browse his
 | Diffs | Inline diff (compact mode shows changed lines only, `⋯` folds unchanged runs) + the built-in diff editor with syntax highlighting |
 | File actions | Open working file, open any revision read-only, reveal in the system file manager (falls back to the parent folder for deleted files), copy path |
 | Git operations | Fetch (--all --prune), Pull (merge/rebase/ff-only), Push (with upstream setup), Reset to commit (soft/mixed/hard), checkout branches, checkout remote branch as local tracking, detached HEAD |
-| Working-copy commits (v0.7.0) | Staged/Unstaged groups with checkbox staging; single-file HEAD↔worktree diff (no tabs); Commit / Commit & Push / Amend / Stage-all-and-commit; recent-message reuse; discard with double confirmation; per-repo message drafts |
-| AI commit messages (v0.7.0) | One-click generation via GitHub Copilot: streamed inline, stop/regenerate/model picker; based on the staged diff + style learned from the last 10 commits; automatically follows `.copilot/` and `.github/` workspace instruction files; uses your signed-in VS Code account — zero credentials stored |
+| Working-copy commits (v0.7.0) | Staged/Unstaged groups with checkbox staging; single-file HEAD↔worktree diff (no tabs); Commit / Commit & Push / Amend / Stage-all-and-commit; recent-message reuse; discard with double confirmation; delete files (v0.9.0 — inline trash button / context menu; tracked files move to Unstaged as D); per-repo message drafts |
+| AI commit messages (v0.7.0) | One-click generation via GitHub Copilot: streamed inline, stop/regenerate/model picker; based on the staged diff + style learned from the last 10 commits; automatically follows `.copilot/` and `.github/` workspace instruction files; uses your signed-in VS Code account — zero credentials stored. Hardened in v0.8.1 for huge changesets: capped summary & diff (no more oversized-prompt hangs), 60s no-response auto-stop, UI always unlocks on failure |
 | Filtering | Branch/remote/tag filter + author + date range, stackable and remembered per repository |
 | Large-repo performance | Paged loading, virtualized rows + viewport-only canvas rendering, debounced auto-refresh on `.git` changes |
 | UI | Follows VS Code light/dark themes, drag-resizable persisted columns, English/中文, status-bar branch |
@@ -209,7 +211,7 @@ code --install-extension EmonZhang3438.gitboard
 **Option 1 — CLI (recommended)**
 
 ```bash
-code --install-extension gitboard-0.8.0.vsix
+code --install-extension gitboard-0.9.0.vsix
 ```
 
 Then run **Ctrl+Shift+P → “Developer: Reload Window”** (required after every upgrade).
@@ -249,7 +251,7 @@ npm install && npm run package
 
 **Personalization** — drag column borders in the header to resize (persisted across sessions); time column absorbs the remaining space; colors follow your theme; the UI language follows VS Code by default and can be switched instantly (no reload) via the **A / 中 / EN** toolbar button or the `GitBoard: Switch UI Language` command (v0.7.1). Fetch / Pull / Push / Refresh buttons show a busy pulse while running and flash green on completion, with result toasts that are explicit even when nothing changed (“remote has nothing new” / “already up to date” / “N branch refs updated”) (v0.7.1).
 
-**Working copy & commits (new in v0.7.0)** — a SourceTree-style flow without leaving GitBoard. Switch via the “▣ Working Copy” tab (dirty-file badge) or `Ctrl+Alt+C`. The left pane groups **Staged / Unstaged** files — **check a box to `git add`, uncheck to unstage** (optimistic updates); renames show `old → new`, untracked files are marked `U`. Clicking a file shows its **full HEAD↔worktree diff** on the right (staged + unstaged combined, no tabs), with `‹ ›` to walk through changed files. The bottom bar has a single multi-line message box (first line = subject, live 50-char counter), a 🕘 recent-messages picker, and the **Commit ⏎** button with a dropdown: Commit & Push / Amend last commit / Stage-all-and-commit; `Ctrl+Enter` commits, drafts are saved per repository. **✨ AI** generates the message from your staged diff via GitHub Copilot — streamed inline, stop with `Esc`, regenerate or switch models at will; language and style are learned from the last 10 commits, and workspace instruction files (`.copilot/*.md`, `.github/copilot-instructions.md`, `.github/instructions/*.md`) are followed automatically; a one-time confirmation explains what gets sent. Right-click → “Discard…” resets files to HEAD (untracked files are deleted) behind a red double confirmation.
+**Working copy & commits (new in v0.7.0)** — a SourceTree-style flow without leaving GitBoard. Switch via the “▣ Working Copy” tab (dirty-file badge) or `Ctrl+Alt+C`. The left pane groups **Staged / Unstaged** files — **check a box to `git add`, uncheck to unstage** (optimistic updates); renames show `old → new`, untracked files are marked `U`. Clicking a file shows its **full HEAD↔worktree diff** on the right (staged + unstaged combined, no tabs), with `‹ ›` to walk through changed files. The bottom bar has a single multi-line message box (first line = subject, live 50-char counter), a 🕘 recent-messages picker, and the **Commit ⏎** button with a dropdown: Commit & Push / Amend last commit / Stage-all-and-commit; `Ctrl+Enter` commits, drafts are saved per repository. **✨ AI** generates the message from your staged diff via GitHub Copilot — streamed inline, stop with `Esc`, regenerate or switch models at will; language and style are learned from the last 10 commits, and workspace instruction files (`.copilot/*.md`, `.github/copilot-instructions.md`, `.github/instructions/*.md`) are followed automatically; a one-time confirmation explains what gets sent. Hardened in v0.8.1 for huge changesets: summary and diff are both capped (no more oversized-prompt hangs), a 60s no-response watchdog stops the request automatically, and any failure always unlocks the UI. Right-click → “Discard…” resets files to HEAD (untracked files are deleted) behind a red double confirmation. **Delete files** (v0.9.0): hover a file row for the 🗑 button (or right-click → “Delete file…”), confirm, and the file is removed from disk — untracked files disappear, tracked files move to Unstaged (status D) and count toward the commit only after staging; editor tabs for deleted files close automatically. All working-copy buttons now use meaningful SVG icons (e.g. “stage all” = a fully checked checklist, mirroring the checkbox-to-stage interaction).
 
 ### Keybindings & Settings
 
@@ -263,6 +265,7 @@ npm install && npm run package
 - **Huge repos?** Paging + virtualization keep it smooth; `git commit-graph write --reachable` speeds up paging further.
 - **No ✨ AI button?** AI commit messages need VS Code ≥ 1.99 and an active GitHub Copilot sign-in (the same account as Copilot Chat). The button hides itself when unavailable — everything else keeps working. Also check `gitboard.ai.enabled`.
 - **What does AI send?** The staged diff (or all changes when nothing is staged) plus workspace instruction files, processed by the GitHub Copilot service under your signed-in account and quota; a one-time confirmation appears before the first use, and oversized files are reduced to summary stats only.
+- **Does AI hang on huge changesets?** No (since v0.8.1): summary and diff are both capped so the prompt always fits the model context; a 60s no-response watchdog stops the request with a retry hint; even a failed diff read reports an error immediately and unlocks the UI — no infinite spinner.
 
 ### Development
 
