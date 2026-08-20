@@ -10,7 +10,9 @@ export type PullStrategy = 'merge' | 'rebase' | 'ff-only';
 
 export interface OpSpec {
   kind: 'fetch' | 'pull' | 'push' | 'reset' | 'checkout'
-    | 'stage' | 'unstage' | 'discard' | 'discardClean' | 'commit';
+  | 'stage' | 'unstage' | 'discard' | 'discardClean' | 'commit'
+  | 'resolveConflict' | 'commitNoEdit'
+  | 'tagCreate' | 'tagDelete' | 'tagDeleteRemote' | 'tagPush';
   /** 依 kind 不同 */
   all?: boolean;               // fetch
   remote?: string;
@@ -19,20 +21,25 @@ export interface OpSpec {
   strategy?: PullStrategy;     // pull
   autostash?: boolean;         // pull
   setUpstream?: boolean;       // push
-  sha?: string;                // reset / checkout(detached)
+  sha?: string;                // reset / checkout(detached) / tagCreate
   mode?: ResetMode;            // reset
   ref?: string;                // checkout
   detached?: boolean;          // checkout
   trackFrom?: { name: string; remoteBranch: string };  // checkout 远程分支为本地
-  paths?: string[];            // stage / unstage / discard / discardClean
+  paths?: string[];            // stage / unstage / discard / discardClean / resolveConflict
   messageFile?: string;        // commit：-F 临时文件（调用方负责创建与清理）
   amend?: boolean;             // commit：修订上次提交
+  ours?: boolean;              // resolveConflict：true=保留本地版本
+  name?: string;               // tag*：标签名
+  message?: string;            // tagCreate：附注信息（非空=附注标签）
 }
 
 export interface OpOutcome {
   ok: boolean;
   message?: string;
   outputTail?: string;
+  /** 成功时的 stdout 尾部行（pull 的 "Already up to date." 等结果判定用） */
+  stdoutTail?: string;
 }
 
 const PCT_RE = /(\d+)%/;
@@ -81,28 +88,36 @@ export class OpRunner {
     onProgress: (text: string, pct?: number) => void,
     buildDone: (ok: boolean) => string,
   ): Promise<OpOutcome> {
-    const args = buildArgs(spec);
+    const cmds = buildArgs(spec);
     let lastLine = '';
+    // 网络/提交（hooks 可能耗时）不设超时；stage/discard 类秒级操作用默认 30s
+    const noTimeout = spec.kind === 'fetch' || spec.kind === 'pull' || spec.kind === 'push'
+      || spec.kind === 'commit' || spec.kind === 'commitNoEdit' || spec.kind === 'tagPush' || spec.kind === 'tagDeleteRemote';
+    // commit 类可能触发 hooks：禁止交互式提示防挂死（提示失败改走终端）
+    const env = spec.kind === 'commit' || spec.kind === 'commitNoEdit'
+      ? { GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true' } : undefined;
     try {
-      const r = await this.exec.exec(root, args, {
-        // 网络/提交（hooks 可能耗时）不设超时；stage/discard 类秒级操作用默认 30s
-        timeoutMs: spec.kind === 'fetch' || spec.kind === 'pull' || spec.kind === 'push' || spec.kind === 'commit' ? 0 : undefined,
-        maxBytes: 4 * 1024 * 1024,
-        // commit 类可能触发 hooks：禁止交互式提示防挂死（提示失败改走终端）
-        env: spec.kind === 'commit' ? { GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true' } : undefined,
-        registerChild: (c) => this.children.set(opId, c),
-        onStderrLine: (line) => {
-          const cleaned = line.replace(/[\r ]+$/, '');
-          if (!cleaned || cleaned === lastLine) return;
-          lastLine = cleaned;
-          const m = PCT_RE.exec(cleaned);
-          onProgress(cleaned, m ? Number(m[1]) : undefined);
-        },
-      });
-      const warn = r.stderr
+      let r;
+      for (const args of cmds) {
+        r = await this.exec.exec(root, args, {
+          timeoutMs: noTimeout ? 0 : undefined,
+          maxBytes: 4 * 1024 * 1024,
+          env,
+          registerChild: (c) => this.children.set(opId, c),
+          onStderrLine: (line) => {
+            const cleaned = line.replace(/[\r ]+$/, '');
+            if (!cleaned || cleaned === lastLine) return;
+            lastLine = cleaned;
+            const m = PCT_RE.exec(cleaned);
+            onProgress(cleaned, m ? Number(m[1]) : undefined);
+          },
+        });
+      }
+      const warn = r!.stderr
         .split('\n').map(s => s.trim()).filter(Boolean)
         .filter(l => !l.startsWith('remote:')).slice(0, 3).join(' ');
-      return { ok: true, message: buildDone(true) + (warn ? ` — ${warn}` : '') };
+      const stdoutTail = r!.stdout.split('\n').map(s => s.trim()).filter(Boolean).slice(-6).join('\n');
+      return { ok: true, message: buildDone(true) + (warn ? ` — ${warn}` : ''), stdoutTail };
     } catch (e) {
       if (this.cancelled.delete(opId) || (e instanceof GitError && e.code === 'E_TIMEOUT')) {
         return { ok: false, message: 'cancelled' };
@@ -113,14 +128,14 @@ export class OpRunner {
   }
 }
 
-function buildArgs(spec: OpSpec): string[] {
+function buildArgs(spec: OpSpec): string[][] {
   switch (spec.kind) {
     case 'fetch': {
       const args = ['fetch', '--progress'];
       if (spec.all) args.push('--all');
       if (spec.prune) args.push('--prune');
       if (!spec.all && spec.remote) args.push(spec.remote);
-      return args;
+      return [args];
     }
     case 'pull': {
       const args = ['pull', '--progress'];
@@ -129,39 +144,66 @@ function buildArgs(spec: OpSpec): string[] {
       if (spec.autostash) args.push('--autostash');
       if (spec.remote) args.push(spec.remote);
       if (spec.branch) args.push(spec.branch);
-      return args;
+      return [args];
     }
     case 'push': {
       const args = ['push', '--progress'];
       if (spec.setUpstream) args.push('-u');
       args.push(spec.remote ?? 'origin', spec.branch ?? 'HEAD');
-      return args;
+      return [args];
     }
     case 'reset':
-      return ['reset', `--${spec.mode ?? 'mixed'}`, spec.sha ?? 'HEAD'];
+      return [['reset', `--${spec.mode ?? 'mixed'}`, spec.sha ?? 'HEAD']];
     case 'checkout': {
       if (spec.trackFrom) {
-        return ['checkout', '-b', spec.trackFrom.name, '--track', spec.trackFrom.remoteBranch];
+        return [['checkout', '-b', spec.trackFrom.name, '--track', spec.trackFrom.remoteBranch]];
       }
       const args = ['checkout'];
       if (spec.detached) args.push('--detach');
       args.push(spec.ref ?? spec.sha ?? 'HEAD');
-      return args;
+      return [args];
     }
     // ---------- 工作副本（Commit 功能） ----------
     case 'stage':
-      return spec.all ? ['add', '-A'] : ['add', '--', ...(spec.paths ?? [])];
+      return [spec.all ? ['add', '-A'] : ['add', '--', ...(spec.paths ?? [])]];
     case 'unstage':
-      return ['restore', '--staged', '--', ...(spec.paths ?? [])];
+      return [['restore', '--staged', '--', ...(spec.paths ?? [])]];
     case 'discard':
-      return ['restore', '--source=HEAD', '--staged', '--worktree', '--', ...(spec.paths ?? [])];
+      return [['restore', '--source=HEAD', '--staged', '--worktree', '--', ...(spec.paths ?? [])]];
     case 'discardClean':
-      return ['clean', '-fd', '--', ...(spec.paths ?? [])];
+      return [['clean', '-fd', '--', ...(spec.paths ?? [])]];
     case 'commit': {
       const args = ['commit', '--cleanup=strip'];
       if (spec.amend) args.push('--amend');
       if (spec.messageFile) args.push('-F', spec.messageFile);
-      return args;
+      return [args];
     }
+    // ---------- 冲突解决 / 合并完成 ----------
+    case 'resolveConflict': {
+      const side = spec.ours ? '--ours' : '--theirs';
+      const paths = spec.paths ?? [];
+      // 取选定侧版本并暂存；命令序列由 execute 串行执行
+      return [
+        ['checkout', side, '--', ...paths],
+        ['add', '--', ...paths],
+      ];
+    }
+    case 'commitNoEdit':
+      // 冲突全部解决后完成合并（沿用 MERGE_MSG 默认信息）
+      return [['commit', '--no-edit']];
+    // ---------- 标签 ----------
+    case 'tagCreate': {
+      const name = spec.name ?? '';
+      const target = spec.sha ?? 'HEAD';
+      return [spec.message
+        ? ['tag', '-a', name, '-m', spec.message, target]
+        : ['tag', name, target]];
+    }
+    case 'tagDelete':
+      return [['tag', '-d', spec.name ?? '']];
+    case 'tagDeleteRemote':
+      return [['push', '--progress', spec.remote ?? 'origin', `:refs/tags/${spec.name ?? ''}`]];
+    case 'tagPush':
+      return [['push', '--progress', spec.remote ?? 'origin', `refs/tags/${spec.name ?? ''}`]];
   }
 }

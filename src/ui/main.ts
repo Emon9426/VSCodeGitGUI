@@ -66,7 +66,10 @@ const app: App = {
       });
   },
   loadMore() {
-    void rpc('loadMore', { offset: S.commits.length })
+    // 记录发起时的列表尾锚点：commitsAppend 到达时校验列表未被 repoState 重排（防新旧快照混拼出缺口）
+    pendingLoad = { repoId: S.repoId, offset: S.commits.length, anchor: S.commits[S.commits.length - 1]?.sha };
+    void rpc('loadMore', { offset: pendingLoad.offset })
+      .then(r => { if (!r) list.refresh(); })   // 页被宿主丢弃（refs 漂移）：复位加载状态，等 repoState 重建
       .catch(e => { showErr(e); list.refresh(); });
   },
   runFetch(remote) {
@@ -95,7 +98,11 @@ const app: App = {
     void rpc('op:push', { remote: head.upstream.split('/')[0], branch }).catch(showErr);
   },
   runRefresh() {
-    void rpc('refresh').catch(showErr);
+    toolbar.setRefreshBusy(true);
+    void rpc('refresh')
+      .then(() => toast('info', S.t('refreshDone')))
+      .catch(showErr)
+      .finally(() => toolbar.setRefreshBusy(false));
   },
   cancelOp(opId) {
     void rpc('op:cancel', { opId }).catch(showErr);
@@ -208,6 +215,9 @@ const app: App = {
   saveDraft(draft) {
     void rpc('work.saveDraft', { draft }).catch(() => undefined);
   },
+  pickLanguage() {
+    void rpc('ui:pickLanguage').catch(showErr);
+  },
   openWorkDiffEditor(path) {
     // 已删除文件（工作区已不存在）无法作为右侧打开
     const entry = [...(S.work.state?.staged ?? []), ...(S.work.state?.unstaged ?? [])].find(e => e.path === path);
@@ -216,6 +226,27 @@ const app: App = {
       return;
     }
     void rpc('ui:openDiffEditor', { sha: 'HEAD', base: 'HEAD', path, worktree: true }).catch(showErr);
+  },
+  // 冲突二选一（ours=我的/本地，merge 语义）
+  resolveConflict(paths, ours) {
+    void rpc('work.resolveConflict', { paths, ours }).catch(showErr);
+  },
+  // 标签：创建成功后 toast 询问是否推送
+  tagCreate(name, sha, message) {
+    void rpc('tag.create', { name, sha, message })
+      .then(() => {
+        toast('info', S.t('tagCreated', { name }), {
+          label: S.t('pushTagTo', { remote: 'origin' }),
+          run: () => app.tagPush(name),
+        });
+      })
+      .catch(showErr);
+  },
+  tagDelete(name, remote) {
+    void rpc('tag.delete', { name, remote }).catch(showErr);
+  },
+  tagPush(name, remote) {
+    void rpc('tag.push', { name, remote }).catch(showErr);
   },
 };
 
@@ -294,6 +325,8 @@ function applyThemeKind(): void {
 }
 
 let restoreSha: string | undefined;   // Webview 重建后恢复选中的提交
+/** 在途分页请求锚点：repoId + offset + 发起时的列表尾 sha，三者与当前列表一致才允许拼接 */
+let pendingLoad: { repoId: string | undefined; offset: number; anchor: string | undefined } | undefined;
 
 function applyColWidths(w: { graph?: number; msg?: number; author?: number; sha?: number }): void {
   for (const key of ['graph', 'msg', 'author', 'sha'] as const) {
@@ -349,6 +382,8 @@ window.addEventListener('message', e => {
       S.state = st;
       S.commits = st.commits;
       S.graph = computeLanes(st.commits);
+      // 列表已整体重建：作废在途分页请求（其页属旧快照，拼接必错位）
+      pendingLoad = undefined;
       if (st.logFilter) S.logFilter = st.logFilter;
       if (repoChanged) list.reset(); else list.refresh();
       sidebar.update();
@@ -370,11 +405,22 @@ window.addEventListener('message', e => {
     }
     case 'commitsAppend': {
       if (m.repoId !== S.repoId) { list.refresh(); break; }
-      if (m.offset === S.commits.length && m.commits.length) {
-        S.commits.push(...m.commits);
-        S.graph = computeLanes(S.commits);
+      // 锚点校验：offset/计数/尾 sha 均未变 ⇒ 列表自请求发起以来未被 repoState 重置，
+      // 本页与列表同属一个 refs 快照，可安全拼接；失配则丢弃（错位拼接会产生缺口/重复），
+      // 复位加载状态后滚动到底会以新 offset 自动重发
+      const anchored = !!pendingLoad
+        && pendingLoad.repoId === m.repoId
+        && pendingLoad.offset === m.offset
+        && pendingLoad.offset === S.commits.length
+        && pendingLoad.anchor === S.commits[S.commits.length - 1]?.sha;
+      pendingLoad = undefined;
+      if (anchored) {
+        if (m.commits.length) {
+          S.commits.push(...m.commits);
+          S.graph = computeLanes(S.commits);
+        }
         if (S.state) {
-          S.state.hasMore = m.hasMore;
+          S.state.hasMore = m.commits.length ? m.hasMore : false;   // 空页即末页：终止后续自动加载
           S.state.commitsLoaded = S.commits.length;
         }
         list.appended();
@@ -390,6 +436,7 @@ window.addEventListener('message', e => {
     case 'opResult':
       S.activeOps.delete(m.opId);
       toolbar.updateProgress();
+      if (m.ok) toolbar.flash(m.kind);   // 按钮短暂闪绿，明确"点击已生效"
       if (!m.ok) {
         if (m.outputTail) {
           void confirmDialog(S.t('error'), `${m.message ?? ''}\n\n${m.outputTail}`, S.t('close'));
@@ -405,11 +452,16 @@ window.addEventListener('message', e => {
       break;
     case 'configChanged':
       S.config = m.config;
+      // 语言即时切换：更新翻译函数并重建静态文案（列头/分区标题等，v0.7.1）
+      S.lang = (m.language === 'en' ? 'en' : 'zh-CN') as Lang;
+      S.t = createT(S.lang);
       applyLayout();
+      applyView();
       list.configChanged();
       toolbar.update();
       sidebar.update();
       detail.configChanged();
+      workview.update();
       commitBar.update();
       refreshAiModels();
       break;

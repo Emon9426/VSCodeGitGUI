@@ -137,6 +137,7 @@ export interface FileEntry {
   staged: 'M' | 'A' | 'D' | 'R' | null;               // X 列（index 相对 HEAD）
   unstaged: 'M' | 'D' | null;                         // Y 列（worktree 相对 index）
   untracked: boolean;                                 // '??'
+  conflict?: boolean;                                 // UU/DD/AA/AU/UA/DU/UD 未解决冲突（独立分组）
   additions?: number;                                 // 对应侧 numstat（二进制 undefined）
   deletions?: number;
 }
@@ -145,8 +146,10 @@ export interface WorkState {
   repoId: string;
   staged: FileEntry[];
   unstaged: FileEntry[];
+  conflicts: FileEntry[];                             // 未解决冲突（ours/theirs 二选一解决）
   dirtyCount: number;
   merging: boolean;                                   // 存在未解决冲突路径
+  mergeKind: 'merge' | 'other';                       // merge=正常合并（我的=本地）；other=rebase 等（ours/theirs 语义随场景）
   headShortSha: string;                               // 空状态 / amend 提示用
   headSubject: string;
   headDate: string;                                   // iso-strict

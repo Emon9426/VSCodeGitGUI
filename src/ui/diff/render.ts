@@ -1,7 +1,11 @@
-/** 内联 unified diff 渲染（设计方案 7.2）。紧凑模式只显示增删行，无差异段落折叠为 ⋯。 */
+/** 内联 unified diff 渲染（设计方案 7.2）。紧凑模式只显示增删行，无差异段落折叠为 ⋯。
+ *  v0.7.2：行数超阈值时分块挂载（首块 500 行 + “展开剩余”），避免一次挂载数千节点。 */
 import type { DiffPayload, DiffLine } from '../../common/models';
 import { S } from '../state';
 import { el, clearChildren } from '../util';
+
+/** 单次挂载的最大行数（超出部分由按钮按块展开） */
+const CHUNK = 500;
 
 export function renderDiff(
   container: HTMLElement,
@@ -29,12 +33,13 @@ export function renderDiff(
     return;
   }
 
-  const frag = document.createDocumentFragment();
+  // 先按行规格构建全部节点（不挂载），再分块挂载
+  const rows: HTMLElement[] = [];
   for (const hunk of payload.diff.hunks) {
-    frag.appendChild(el('div', 'gg-dl hunk', hunk.header));
+    rows.push(el('div', 'gg-dl hunk', hunk.header));
 
     if (!compact) {
-      for (const line of hunk.lines) frag.appendChild(lineRow(line));
+      for (const line of hunk.lines) rows.push(lineRow(line));
       continue;
     }
     // 紧凑模式：跳过上下文行，在断层处插入 ⋯ 行（标注下一处差异的行号）
@@ -46,14 +51,32 @@ export function renderDiff(
         continue;
       }
       if (gapPending && shown > 0) {
-        frag.appendChild(gapRow(line));
+        rows.push(gapRow(line));
       }
       gapPending = false;
-      frag.appendChild(lineRow(line));
+      rows.push(lineRow(line));
       shown++;
     }
   }
-  container.appendChild(frag);
+
+  let shownCount = 0;
+  const moreBtn = rows.length > CHUNK ? el('button', 'gg-btn small gg-diff-more') : undefined;
+  const appendChunk = (): void => {
+    const next = Math.min(rows.length, shownCount + CHUNK);
+    const frag = document.createDocumentFragment();
+    for (; shownCount < next; shownCount++) frag.appendChild(rows[shownCount]);
+    container.insertBefore(frag, moreBtn ?? null);
+    if (moreBtn) {
+      if (shownCount >= rows.length) moreBtn.remove();
+      else moreBtn.textContent = S.t('showMoreLines', { n: rows.length - shownCount });
+    }
+  };
+  if (moreBtn) {
+    moreBtn.addEventListener('click', appendChunk);
+    moreBtn.textContent = S.t('showMoreLines', { n: rows.length - Math.min(CHUNK, rows.length) });
+    container.appendChild(moreBtn);
+  }
+  appendChunk();
 }
 
 function lineRow(line: DiffLine): HTMLElement {

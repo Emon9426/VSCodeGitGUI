@@ -10,6 +10,10 @@ export interface Toolbar {
   updateProgress(): void;
   /** 用后端状态同步筛选输入框（避免打断正在输入的用户跳过聚焦元素） */
   syncFilterInputs(f: { author: string; since: string; until: string }): void;
+  /** 操作成功后在对应按钮上短暂闪绿（v0.7.1 反馈优化） */
+  flash(kind: string): void;
+  /** 刷新按钮繁忙态（非 op 队列操作） */
+  setRefreshBusy(busy: boolean): void;
 }
 
 export function createToolbar(app: App): Toolbar {
@@ -68,6 +72,8 @@ export function createToolbar(app: App): Toolbar {
   pushBtn.title = S.t('push');
   const refreshBtn = mkBtn('⟲', () => app.runRefresh());
   refreshBtn.title = S.t('refresh');
+  // 语言快捷切换（A/中/EN，点击弹三选一）
+  const langBtn = mkBtn('', () => app.pickLanguage());
   const gearBtn = mkBtn('⚙', () => app.openSettings());
   gearBtn.title = S.t('settings');
   const versionLabel = el('span', 'gg-version-label', '');
@@ -84,9 +90,10 @@ export function createToolbar(app: App): Toolbar {
   // 视图切换：提交图 ⇄ 工作副本（设计方案 §2.1/§3.1）
   const viewSeg = el('div', 'gg-viewseg');
   const graphBtn = el('button', 'gg-viewseg-btn', `⎔ ${S.t('viewGraph')}`) as HTMLButtonElement;
-  const workBtn = el('button', 'gg-viewseg-btn', `▣ ${S.t('viewWork')}`) as HTMLButtonElement;
+  const workBtn = el('button', 'gg-viewseg-btn') as HTMLButtonElement;
+  const workLabel = el('span', undefined, `▣ ${S.t('viewWork')}`);
   const workBadge = el('span', 'gg-viewseg-badge hidden');
-  workBtn.append(workBadge);
+  workBtn.append(workLabel, workBadge);
   graphBtn.addEventListener('click', () => app.setView('graph'));
   workBtn.addEventListener('click', () => app.setView('work'));
   viewSeg.append(graphBtn, workBtn);
@@ -94,7 +101,7 @@ export function createToolbar(app: App): Toolbar {
   const left = el('div', 'gg-toolbar-left');
   left.append(viewSeg, repoSel, branchLabel, filterSel, filterBox);
   const right = el('div', 'gg-toolbar-right');
-  right.append(fetchBtn, pullBtn, pushBtn, refreshBtn, gearBtn, versionLabel, progress);
+  right.append(fetchBtn, pullBtn, pushBtn, refreshBtn, langBtn, gearBtn, versionLabel, progress);
   root.append(left, right);
 
   function mkBtn(label: string, run: () => void): HTMLButtonElement {
@@ -105,14 +112,25 @@ export function createToolbar(app: App): Toolbar {
 
   function update(): void {
     versionLabel.textContent = S.version ? `v${S.version}` : '';
-    // 视图分段控件
+    // 视图分段控件（文案随语言刷新；workBtn 含徽标子节点，只改 label span）
     graphBtn.classList.toggle('on', S.view === 'graph');
     workBtn.classList.toggle('on', S.view === 'work');
+    graphBtn.textContent = `⎔ ${S.t('viewGraph')}`;
+    workLabel.textContent = `▣ ${S.t('viewWork')}`;
     graphBtn.title = S.t('viewGraphTip');
     workBtn.title = S.t('viewWorkTip');
     const dirty = S.work.state?.dirtyCount ?? S.state?.status.dirtyCount ?? 0;
     workBadge.textContent = String(dirty);
     workBadge.classList.toggle('hidden', dirty <= 0);
+    // 语言快捷按钮：显示当前语言代码
+    const lang = S.config.language;
+    langBtn.textContent = lang === 'zh-CN' ? '中' : lang === 'en' ? 'EN' : 'A';
+    langBtn.title = `${S.t('langSwitchTitle')} — ${lang === 'auto' ? S.t('langAuto') : lang === 'zh-CN' ? '简体中文' : 'English'}`;
+    // 网络操作按钮 title 随语言刷新
+    fetchBtn.title = S.t('fetch');
+    pullBtn.title = S.t('pull');
+    pushBtn.title = S.t('push');
+    refreshBtn.title = S.t('refresh');
     // 仓库下拉
     const multi = S.repos.length > 1;
     repoSel.classList.toggle('hidden', !multi);
@@ -159,6 +177,10 @@ export function createToolbar(app: App): Toolbar {
 
   function updateProgress(): void {
     const ops = [...S.activeOps.entries()];
+    const kinds = new Set(ops.map(([, o]) => o.kind));
+    fetchBtn.classList.toggle('busy', kinds.has('fetch'));
+    pullBtn.classList.toggle('busy', kinds.has('pull'));
+    pushBtn.classList.toggle('busy', kinds.has('push'));
     if (!ops.length) {
       progress.classList.remove('show');
       activeOpId = undefined;
@@ -168,7 +190,20 @@ export function createToolbar(app: App): Toolbar {
     activeOpId = opId;
     progress.classList.add('show');
     const pct = op.pct !== undefined ? ` ${op.pct}%` : '';
-    progressText.textContent = `${S.t(op.kind)}${pct} · ${op.text}`;
+    const detail = op.text || '…';
+    progressText.textContent = `${S.t(op.kind)}${pct} · ${detail}`;
+  }
+
+  function flash(kind: string): void {
+    const map: Record<string, HTMLButtonElement> = { fetch: fetchBtn, pull: pullBtn, push: pushBtn };
+    const b = map[kind];
+    if (!b) return;
+    b.classList.add('ok');
+    setTimeout(() => b.classList.remove('ok'), 1200);
+  }
+
+  function setRefreshBusy(busy: boolean): void {
+    refreshBtn.classList.toggle('busy', busy);
   }
 
   function syncFilterInputs(f: { author: string; since: string; until: string }): void {
@@ -182,5 +217,5 @@ export function createToolbar(app: App): Toolbar {
     updateClearVis();
   }
 
-  return { el: root, update, updateProgress, syncFilterInputs };
+  return { el: root, update, updateProgress, syncFilterInputs, flash, setRefreshBusy };
 }

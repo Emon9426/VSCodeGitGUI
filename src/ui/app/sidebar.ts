@@ -5,7 +5,7 @@
 import type { BranchInfo } from '../../common/models';
 import { S, type App } from '../state';
 import { el, clearChildren } from '../util';
-import { showContextMenu } from './overlays';
+import { showContextMenu, confirmDialog, tagDialog } from './overlays';
 
 export interface Sidebar {
   el: HTMLElement;
@@ -33,7 +33,8 @@ export function createSidebar(app: App): Sidebar {
   }
 
   function update(): void {
-    // 仓库
+    // 仓库（标题随语言刷新：其余三个分区在下方 sectionTitle 处理）
+    sectionTitle(repoSec, S.t('repos'));
     clearChildren(repoSec.list);
     for (const r of S.repos) {
       const st = r.id === S.repoId ? S.state : undefined;
@@ -76,12 +77,41 @@ export function createSidebar(app: App): Sidebar {
     }
 
     sectionTitle(tagSec, `${S.t('tags')} (${st?.tags.length ?? 0})`);
+    // 标签区标题旁 ➕：在 HEAD 上新建
+    if (!tagSec.box.querySelector('.gg-side-add')) {
+      const add = el('button', 'gg-side-add', '＋');
+      add.title = S.t('newTag');
+      add.addEventListener('click', () => {
+        void tagDialog(S.state?.head.sha.slice(0, 7) ?? '', S.t).then(r => {
+          if (r) app.tagCreate(r.name, S.state?.head.sha, r.message || undefined);
+        });
+      });
+      tagSec.box.firstElementChild!.appendChild(add);
+    }
     clearChildren(tagSec.list);
     if (st) {
       for (const tg of st.tags) {
-        const item = el('div', 'gg-side-item tag');
+        const item = el('div', `gg-side-item tag${S.state?.filterRef === tg.name ? ' filtered' : ''}`);
         item.appendChild(el('span', 'gg-side-name', tg.name));
+        item.title = tg.date ?? tg.name;
         filterClick(item, tg.name);
+        item.addEventListener('contextmenu', e => {
+          e.preventDefault();
+          showContextMenu([
+            { label: S.t('checkoutTag'), run: () => app.checkoutDetached(tg.sha) },
+            { label: S.t('pushThisTag'), run: () => app.tagPush(tg.name) },
+            { sep: true },
+            { label: S.t('copyTagName'), run: () => app.copy(tg.name) },
+            { label: S.t('tagDelete'), danger: true, run: () => {
+              void confirmDialog(S.t('tagDelete'), S.t('tagDeleteConfirm', { name: tg.name }), S.t('tagDelete'), true)
+                .then(ok => { if (ok) app.tagDelete(tg.name); });
+            } },
+            { label: S.t('tagDeleteRemote'), danger: true, run: () => {
+              void confirmDialog(S.t('tagDeleteRemote'), S.t('tagDeleteRemoteConfirm', { name: tg.name }), S.t('tagDeleteRemote'), true)
+                .then(ok => { if (ok) app.tagDelete(tg.name, 'origin'); });
+            } },
+          ], e.clientX, e.clientY);
+        });
         tagSec.list.appendChild(item);
       }
     }

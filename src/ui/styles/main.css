@@ -55,8 +55,12 @@ button.danger:hover { background: #c62121; }
 .gg-select { max-width: 200px; }
 .gg-branch-label { color: var(--vscode-charts-green); white-space: nowrap; }
 .gg-dirty-badge { margin-left: 6px; color: var(--vscode-charts-yellow); font-size: 11px; }
-.gg-tb-btn { min-width: 34px; font-size: 14px; line-height: 1; padding: 4px 8px; }
+.gg-tb-btn { min-width: 34px; font-size: 14px; line-height: 1; padding: 4px 8px; transition: color .15s ease; }
 .gg-icon-btn { min-width: 24px; padding: 2px 6px; }
+/* 操作按钮状态反馈（v0.7.1）：进行中=蓝色脉冲，成功=短暂绿色 */
+.gg-tb-btn.busy { color: var(--vscode-charts-blue); animation: gg-pulse 1s ease-in-out infinite; pointer-events: none; }
+.gg-tb-btn.ok { color: var(--vscode-charts-green); }
+@keyframes gg-pulse { 50% { opacity: .45; } }
 
 .gg-progress { display: none; align-items: center; gap: 6px; max-width: 380px; }
 .gg-progress.show { display: flex; }
@@ -359,6 +363,9 @@ button.danger:hover { background: #c62121; }
   padding-bottom: 12px;
 }
 .gg-diff-note { padding: 12px; color: var(--vscode-descriptionForeground); }
+.gg-diff-more {
+  display: block; margin: 6px auto; padding: 2px 14px; font-size: 11.5px;
+}
 .gg-dl { display: flex; white-space: pre; }
 .gg-dl .gg-ln { flex: none; width: 44px; text-align: right; padding-right: 8px; color: var(--vscode-descriptionForeground); opacity: 0.7; user-select: none; }
 .gg-dl .gg-mark { flex: none; width: 14px; user-select: none; }
@@ -591,3 +598,35 @@ button.danger:hover { background: #c62121; }
 .gg-cbar-commit { margin-left: auto; font-weight: 600; padding: 4px 16px; }
 .gg-cbar-caret { padding: 4px 7px; border-left: 1px solid color-mix(in srgb, var(--vscode-button-foreground) 35%, transparent); }
 .gg-cbar-commit:disabled, .gg-cbar-caret:disabled { opacity: 0.5; }
+
+/* ---- v0.8.0：提交后推送询问条 / 冲突分组 / 标签入口 ---- */
+.gg-btn.tiny { padding: 1px 7px; font-size: 10.5px; border-radius: 3px; }
+.gg-btn.ghost {
+  background: transparent; color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-dropdown-border, #666);
+}
+.gg-cbar-pushq {
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 10px; border-radius: 5px; font-size: 12px;
+  color: var(--vscode-charts-green);
+  background: color-mix(in srgb, var(--vscode-charts-green) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-charts-green) 40%, transparent);
+}
+.gg-cbar-pushq .gg-btn { margin-left: auto; }
+.gg-cbar-pushq .gg-btn + .gg-btn { margin-left: 0; }
+.gg-work-group-h.conflict b { color: var(--vscode-charts-red); }
+.gg-work-group-h.conflict .gg-work-cnt {
+  background: color-mix(in srgb, var(--vscode-charts-red) 30%, transparent);
+}
+.gg-st.C { color: var(--vscode-charts-red); }
+.gg-work-cbtns { margin-left: auto; display: flex; gap: 4px; flex: none; }
+.gg-work-row.conflict { background: color-mix(in srgb, var(--vscode-charts-red) 6%, transparent); }
+.gg-work-row.conflict:hover { background: color-mix(in srgb, var(--vscode-charts-red) 12%, transparent); }
+.gg-work-row.conflict.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.gg-side-add {
+  float: right; border: none; background: transparent; cursor: pointer;
+  color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1; padding: 0 2px;
+  border-radius: 3px;
+}
+.gg-side-add:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
+.gg-tag-msg { resize: vertical; min-height: 48px; font-family: inherit; }

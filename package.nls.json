@@ -39,5 +39,9 @@
   "cfg.ai.learnFromHistory": "Learn style/language from the 10 most recent commits when generating.",
   "cfg.ai.useWorkspaceInstructions": "Follow workspace instruction files (.copilot/, .github/copilot-instructions.md, .github/instructions/*.instructions.md) when generating.",
   "cfg.commit.clearMessage": "Clear the commit message box after a successful commit.",
-  "cfg.commit.pushAfter": "Default state of the \"Push after commit\" checkbox."
+  "cfg.commit.pushAfter": "Default state of the \"Push after commit\" checkbox.",
+  "cmd.setLanguage": "GitBoard: Switch UI Language",
+  "cfg.logOrder": "Commit ordering for git log. topo keeps graph lines tidy (default); date is faster on very large repos.",
+  "cfg.logOrder.topo": "Topological (tidy graph lines, default)",
+  "cfg.logOrder.date": "Commit date (faster on large repos)"
 }

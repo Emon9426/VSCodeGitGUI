@@ -134,18 +134,38 @@ export interface StatusInfo {
  * 未跟踪 "??␠path"；忽略 "!..." 跳过；冲突字母（U 等）不在 M/A/D/R/C 白名单时归并为 M。
  */
 export function parseStatusEntries(out: string): { entries: FileEntry[]; merging: boolean } {
+  return parseEntryTokens(out.split('\0'), 0);
+}
+
+/**
+ * status --porcelain=v1 -z -b 一次性解析（v0.7.2 性能优化：替代 -b 与 -z 各跑一次）：
+ * 首个 NUL 记录为 "## ..." 分支头（喂 parseStatus），其后为文件条目。
+ */
+export function parseStatusZ(out: string): { info: StatusInfo; entries: FileEntry[]; merging: boolean } {
+  const toks = out.split('\0');
+  let info: StatusInfo = { detached: false, noCommitsYet: false, dirtyCount: 0 };
+  let start = 0;
+  if ((toks[0] ?? '').startsWith('## ')) {
+    info = parseStatus(toks[0]);
+    start = 1;
+  }
+  const { entries, merging } = parseEntryTokens(toks, start);
+  info.dirtyCount = entries.length;   // -z 条目数即脏文件数（header 单独解析时计不到）
+  return { info, entries, merging };
+}
+
+const STATUS_CONFLICTS = new Set(['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU']);
+
+function parseEntryTokens(toks: string[], start: number): { entries: FileEntry[]; merging: boolean } {
   const entries: FileEntry[] = [];
   let merging = false;
-  if (!out) return { entries, merging };
-  const CONFLICTS = new Set(['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU']);
-  const toks = out.split('\0');
-  for (let i = 0; i < toks.length; i++) {
+  for (let i = start; i < toks.length; i++) {
     const rec = toks[i];
     if (!rec || rec.length < 4) continue;
     const x = rec[0];
     const y = rec[1];
     if (x === '!') continue;
-    if (CONFLICTS.has(x + y)) merging = true;
+    if (STATUS_CONFLICTS.has(x + y)) merging = true;
     if (x === '?') {
       entries.push({ path: rec.slice(3), staged: null, unstaged: null, untracked: true });
       continue;
@@ -155,6 +175,11 @@ export function parseStatusEntries(out: string): { entries: FileEntry[]; merging
     if (x === 'R' || x === 'C') {
       const orig = toks[++i];
       if (orig) origPath = orig;
+    }
+    if (STATUS_CONFLICTS.has(x + y)) {
+      // 冲突条目不入暂存/未暂存矩阵：单独分组，由 ours/theirs 二选一解决
+      entries.push({ path, origPath, staged: null, unstaged: null, untracked: false, conflict: true });
+      continue;
     }
     const staged = x !== ' ' && x !== '.' ? ('MADRC'.includes(x) ? (x as FileEntry['staged']) : 'M') : null;
     const unstaged = y !== ' ' && y !== '.' ? (y === 'D' ? 'D' : 'M') : null;

@@ -30,6 +30,9 @@ export function activate(context: vscode.ExtensionContext): void {
       const p = GraphPanel.show(context);
       p.openWorkView();
     }),
+    vscode.commands.registerCommand('gitboard.setLanguage', () => {
+      void GraphPanel.show(context).pickLanguage();
+    }),
     GraphPanel.onDidState(() => tree.refresh()),
     vscode.workspace.onDidChangeWorkspaceFolders(() => tree.refresh()),
   );

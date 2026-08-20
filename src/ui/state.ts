@@ -42,6 +42,13 @@ export interface App {
   aiCancel(): void;
   saveDraft(draft: { message: string; pushAfter: boolean; amend: boolean }): void;
   openWorkDiffEditor(path: string): void;
+  pickLanguage(): void;
+  // 冲突解决（ours/theirs 二选一）
+  resolveConflict(paths: string[], ours: boolean): void;
+  // 标签
+  tagCreate(name: string, sha?: string, message?: string): void;
+  tagDelete(name: string, remote?: string): void;
+  tagPush(name: string, remote?: string): void;
 }
 
 export const S = {
@@ -49,7 +56,7 @@ export const S = {
     language: 'auto', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
     graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
     commitPageSize: 500, maxAutoLoad: 20000, fetchOnOpen: true, fetchPrune: true,
-    defaultPullStrategy: 'merge',
+    defaultPullStrategy: 'merge', logOrder: 'topo',
   } as ConfigDto,
   lang: 'zh-CN' as Lang,
   t: createT('zh-CN') as Translate,

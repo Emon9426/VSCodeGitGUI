@@ -39,5 +39,9 @@
   "cfg.ai.learnFromHistory": "生成时学习最近 10 条提交的风格与语言。",
   "cfg.ai.useWorkspaceInstructions": "生成时遵循工程指示文件（.copilot/、.github/copilot-instructions.md、.github/instructions/*.instructions.md）。",
   "cfg.commit.clearMessage": "提交成功后清空提交信息输入框。",
-  "cfg.commit.pushAfter": "「提交后推送」复选框的默认状态。"
+  "cfg.commit.pushAfter": "「提交后推送」复选框的默认状态。",
+  "cmd.setLanguage": "GitBoard: 切换界面语言",
+  "cfg.logOrder": "git log 的提交排序。topo 走线规整（默认）；date 在超大仓库上更快。",
+  "cfg.logOrder.topo": "拓扑序（走线规整，默认）",
+  "cfg.logOrder.date": "时间序（大仓库更快）"
 }

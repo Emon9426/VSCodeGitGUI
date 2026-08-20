@@ -2,7 +2,7 @@
   "name": "gitboard",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "EmonZhang3438",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -75,6 +75,10 @@
       {
         "command": "gitboard.commit",
         "title": "%cmd.commit%"
+      },
+      {
+        "command": "gitboard.setLanguage",
+        "title": "%cmd.setLanguage%"
       }
     ],
     "keybindings": [
@@ -134,6 +138,19 @@
           "minimum": 100,
           "maximum": 5000,
           "description": "%cfg.commitPageSize%"
+        },
+        "gitboard.logOrder": {
+          "type": "string",
+          "default": "topo",
+          "enum": [
+            "topo",
+            "date"
+          ],
+          "enumDescriptions": [
+            "%cfg.logOrder.topo%",
+            "%cfg.logOrder.date%"
+          ],
+          "description": "%cfg.logOrder%"
         },
         "gitboard.maxAutoLoad": {
           "type": "number",

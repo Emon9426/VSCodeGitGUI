@@ -35,6 +35,7 @@ function readConfig(): ConfigDto {
     fetchOnOpen: cfg.get('fetchOnOpen', true),
     fetchPrune: cfg.get('fetchPrune', true),
     defaultPullStrategy: cfg.get('defaultPullStrategy', 'merge'),
+    logOrder: cfg.get('logOrder', 'topo'),
     aiEnabled: cfg.get('ai.enabled', true),
     aiLanguage: cfg.get('ai.language', 'auto'),
     aiLearnFromHistory: cfg.get('ai.learnFromHistory', true),
@@ -88,6 +89,8 @@ export class GraphPanel {
   private stateVersions = new Map<string, number>();
   private watchers = new Map<string, RepoWatcher>();
   private commitCache = new Map<string, Map<string, Commit>>();
+  /** 各仓库已加载提交深度（同 filter 才复用）：refresh 时补页到此深度，列表不因刷新截断回首页 */
+  private loadedCounts = new Map<string, { count: number; filterKey: string }>();
   private lastState?: RepoState;
   private opSeq = 0;
   private autoFetchDone = false;
@@ -99,7 +102,7 @@ export class GraphPanel {
   private readonly channel = vscode.window.createOutputChannel('GitBoard');
   // 工作副本（Commit 功能）
   private lastWorkJson = '';
-  private lastWorkEntries?: { staged: FileEntry[]; unstaged: FileEntry[] };
+  private lastWorkEntries?: { staged: FileEntry[]; unstaged: FileEntry[]; conflicts: FileEntry[] };
   private aiCts?: vscode.CancellationTokenSource;
   private pendingWorkView = false;
 
@@ -231,7 +234,7 @@ export class GraphPanel {
         await this.selectRepo(String(args.repoId));
         return null;
       case 'refresh':
-        await this.refresh();
+        await this.refresh(true);   // 用户显式刷新：必推送（绕过指纹去重）
         return null;
       case 'loadMore':
         return this.loadMore(Number(args.offset));
@@ -242,7 +245,7 @@ export class GraphPanel {
       case 'setFilter': {
         const cur = this.filters.get(this.currentRepoId!) ?? DEFAULT_FILTER;
         this.filters.set(this.currentRepoId!, sanitizeLogFilter({ ...cur, ref: args.ref, author: args.author ?? cur.author, since: args.since ?? cur.since, until: args.until ?? cur.until }));
-        await this.refresh();
+        await this.refresh(true);   // 用户显式切换筛选：必推送
         return null;
       }
       case 'op:fetch':
@@ -325,6 +328,19 @@ export class GraphPanel {
       case 'work.unstage':
         this.workStagePaths(Array.isArray(args.paths) ? args.paths.map(String) : [], false);
         return null;
+      case 'work.resolveConflict':
+        this.workResolveConflict(Array.isArray(args.paths) ? args.paths.map(String) : [], args.ours !== false);
+        return null;
+      // ---------- 标签 ----------
+      case 'tag.create':
+        this.startOp({ kind: 'tagCreate', name: String(args.name ?? ''), sha: args.sha ? String(args.sha) : undefined, message: args.message ? String(args.message) : undefined });
+        return null;
+      case 'tag.delete':
+        this.startOp({ kind: args.remote ? 'tagDeleteRemote' : 'tagDelete', name: String(args.name ?? ''), remote: args.remote ? String(args.remote) : undefined });
+        return null;
+      case 'tag.push':
+        this.startOp({ kind: 'tagPush', name: String(args.name ?? ''), remote: args.remote ? String(args.remote) : undefined });
+        return null;
       case 'work.stageAll':
         this.startWorkOp({ kind: 'stage', all: true });
         return null;
@@ -387,6 +403,9 @@ export class GraphPanel {
       case 'ui:setView':
         await this.context.globalState.update('gitboard.lastView', args.view === 'work' ? 'work' : 'graph');
         return null;
+      case 'ui:pickLanguage':
+        await this.pickLanguage();
+        return null;
       default:
         throw new Error(`unknown command: ${cmd}`);
     }
@@ -418,8 +437,8 @@ export class GraphPanel {
       this.pendingRepoId = undefined;
       await this.selectRepo(id);
     } else if (this.currentRepoId) {
-      // webview 被回收后重建：重发当前仓库状态
-      await this.refresh();
+      // webview 被回收后重建：重发当前仓库状态（强制——新 webview 无本地状态，指纹相同也必须推）
+      await this.refresh(true);
     } else if (this.repos.length) {
       await this.selectRepo(this.repos[0].id);
     }
@@ -440,10 +459,11 @@ export class GraphPanel {
   private async selectRepo(repoId: string): Promise<void> {
     if (!this.repos.some(r => r.id === repoId)) return;
     this.currentRepoId = repoId;
+    this.lastPostedFingerprint = undefined;   // 换仓库：指纹失效，必推送
     this.watchers.get(repoId)?.dispose();
     this.watchers.delete(repoId);
     const root = this.roots.get(repoId)!;
-    const watcher = new RepoWatcher(root, () => { void this.refresh(); });
+    const watcher = new RepoWatcher(root, files => { this.onWatch(files); });
     watcher.start();
     this.watchers.set(repoId, watcher);
 
@@ -455,15 +475,108 @@ export class GraphPanel {
     }
   }
 
-  /** 重建当前仓库 RepoState 并推送（保留过滤） */
-  private async refresh(): Promise<void> {
+  /**
+   * watcher 事件分类（v0.7.2 性能优化）：
+   * 仅 index 变化（暂存/取消暂存类操作）→ 只推工作副本状态，跳过整图重建；
+   * 其余（HEAD/refs 等）→ 全量刷新。轻量路径仍校验 HEAD 未变，防 fs.watch 偶发丢事件。
+   */
+  private onWatch(files: string[]): void {
+    if (!this.service || !this.currentRepoId) return;
+    const indexOnly = files.length > 0 && files.every(f => f === 'index');
+    if (!indexOnly) {
+      void this.refresh();
+      return;
+    }
+    void (async () => {
+      try {
+        const root = this.roots.get(this.currentRepoId!)!;
+        const head = await this.service!.headShaOf(root);
+        if ((head ?? '') !== (this.lastState?.head.sha ?? '')) {
+          await this.refresh();   // HEAD 实际变了（漏事件兜底）
+          return;
+        }
+        await this.workStateNow();
+      } catch { /* 下次触发兜底 */ }
+    })();
+  }
+
+  /**
+   * 重建当前仓库 RepoState 并推送（保留过滤）。
+   * 合并去抖（v0.7.2）：进行中的调用被复用，期间的新请求合并为结束后再跑一轮；
+   * 指纹去重：refs/HEAD/dirty/筛选均未变化时跳过推送，webview 免于全量重渲染。
+   */
+  private refreshInFlight?: Promise<void>;
+  private refreshAgain = false;
+  private lastPostedFingerprint?: string;
+
+  /**
+   * force：跳过指纹去重，本轮必推送 repoState。
+   * 用于用户显式操作（刷新按钮 / pull / fetch / push / checkout / reset / commit 成功）——
+   * webview 本地可能处于脏状态（分页错位残留等），只有重推 repoState 才能重建；
+   * watcher 自动刷新不传 force，保留去重以抑制刷新风暴。
+   */
+  private refresh(force = false): Promise<void> {
+    if (force) this.lastPostedFingerprint = undefined;
+    if (this.refreshInFlight) {
+      this.refreshAgain = true;   // 已有进行中/排队的刷新：合并进来（指纹已清，本轮或尾随轮必推）
+      return this.refreshInFlight;
+    }
+    const p = (async () => {
+      for (;;) {
+        this.refreshAgain = false;
+        await this.doRefresh();
+        if (!this.refreshAgain) return;
+      }
+    })();
+    this.refreshInFlight = p.finally(() => { this.refreshInFlight = undefined; });
+    return this.refreshInFlight;
+  }
+
+  private async doRefresh(): Promise<void> {
     if (!this.service || !this.currentRepoId) return;
     const repoId = this.currentRepoId;
     const root = this.roots.get(repoId)!;
     const version = (this.stateVersions.get(repoId) ?? 0) + 1;
     this.stateVersions.set(repoId, version);
     try {
-      const state = await this.service.buildState(root, repoId, this.filters.get(repoId) ?? DEFAULT_FILTER, this.config.commitPageSize, version);
+      // 一次 status 同时喂 buildState（分支信息）与工作副本矩阵（v0.7.2 少跑一次）
+      const status = await this.service.statusFullOf(root);
+      const filter = this.filters.get(repoId) ?? DEFAULT_FILTER;
+      const state = await this.service.buildState(root, repoId, filter, this.config.commitPageSize, version, {
+        statusInfo: status.info,
+        order: this.config.logOrder,
+      });
+      // 已加载深度补齐：用户加载过多页时，按当前 refs 快照补页到原深度再推送——
+      // 避免列表被刷新截断回首页（滚动位置 clamp + 新旧快照混拼都会造成"提交缺失"）
+      const fk = JSON.stringify(filter);
+      const loaded = this.loadedCounts.get(repoId);
+      const target = loaded && loaded.filterKey === fk ? loaded.count : 0;
+      const needMore = target > state.commits.length && state.hasMore;
+      if (needMore) {
+        const ctx = {
+          localBranches: new Set(state.branches.map(b => b.name)),
+          remoteBranches: new Set(state.remotes.flatMap(g => g.branches.map(b => b.name))),
+        };
+        let fp0 = '';
+        try { fp0 = this.refsFingerprintOf(await this.service.refsOf(root)); } catch { /* 校验尽力而为 */ }
+        const extra: Commit[] = [];
+        let more = state.hasMore;
+        while (state.commits.length + extra.length < target && more) {
+          const page = await this.service.commitsPage(root, filter, state.commits.length + extra.length, this.config.commitPageSize, ctx, this.config.logOrder);
+          if (!page.commits.length) { more = false; break; }
+          extra.push(...page.commits);
+          more = page.hasMore;
+        }
+        try {
+          // 补页期间 refs 未漂移才合并（各页同快照，拼接无缺口）；漂移则按首页推送，下轮刷新重推完整深度
+          if (!fp0 || this.refsFingerprintOf(await this.service.refsOf(root)) === fp0) {
+            state.commits.push(...extra);
+            state.hasMore = more;
+            state.commitsLoaded = state.commits.length;
+          }
+        } catch { /* 校验尽力而为 */ }
+      }
+      this.loadedCounts.set(repoId, { count: state.commits.length, filterKey: fk });
       this.lastState = state;
       const cache = new Map<string, Commit>();
       for (const c of state.commits) cache.set(c.sha, c);
@@ -472,10 +585,21 @@ export class GraphPanel {
       if (this.lastSelectedSha && !cache.has(this.lastSelectedSha)) {
         this.lastSelectedSha = undefined;
       }
-      this.post({ t: 'repoState', state });
-      this.updateStatusBar();
-      GraphPanel.onDidStateChange.fire();
-      void this.workStateNow().catch(() => undefined);   // 顺带轻量推送工作副本状态
+      // 指纹去重：refs/HEAD/dirty/筛选/分页状态未变则不重复推送
+      const fp = JSON.stringify([
+        state.head.sha, state.head.branch, state.head.detached,
+        state.status.dirtyCount, state.filterRef, state.logFilter, state.hasMore,
+        state.branches.map(b => b.fullName + b.sha).join(';'),
+        state.remotes.flatMap(g => g.branches.map(b => b.name + b.sha)).join(';'),
+        state.tags.map(t => t.name + t.sha).join(';'),
+      ]);
+      if (fp !== this.lastPostedFingerprint) {
+        this.lastPostedFingerprint = fp;
+        this.post({ t: 'repoState', state });
+        this.updateStatusBar();
+        GraphPanel.onDidStateChange.fire();
+      }
+      void this.doWorkState({ entries: status.entries, merging: status.merging }).catch(() => undefined);
     } catch (e) {
       this.post({ t: 'notify', level: 'error', message: String((e as Error)?.message ?? e) });
     }
@@ -490,11 +614,27 @@ export class GraphPanel {
       remoteBranches: new Set(this.lastState?.remotes.flatMap(g => g.branches.map(b => b.name)) ?? []),
     };
     const filter = this.filters.get(repoId) ?? DEFAULT_FILTER;
-    const { commits, hasMore } = await this.service.commitsPage(root, filter, offset, this.config.commitPageSize, ctx);
+    let fp0 = '';
+    try { fp0 = this.refsFingerprintOf(await this.service.refsOf(root)); } catch { /* 校验尽力而为 */ }
+    const { commits, hasMore } = await this.service.commitsPage(root, filter, offset, this.config.commitPageSize, ctx, this.config.logOrder);
+    // 在途期间 refs 已变：此页与首页不同快照，拼接会错位（缺提交/重复）——不推送，
+    // 主动驱动一轮强制刷新（watcher 可能丢事件，repoState 到达可复位前端加载状态并重建列表）
+    try {
+      if (fp0 && this.refsFingerprintOf(await this.service.refsOf(root)) !== fp0) {
+        void this.refresh(true);
+        return null;
+      }
+    } catch { /* 校验尽力而为 */ }
+    this.loadedCounts.set(repoId, { count: offset + commits.length, filterKey: JSON.stringify(filter) });
     const cache = this.commitCache.get(repoId);
     for (const c of commits) cache?.set(c.sha, c);
     this.post({ t: 'commitsAppend', repoId, offset, commits, hasMore });
     return { commits: commits.map(c => c.sha), hasMore };
+  }
+
+  /** refs 快照指纹：全部 ref 的 sha 串联（loadMore 在途漂移检测用，实时读取而非 lastState 缓存） */
+  private refsFingerprintOf(refs: { sha: string }[]): string {
+    return refs.map(r => r.sha).join('|');
   }
 
   private async commitDetail(sha: string): Promise<unknown> {
@@ -534,26 +674,61 @@ export class GraphPanel {
 
   // ---------- 操作 ----------
 
+  /** lastState 引用快照（fullName → sha），fetch 前后对比用 */
+  private snapshotRefs(): Map<string, string> {
+    const m = new Map<string, string>();
+    const st = this.lastState;
+    if (!st) return m;
+    for (const b of st.branches) m.set(b.fullName, b.sha);
+    for (const g of st.remotes) for (const b of g.branches) m.set(b.fullName, b.sha);
+    for (const tg of st.tags) m.set(tg.name, tg.sha);
+    return m;
+  }
+
   private startOp(spec: OpSpec): void {
     if (!this.runner || !this.currentRepoId) return;
     const root = this.roots.get(this.currentRepoId)!;
     const opId = ++this.opSeq;
     const kind = spec.kind;
     const label = this.t(kind);
+    // 立即播报"进行中"（不等首条 --progress 输出），按钮随即进入繁忙态
+    this.post({ t: 'opProgress', opId, kind, text: '' });
+    const refsBefore = kind === 'fetch' ? this.snapshotRefs() : undefined;
     void this.runner.run(
       root, spec, opId,
       (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
       ok => ok ? this.t(`${kind}Done`) : this.t('opFailed', { op: label }),
-    ).then(outcome => {
+    ).then(async outcome => {
       if (outcome.message === 'cancelled') {
         this.post({ t: 'opResult', opId, kind, ok: false, message: this.t('opCancelled') });
         return;
       }
+      // 结果细化：让"点了但没变化"也有明确反馈（v0.7.1）
+      let message = outcome.message;
+      if (outcome.ok) {
+        if (kind === 'fetch' && refsBefore) {
+          try {
+            const after = await this.service!.refsOf(root);
+            let n = 0;
+            for (const r of after) {
+              if (refsBefore.get(r.fullName) !== r.sha) n++;
+            }
+            message = n > 0 ? this.t('fetchUpdated', { n }) : this.t('fetchUpToDate');
+          } catch { /* 保留默认消息 */ }
+        } else if (kind === 'pull' && /already up to date/i.test(outcome.stdoutTail ?? '')) {
+          message = this.t('pullUpToDate');
+        } else if (kind === 'push') {
+          message = `${this.t('pushDone')}：${spec.branch ?? 'HEAD'} → ${spec.remote ?? 'origin'}`;
+        }
+      }
       this.post({
         t: 'opResult', opId, kind, ok: outcome.ok,
-        message: outcome.message, outputTail: outcome.outputTail,
+        message, outputTail: outcome.outputTail,
       });
-      if (outcome.ok) void this.refresh();
+      if (outcome.ok) {
+        void this.refresh(true);   // 操作成功：强制重推（fetch/pull/push/checkout/reset 后表格必刷新）
+        void this.workStateNow().catch(() => undefined);
+      }
     });
   }
 
@@ -583,21 +758,63 @@ export class GraphPanel {
     else this.pendingWorkView = true;
   }
 
-  /** 计算当前 WorkState；变化才推送（轻量 statusTick，不重建提交图） */
-  private async workStateNow(): Promise<WorkState> {
+  /** 界面语言三选一（跟随 VS Code / 简体中文 / English）；写回配置触发全 UI 即时切换 */
+  async pickLanguage(): Promise<void> {
+    const cfg = vscode.workspace.getConfiguration('gitboard');
+    const cur = cfg.get<'auto' | 'zh-CN' | 'en'>('language', 'auto');
+    const mk = (label: string, value: 'auto' | 'zh-CN' | 'en') => ({
+      label, value, description: value === cur ? '✓' : undefined,
+    });
+    const pick = await vscode.window.showQuickPick(
+      [mk(this.t('langAuto'), 'auto'), mk(this.t('langZh'), 'zh-CN'), mk(this.t('langEn'), 'en')],
+      { placeHolder: this.t('langSwitchTitle') },
+    );
+    if (pick && pick.value !== cur) {
+      await cfg.update('language', pick.value, vscode.ConfigurationTarget.Global);
+      // 配置变化 → onDidChangeConfiguration → configChanged → Webview 全量换语言（无需重载）
+    }
+  }
+
+  /**
+   * 计算当前 WorkState；变化才推送（轻量 statusTick，不重建提交图）。
+   * 合并去抖（v0.7.2）：进行中的调用被复用，期间的新请求合并为结束后再跑一轮
+   * ——操作回调与 watcher 的重复计算归一。
+   */
+  private workInFlight?: Promise<WorkState>;
+  private workAgain = false;
+
+  private workStateNow(): Promise<WorkState> {
+    if (this.workInFlight) {
+      this.workAgain = true;
+      return this.workInFlight;
+    }
+    const p = (async () => {
+      for (;;) {
+        this.workAgain = false;
+        const st = await this.doWorkState();
+        if (!this.workAgain) return st;
+      }
+    })();
+    this.workInFlight = p.finally(() => { this.workInFlight = undefined; }) as Promise<WorkState>;
+    return this.workInFlight;
+  }
+
+  private async doWorkState(pre?: { entries: FileEntry[]; merging: boolean }): Promise<WorkState> {
     if (!this.service || !this.currentRepoId) throw new Error('not ready');
     const repoId = this.currentRepoId;
     const root = this.roots.get(repoId)!;
     const [wc, head] = await Promise.all([
-      this.service.workingCopyOf(root),
+      this.service.workingCopyOf(root, pre),
       this.service.headCommitOf(root),
     ]);
     const state: WorkState = {
       repoId,
       staged: wc.staged,
       unstaged: wc.unstaged,
+      conflicts: wc.conflicts,
       dirtyCount: wc.dirtyCount,
       merging: wc.merging,
+      mergeKind: wc.mergeKind,
       headShortSha: head?.shortSha ?? '',
       headSubject: head?.subject ?? '',
       headDate: head?.date ?? '',
@@ -618,6 +835,7 @@ export class GraphPanel {
     const opId = ++this.opSeq;
     const kind = spec.kind;
     const quiet = spec.kind === 'stage' || spec.kind === 'unstage';
+    if (!quiet) this.post({ t: 'opProgress', opId, kind, text: '' });
     void this.runner.run(root, spec, opId,
       (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
       ok => ok ? this.t(`${kind}Done`) : this.t('opFailed', { op: this.t(kind) }),
@@ -638,6 +856,31 @@ export class GraphPanel {
     this.startWorkOp({ kind: stage ? 'stage' : 'unstage', paths });
   }
 
+  /**
+   * 冲突二选一：checkout --ours/--theirs + add；全部解决且处于普通合并中 → 自动完成合并提交
+   * （完成提交走 startOp：有「合并完成」toast + 强制整图刷新 + 工作副本刷新）。
+   */
+  private workResolveConflict(paths: string[], ours: boolean): void {
+    if (!paths.length || !this.runner || !this.currentRepoId) return;
+    const root = this.roots.get(this.currentRepoId)!;
+    const opId = ++this.opSeq;
+    void this.runner.run(root, { kind: 'resolveConflict', paths, ours }, opId,
+      (text, pct) => this.post({ t: 'opProgress', opId, kind: 'resolveConflict', text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
+      ok => ok ? this.t('resolveConflictDone') : this.t('opFailed', { op: this.t('resolveConflict') }),
+    ).then(async outcome => {
+      // 成功静默（列表即时刷新即反馈），失败弹 toast
+      this.post({ t: 'opResult', opId, kind: 'resolveConflict', ok: outcome.ok, message: outcome.ok ? undefined : outcome.message });
+      const st = await this.workStateNow().catch(() => undefined);
+      if (st && !st.conflicts.length && st.merging) {
+        try {
+          if (fs.statSync(path.join(root, '.git', 'MERGE_HEAD')).isFile()) {
+            this.startOp({ kind: 'commitNoEdit' });   // 自动完成合并提交
+          }
+        } catch { /* 非 merge（rebase 等）：不自动提交，由用户继续操作 */ }
+      }
+    });
+  }
+
   /** 丢弃：已跟踪 restore 回 HEAD（含已暂存），未跟踪 clean -fd */
   private workDiscard(paths: string[]): void {
     if (!paths.length) return;
@@ -655,6 +898,9 @@ export class GraphPanel {
     const amend = !!args.amend;
     const all = !!args.all;
     const push = !!args.push;
+    if (this.lastWorkEntries?.conflicts.length) {
+      throw new Error(this.t('conflictBlock'));   // 未解决冲突阻塞提交：引导先选保留版本
+    }
     if (!amend && !all && !(this.lastWorkEntries?.staged.length)) throw new Error(this.t('needStage'));
 
     if (all) this.startWorkOp({ kind: 'stage', all: true });
@@ -664,6 +910,7 @@ export class GraphPanel {
 
     const root = this.currentRoot();
     const opId = ++this.opSeq;
+    this.post({ t: 'opProgress', opId, kind: 'commit', text: '' });
     let outcome;
     try {
       outcome = await this.runner!.run(root, { kind: 'commit', messageFile: file, amend }, opId,
@@ -677,7 +924,7 @@ export class GraphPanel {
     if (!outcome.ok) throw new Error(outcome.message ?? 'commit failed');
 
     await this.context.globalState.update(`gitboard.commitDraft:${this.currentRepoId}`, undefined);
-    void this.refresh();
+    void this.refresh(true);   // 提交成功：强制重推
     void this.workStateNow();
     if (push) this.quickOp('push');
     const head = await this.service!.headCommitOf(root);

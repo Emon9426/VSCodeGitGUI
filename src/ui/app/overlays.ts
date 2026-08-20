@@ -106,6 +106,41 @@ export function promptDialog(title: string, label: string, value: string): Promi
 
 export type ResetMode = 'soft' | 'mixed' | 'hard';
 
+/**
+ * 新建标签对话框：名称必填；附注信息选填（非空 = 附注标签 annotated）。
+ * 在 shaShort 所指提交上创建。
+ */
+export function tagDialog(
+  shaShort: string,
+  t: (k: string, p?: Record<string, string | number>) => string,
+): Promise<{ name: string; message: string } | null> {
+  return new Promise(resolve => {
+    const { box, body, close } = openModal(t('tagTitle', { sha: shaShort }));
+    const nameLabel = el('label', 'gg-modal-label', t('tagNameLabel'));
+    const nameInput = el('input', 'gg-input') as HTMLInputElement;
+    nameInput.placeholder = 'v1.0.0';
+    nameLabel.appendChild(nameInput);
+    const msgLabel = el('label', 'gg-modal-label', t('tagMsgLabel'));
+    const msgInput = el('textarea', 'gg-input gg-tag-msg') as HTMLTextAreaElement;
+    msgInput.rows = 3;
+    msgLabel.appendChild(msgInput);
+    body.append(nameLabel, msgLabel);
+    const btns = el('div', 'gg-modal-btns');
+    const cancel = el('button', 'gg-btn', S.t('cancel'));
+    const ok = el('button', 'gg-btn primary', t('tagCreateBtn'));
+    const done = (v: { name: string; message: string } | null) => { close(); resolve(v); };
+    cancel.addEventListener('click', () => done(null));
+    ok.addEventListener('click', () => {
+      const name = nameInput.value.trim();
+      if (name) done({ name, message: msgInput.value.trim() });
+    });
+    nameInput.addEventListener('keydown', e => { if (e.key === 'Enter' && nameInput.value.trim()) done({ name: nameInput.value.trim(), message: msgInput.value.trim() }); });
+    btns.append(cancel, ok);
+    box.appendChild(btns);
+    nameInput.focus();
+  });
+}
+
 /** reset 模式选择（设计方案 6.5：hard 需强确认） */
 export function resetDialog(sha: string, dirtyCount: number, t: (k: string, p?: Record<string, string | number>) => string): Promise<ResetMode | null> {
   return new Promise(resolve => {

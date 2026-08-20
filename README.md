@@ -40,14 +40,14 @@ code --install-extension EmonZhang3438.gitboard
 **方式一：命令行安装 vsix（推荐）**
 
 ```bash
-code --install-extension gitboard-0.7.0.vsix
+code --install-extension gitboard-0.8.0.vsix
 ```
 
 安装后执行 **Ctrl+Shift+P → “开发者：重新加载窗口”**（每次覆盖安装新版本后都需要）。
 
 **方式二：VS Code 界面安装**
 
-扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.7.0.vsix` → 重新加载窗口。
+扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.8.0.vsix` → 重新加载窗口。
 
 **方式三：从源码构建**
 
@@ -103,7 +103,8 @@ npm run package     # 产出 gitboard-x.y.z.vsix
 
 - **列宽**：图形/提交说明/作者/SHA 四列表头右缘可拖拽调宽（悬停高亮），自动持久化，重装不丢；时间列自适应剩余空间；
 - **主题**：全部颜色消费 VS Code 主题变量，明暗自动适配；
-- **语言**：默认跟随 VS Code（中文/英文），可强制指定。
+- **语言**：默认跟随 VS Code 界面语言，可强制指定；**工具栏「A / 中 / EN」按钮**或命令 `GitBoard: 切换界面语言` 一键切换，**即时生效、无需重载**（v0.7.1）；
+- **按钮反馈**：Fetch / Pull / Push / 刷新点击后按钮进入繁忙态（蓝色脉冲）、完成时短暂闪绿并 toast 说明结果——无新提交也会明确告知（“远程无新提交” / “已是最新的” / “获取完成：N 个分支引用有更新”）（v0.7.1）。
 
 #### 7. 工作副本与提交（v0.7.0 新增）
 
@@ -134,13 +135,14 @@ SourceTree 式提交流程，全程不离开 GitBoard：
 | --- | --- | --- |
 | `gitboard.gitPath` | 自动检测 | git 可执行文件路径 |
 | `gitboard.commitPageSize` | 500 | 每页加载提交数（100–5000） |
+| `gitboard.logOrder` | topo | 提交排序：topo（走线规整，默认）/ date（超大仓库更快） |
 | `gitboard.maxAutoLoad` | 20000 | 自动加载上限 |
 | `gitboard.defaultPullStrategy` | merge | pull 策略：merge / rebase / ff-only |
 | `gitboard.dateFormat` | datetime | 时间格式：YYYY-MM-DD HH:mm:ss / 相对时间 / ISO |
 | `gitboard.rowHeight` | default | 行高：紧凑 20 / 标准 24 / 舒适 28 |
 | `gitboard.graphStyle` | curved | 走线风格：短半径圆角 / 直角折线 |
 | `gitboard.detailPanelPosition` | bottom | 详情面板位置：底部 / 右侧 |
-| `gitboard.language` | auto | 界面语言 |
+| `gitboard.language` | auto | 界面语言（工具栏 A/中/EN 按钮一键切换，即时生效） |
 | `gitboard.fetchOnOpen` | true | 打开视图时自动 fetch |
 | `gitboard.startView` | graph | 打开时的初始视图：提交图 / 工作副本 / 上次使用 |
 | `gitboard.ai.enabled` | true | 启用 Copilot 生成提交信息（不可用时自动隐藏入口） |
@@ -207,7 +209,7 @@ code --install-extension EmonZhang3438.gitboard
 **Option 1 — CLI (recommended)**
 
 ```bash
-code --install-extension gitboard-0.7.0.vsix
+code --install-extension gitboard-0.8.0.vsix
 ```
 
 Then run **Ctrl+Shift+P → “Developer: Reload Window”** (required after every upgrade).
@@ -245,7 +247,7 @@ npm install && npm run package
 
 **Filtering** — branch dropdown (or click a tree node), author box (git regex supported, auto-applies), and a date range (the end date includes the whole day). Filters stack, are remembered per repository, and map to `git log --ref / --author / --since / --until`.
 
-**Personalization** — drag column borders in the header to resize (persisted across sessions); time column absorbs the remaining space; colors follow your theme; UI language follows VS Code.
+**Personalization** — drag column borders in the header to resize (persisted across sessions); time column absorbs the remaining space; colors follow your theme; the UI language follows VS Code by default and can be switched instantly (no reload) via the **A / 中 / EN** toolbar button or the `GitBoard: Switch UI Language` command (v0.7.1). Fetch / Pull / Push / Refresh buttons show a busy pulse while running and flash green on completion, with result toasts that are explicit even when nothing changed (“remote has nothing new” / “already up to date” / “N branch refs updated”) (v0.7.1).
 
 **Working copy & commits (new in v0.7.0)** — a SourceTree-style flow without leaving GitBoard. Switch via the “▣ Working Copy” tab (dirty-file badge) or `Ctrl+Alt+C`. The left pane groups **Staged / Unstaged** files — **check a box to `git add`, uncheck to unstage** (optimistic updates); renames show `old → new`, untracked files are marked `U`. Clicking a file shows its **full HEAD↔worktree diff** on the right (staged + unstaged combined, no tabs), with `‹ ›` to walk through changed files. The bottom bar has a single multi-line message box (first line = subject, live 50-char counter), a 🕘 recent-messages picker, and the **Commit ⏎** button with a dropdown: Commit & Push / Amend last commit / Stage-all-and-commit; `Ctrl+Enter` commits, drafts are saved per repository. **✨ AI** generates the message from your staged diff via GitHub Copilot — streamed inline, stop with `Esc`, regenerate or switch models at will; language and style are learned from the last 10 commits, and workspace instruction files (`.copilot/*.md`, `.github/copilot-instructions.md`, `.github/instructions/*.md`) are followed automatically; a one-time confirmation explains what gets sent. Right-click → “Discard…” resets files to HEAD (untracked files are deleted) behind a red double confirmation.
 

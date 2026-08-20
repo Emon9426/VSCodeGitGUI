@@ -29,29 +29,53 @@ export function createWorkView(app: App): WorkView {
   const unstageAllBtn = el('button', 'gg-icon-btn', '⬆');
   const fsearch = el('input', 'gg-work-search') as HTMLInputElement;
   const groups = el('div', 'gg-work-groups');
+  const conflictHead = mkGroupHead(true);
+  const conflictBox = el('div', 'gg-work-rows');
   const stagedHead = mkGroupHead();
   const stagedBox = el('div', 'gg-work-rows');
   const unstagedHead = mkGroupHead();
   const unstagedBox = el('div', 'gg-work-rows');
   fbtns.append(unstageAllBtn, stageAllBtn);
   fhead.append(ftitle, fbtns);
-  groups.append(stagedHead.el, stagedBox, unstagedHead.el, unstagedBox);
+  groups.append(conflictHead.el, conflictBox, stagedHead.el, stagedBox, unstagedHead.el, unstagedBox);
   files.append(fhead, fsearch, groups);
 
-  // 分组头（元素只建一次：折叠监听不随 update 累积）
-  function mkGroupHead(): { el: HTMLElement; caret: HTMLElement; name: HTMLElement; cnt: HTMLElement; isCollapsed(): boolean } {
-    const g = el('div', 'gg-work-group-h');
+  // 冲突组批量按钮（组头右侧）：全部用我的 / 全部用对方的
+  const conflictBtns = el('div', 'gg-work-cbtns');
+  const allOursBtn = el('button', 'gg-btn tiny');
+  const allTheirsBtn = el('button', 'gg-btn tiny');
+  conflictBtns.append(allOursBtn, allTheirsBtn);
+  conflictHead.el.querySelector('.gg-work-cnt')!.after(conflictBtns);
+  allOursBtn.addEventListener('click', e => {
+    e.stopPropagation();   // 不触发组头折叠
+    const paths = (S.work.state?.conflicts ?? []).map(c => c.path);
+    if (paths.length) app.resolveConflict(paths, true);
+  });
+  allTheirsBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const paths = (S.work.state?.conflicts ?? []).map(c => c.path);
+    if (paths.length) app.resolveConflict(paths, false);
+  });
+  bindCollapse(conflictHead, conflictBox);
+  bindCollapse(stagedHead, stagedBox);
+  bindCollapse(unstagedHead, unstagedBox);
+
+  // 分组头（元素只建一次：折叠监听不随 update 累积；每组只折叠自己的行容器）
+  function mkGroupHead(conflict = false): { el: HTMLElement; caret: HTMLElement; name: HTMLElement; cnt: HTMLElement; isCollapsed(): boolean } {
+    const g = el('div', 'gg-work-group-h' + (conflict ? ' conflict' : ''));
     const caret = el('span', 'gg-work-caret', '▾');
     const name = el('b');
     const cnt = el('span', 'gg-work-cnt', '0');
     g.append(caret, name, cnt);
-    g.addEventListener('click', () => {
-      g.classList.toggle('collapsed');
-      caret.textContent = g.classList.contains('collapsed') ? '▸' : '▾';
-      stagedBox.classList.toggle('hidden', stagedHead.el.classList.contains('collapsed'));
-      unstagedBox.classList.toggle('hidden', unstagedHead.el.classList.contains('collapsed'));
-    });
     return { el: g, caret, name, cnt, isCollapsed: () => g.classList.contains('collapsed') };
+  }
+
+  function bindCollapse(head: { el: HTMLElement; caret: HTMLElement; isCollapsed(): boolean }, box: HTMLElement): void {
+    head.el.addEventListener('click', () => {
+      head.el.classList.toggle('collapsed');
+      head.caret.textContent = head.isCollapsed() ? '▸' : '▾';
+      box.classList.toggle('hidden', head.isCollapsed());
+    });
   }
 
   // 列宽拖拽（200–420，持久化到宿主）
@@ -128,7 +152,31 @@ export function createWorkView(app: App): WorkView {
     if (!st) return [];
     const f = S.work.filter;
     const match = (e: FileEntry) => !f || e.path.toLowerCase().includes(f);
-    return [...st.staged, ...st.unstaged].filter(match);
+    return [...st.conflicts, ...st.staged, ...st.unstaged].filter(match);
+  }
+
+  /** 冲突行：状态码 ⚠ + 路径 + 行内「我的/对方的」二选一（点击行仍可看 diff） */
+  function conflictRow(e: FileEntry, mergeKind: 'merge' | 'other'): HTMLElement {
+    const r = el('div', 'gg-work-row conflict' + (e.path === S.work.selectedPath ? ' selected' : ''));
+    r.appendChild(el('span', 'gg-st C', 'C'));
+    const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
+    const dir = (p: string) => p.slice(0, p.lastIndexOf('/') + 1);
+    const pathEl = el('span', 'gg-work-fpath');
+    if (dir(e.path)) pathEl.appendChild(el('span', 'gg-work-fdir', dir(e.path)));
+    pathEl.appendChild(el('b', undefined, base(e.path)));
+    pathEl.title = e.path;
+    r.appendChild(pathEl);
+    const btns = el('div', 'gg-work-cbtns');
+    const oursBtn = el('button', 'gg-btn tiny', S.t(mergeKind === 'merge' ? 'resolveOurs' : 'resolveOursOther'));
+    const theirsBtn = el('button', 'gg-btn tiny', S.t(mergeKind === 'merge' ? 'resolveTheirs' : 'resolveTheirsOther'));
+    oursBtn.title = S.t('resolveOursTip');
+    theirsBtn.title = S.t('resolveTheirsTip');
+    oursBtn.addEventListener('click', ev => { ev.stopPropagation(); app.resolveConflict([e.path], true); });
+    theirsBtn.addEventListener('click', ev => { ev.stopPropagation(); app.resolveConflict([e.path], false); });
+    btns.append(oursBtn, theirsBtn);
+    r.appendChild(btns);
+    r.addEventListener('click', () => selectEntry(e));
+    return r;
   }
 
   function selectEntry(e: FileEntry): void {
@@ -156,6 +204,7 @@ export function createWorkView(app: App): WorkView {
     revealBtn.title = S.t('revealInFM');
 
     if (!st) {
+      conflictHead.el.classList.add('hidden');
       renderGroup(stagedHead, stagedBox, S.t('workStaged'), [], true);
       renderGroup(unstagedHead, unstagedBox, S.t('workUnstaged'), [], false);
       renderEmptyDiff();
@@ -164,11 +213,22 @@ export function createWorkView(app: App): WorkView {
 
     const f = w.filter;
     const match = (e: FileEntry) => !f || e.path.toLowerCase().includes(f);
+    // 冲突组置顶：红标题 + 逐文件「我的/对方的」+ 组头批量按钮（merge 语义=我的/对方的；其他场景 ours/theirs）
+    const conflicts = st.conflicts.filter(match);
+    conflictHead.el.classList.toggle('hidden', !st.conflicts.length);
+    conflictHead.name.textContent = S.t('workConflicts');
+    conflictHead.cnt.textContent = String(st.conflicts.length);
+    conflictBtns.classList.toggle('hidden', !conflicts.length);
+    allOursBtn.textContent = S.t(st.mergeKind === 'merge' ? 'resolveAllOurs' : 'resolveAllOursOther');
+    allTheirsBtn.textContent = S.t(st.mergeKind === 'merge' ? 'resolveAllTheirs' : 'resolveAllTheirsOther');
+    conflictBox.classList.toggle('hidden', conflictHead.isCollapsed() || !st.conflicts.length);
+    clearChildren(conflictBox);
+    for (const e of conflicts) conflictBox.appendChild(conflictRow(e, st.mergeKind));
     renderGroup(stagedHead, stagedBox, S.t('workStaged'), st.staged.filter(match), true);
     renderGroup(unstagedHead, unstagedBox, S.t('workUnstaged'), st.unstaged.filter(match), false);
 
     // 干净的工作副本 → 空状态
-    if (!st.staged.length && !st.unstaged.length) {
+    if (!st.staged.length && !st.unstaged.length && !st.conflicts.length) {
       dpath.textContent = '';
       dstats.textContent = '';
       clearChildren(dbox);

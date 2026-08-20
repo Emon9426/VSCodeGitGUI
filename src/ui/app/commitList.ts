@@ -7,7 +7,7 @@ import { rpc } from '../rpc';
 import { S, type App } from '../state';
 import { el, formatTime } from '../util';
 import { GraphCanvas } from './graphCanvas';
-import { showContextMenu } from './overlays';
+import { showContextMenu, tagDialog } from './overlays';
 
 export interface CommitList {
   el: HTMLElement;
@@ -19,7 +19,7 @@ export interface CommitList {
   appended(): void;
   /** 选中高亮变化（不动滚动） */
   selectionChanged(): void;
-  /** 行高/列宽/语言等配置变化 */
+  /** 行高/列宽/语言等配置变化（列头与空态文案随 S.t 重建） */
   configChanged(): void;
 }
 
@@ -180,6 +180,12 @@ export function createCommitList(app: App): CommitList {
     showContextMenu([
       { label: S.t('checkoutDetached'), run: () => app.checkoutDetached(c.sha) },
       { label: S.t('resetToThisCommit'), run: () => app.resetTo(c.sha) },
+      { sep: true },
+      { label: S.t('newTag'), run: () => {
+        void tagDialog(c.shortSha, S.t).then(r => {
+          if (r) app.tagCreate(r.name, c.sha, r.message || undefined);
+        });
+      } },
       { sep: true },
       { label: S.t('copySha'), run: () => app.copy(c.sha) },
       { label: S.t('copySubject'), run: () => app.copy(c.subject) },

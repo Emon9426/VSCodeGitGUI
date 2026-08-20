@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>GitBoard 工作副本 · 提交之后 —— UI 预览</title>
+<style>
+/* ================= VS Code 主题变量（浏览器回退值，近似 Default Dark+ / Light） ================= */
+:root {
+  --vscode-font-family: system-ui, 'Segoe UI', sans-serif;
+  --vscode-editor-font-family: Consolas, 'Courier New', monospace;
+  --font-size: 13px;
+}
+.theme-dark {
+  --vscode-foreground: #cccccc;
+  --vscode-descriptionForeground: #9d9d9d;
+  --vscode-editor-background: #1e1e1e;
+  --vscode-editorWidget-background: #252526;
+  --vscode-panel-border: #333333;
+  --vscode-input-background: #3c3c3c;
+  --vscode-input-foreground: #cccccc;
+  --vscode-input-border: #3c3c3c;
+  --vscode-dropdown-border: #5a5a5a;
+  --vscode-button-background: #0e639c;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #1177bb;
+  --vscode-focusBorder: #007fd4;
+  --vscode-list-hoverBackground: #2a2d2e;
+  --vscode-list-activeSelectionBackground: #04395e;
+  --vscode-list-activeSelectionForeground: #ffffff;
+  --vscode-charts-green: #89d185;
+  --vscode-charts-red: #f14c4c;
+  --vscode-charts-yellow: #cca700;
+  --vscode-charts-blue: #3794ff;
+  --vscode-charts-purple: #b180d7;
+  --vscode-textLink-foreground: #3794ff;
+  --diff-add-bg: rgba(126, 204, 126, 0.09);
+  --diff-add-gutter: rgba(126, 204, 126, 0.35);
+  --diff-del-bg: rgba(242, 90, 90, 0.11);
+  --diff-del-gutter: rgba(242, 90, 90, 0.4);
+  --diff-ctx-gutter: #85858533;
+}
+.theme-light {
+  --vscode-foreground: #3b3b3b;
+  --vscode-descriptionForeground: #616161;
+  --vscode-editor-background: #ffffff;
+  --vscode-editorWidget-background: #f8f8f8;
+  --vscode-panel-border: #e0e0e0;
+  --vscode-input-background: #ffffff;
+  --vscode-input-foreground: #3b3b3b;
+  --vscode-input-border: #cecece;
+  --vscode-dropdown-border: #9d9d9d;
+  --vscode-button-background: #007acc;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #0062a3;
+  --vscode-focusBorder: #0090f1;
+  --vscode-list-hoverBackground: #e8e8e8;
+  --vscode-list-activeSelectionBackground: #0060c0;
+  --vscode-list-activeSelectionForeground: #ffffff;
+  --vscode-charts-green: #388a34;
+  --vscode-charts-red: #e51400;
+  --vscode-charts-yellow: #bf8803;
+  --vscode-charts-blue: #0066bf;
+  --vscode-charts-purple: #652d90;
+  --vscode-textLink-foreground: #0066bf;
+  --diff-add-bg: rgba(129, 201, 149, 0.16);
+  --diff-add-gutter: rgba(53, 158, 83, 0.55);
+  --diff-del-bg: rgba(233, 111, 111, 0.18);
+  --diff-del-gutter: rgba(226, 76, 76, 0.55);
+  --diff-ctx-gutter: #9999992e;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+.hidden { display: none !important; }
+html, body { height: 100%; }
+body {
+  font-family: var(--vscode-font-family); font-size: var(--font-size);
+  background: var(--vscode-editor-background); color: var(--vscode-foreground);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+button, select, input, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+.gg-btn {
+  background: var(--vscode-button-background); color: var(--vscode-button-foreground);
+  border: none; border-radius: 4px; padding: 4px 10px; cursor: pointer;
+}
+.gg-btn:hover { background: var(--vscode-button-hoverBackground); }
+.gg-btn.small { font-size: 11.5px; padding: 2px 8px; }
+.gg-btn:disabled { opacity: 0.45; cursor: default; }
+.gg-btn.primary { font-weight: 600; }
+.gg-icon-btn {
+  min-width: 24px; padding: 2px 6px; background: transparent; color: inherit;
+  border: none; border-radius: 4px; cursor: pointer; font-size: 12px;
+}
+.gg-icon-btn:hover { background: var(--vscode-list-hoverBackground); }
+
+/* ================= 工具栏 ================= */
+.gg-toolbar {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  height: 38px; padding: 0 10px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editorWidget-background);
+}
+.gg-toolbar-left, .gg-toolbar-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gg-toolbar-right { margin-left: auto; }
+.gg-select {
+  background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 3px 6px; max-width: 200px;
+}
+.gg-branch-label { color: var(--vscode-charts-green); white-space: nowrap; font-size: 12px; }
+.gg-tb-btn { min-width: 34px; font-size: 14px; line-height: 1; padding: 4px 8px; }
+.gg-version { color: var(--vscode-descriptionForeground); font-size: 11px; }
+.gg-viewseg { display: flex; border: 1px solid var(--vscode-dropdown-border); border-radius: 5px; overflow: hidden; flex: none; }
+.gg-viewseg-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: none; border-radius: 0; padding: 3px 11px;
+  background: transparent; color: var(--vscode-foreground); font-size: 12px; white-space: nowrap; cursor: pointer;
+}
+.gg-viewseg-btn + .gg-viewseg-btn { border-left: 1px solid var(--vscode-dropdown-border); }
+.gg-viewseg-btn.on { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.gg-viewseg-badge {
+  min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; text-align: center;
+  font-size: 10.5px; line-height: 16px; font-weight: 600;
+  background: color-mix(in srgb, var(--vscode-charts-yellow) 75%, transparent);
+  color: var(--vscode-editor-background);
+}
+.gg-viewseg-badge.hidden { display: none; }
+
+/* ================= 工作副本主体 ================= */
+.gg-work-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.gg-work { flex: 1; display: flex; min-height: 0; }
+.gg-work-files {
+  position: relative; flex: none; width: 272px; min-width: 200px; max-width: 420px;
+  display: flex; flex-direction: column; min-height: 0;
+  border-right: 1px solid var(--vscode-panel-border);
+}
+.gg-work-fhead {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 8px;
+  font-size: 11.5px; color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.gg-work-ftitle { font-weight: 600; color: var(--vscode-foreground); font-size: 12px; }
+.gg-work-fbtns { margin-left: auto; display: flex; gap: 2px; }
+.gg-work-search {
+  flex: none; margin: 7px 8px 4px; height: 24px; padding: 2px 8px; font-size: 11.5px;
+  background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border); border-radius: 3px; outline: none;
+}
+.gg-work-groups { flex: 1; overflow-y: auto; padding-bottom: 8px; }
+.gg-work-group-h {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px 3px 6px; cursor: pointer; user-select: none;
+  font-size: 11.5px; color: var(--vscode-descriptionForeground);
+}
+.gg-work-group-h b { color: var(--vscode-foreground); font-weight: 600; }
+.gg-work-group-h:hover { background: var(--vscode-list-hoverBackground); }
+.gg-work-cnt {
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 22%, transparent);
+  color: var(--vscode-foreground); border-radius: 8px; padding: 0 6px; font-size: 10.5px; line-height: 15px;
+}
+.gg-work-rows { display: flex; flex-direction: column; }
+.gg-work-row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 3px 10px 3px 14px; margin: 0 4px; border-radius: 4px;
+  cursor: default; white-space: nowrap;
+}
+.gg-work-row:hover { background: var(--vscode-list-hoverBackground); }
+.gg-work-row.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.gg-work-row input[type='checkbox'] { accent-color: var(--vscode-button-background); flex: none; cursor: pointer; }
+.gg-st { flex: none; width: 14px; font-weight: 700; text-align: center; font-size: 11.5px; }
+.gg-st.M, .gg-st.T { color: var(--vscode-charts-yellow); }
+.gg-st.A, .gg-st.C { color: var(--vscode-charts-green); }
+.gg-st.D { color: var(--vscode-charts-red); }
+.gg-st.R { color: var(--vscode-charts-blue); }
+.gg-st.U { color: var(--vscode-descriptionForeground); }
+.gg-work-fpath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--vscode-editor-font-family); font-size: 12px; }
+.gg-work-fpath .gg-work-fdir { color: var(--vscode-descriptionForeground); }
+.gg-work-fpath b { font-weight: 600; }
+.gg-work-row.selected .gg-work-fdir, .gg-work-row.selected .gg-work-fnum, .gg-work-row.selected .gg-st { color: inherit; }
+.gg-work-fnum { flex: none; display: flex; gap: 6px; font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--vscode-descriptionForeground); }
+.gg-work-fnum b { font-weight: 400; min-width: 34px; text-align: right; }
+.gg-work-fnum b.a { color: var(--vscode-charts-green); }
+.gg-work-fnum b.d { color: var(--vscode-charts-red); }
+.gg-work-fnum i { font-style: normal; font-size: 10.5px; }
+.gg-work-rowempty { padding: 3px 16px; color: var(--vscode-descriptionForeground); font-size: 11.5px; opacity: 0.8; }
+.gg-work-resizer { position: absolute; top: 0; right: -3px; bottom: 0; width: 6px; cursor: col-resize; z-index: 3; }
+
+/* ---------------- 右：diff ---------------- */
+.gg-work-diff { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.gg-work-dhead {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  height: 30px; padding: 0 10px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editorWidget-background);
+}
+.gg-work-dpath { font-family: var(--vscode-editor-font-family); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gg-work-dstats { flex: none; font-family: var(--vscode-editor-font-family); font-size: 11px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.gg-work-dspacer { flex: 1; }
+.gg-work-dbox {
+  flex: 1; overflow: auto; padding: 4px 0 12px;
+  font-family: var(--vscode-editor-font-family); font-size: 12px; line-height: 1.55;
+}
+.gg-work-clean { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 40px 0; height: 100%; }
+.gg-work-clean-icon { font-size: 30px; color: var(--vscode-charts-green); }
+.gg-work-clean-title { font-size: 14px; font-weight: 600; color: var(--vscode-descriptionForeground); }
+.gg-work-clean-last { font-size: 12px; color: var(--vscode-descriptionForeground); max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gg-work-clean-btns { display: flex; gap: 8px; margin-top: 4px; }
+.gg-diff-note { padding: 16px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+
+/* 紧凑 diff 渲染（与 render.ts 紧凑模式一致的行结构） */
+.dtable { width: 100%; border-collapse: collapse; }
+.dtable td { vertical-align: top; white-space: pre-wrap; word-break: break-all; }
+.dtable .ln { width: 1px; min-width: 38px; text-align: right; padding: 0 8px 0 10px; color: var(--vscode-descriptionForeground); opacity: 0.75; user-select: none; font-size: 11px; }
+.dtable .add { background: var(--diff-add-bg); }
+.dtable .add .ln { background: var(--diff-add-gutter); }
+.dtable .del { background: var(--diff-del-bg); }
+.dtable .del .ln { background: var(--diff-del-gutter); }
+.dtable .ctx .ln { background: var(--diff-ctx-gutter); }
+.dtable .fold { color: var(--vscode-descriptionForeground); font-size: 11px; padding: 1px 12px; display: block; cursor: pointer; }
+.dtable .fold:hover { text-decoration: underline; }
+
+/* ---------------- 底部提交栏 ---------------- */
+.gg-cbar {
+  flex: none; display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 10px 9px;
+  border-top: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editorWidget-background);
+}
+.gg-cbar-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gg-ai-btn {
+  display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 12px;
+  border: 1px solid color-mix(in srgb, var(--vscode-charts-purple) 55%, transparent);
+  background: color-mix(in srgb, var(--vscode-charts-purple) 14%, transparent);
+  color: var(--vscode-charts-purple, var(--vscode-foreground));
+  border-radius: 4px; padding: 3px 10px; cursor: pointer;
+}
+.gg-ai-btn.busy { border-color: var(--vscode-dropdown-border); background: transparent; color: var(--vscode-descriptionForeground); }
+.gg-cbar-select {
+  max-width: 150px; font-size: 11.5px; padding: 2px 6px;
+  background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border); border-radius: 4px;
+}
+.gg-cbar-count { margin-left: auto; font-family: var(--vscode-editor-font-family); font-size: 11px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.gg-cbar-count.warn { color: var(--vscode-charts-yellow); }
+.gg-cbar-amend {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 10px; border-radius: 5px; font-size: 12px;
+  color: var(--vscode-charts-yellow);
+  background: color-mix(in srgb, var(--vscode-charts-yellow) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-charts-yellow) 40%, transparent);
+}
+.gg-cbar-amend a { margin-left: auto; color: var(--vscode-textLink-foreground); cursor: pointer; }
+.gg-cbar-input {
+  width: 100%; min-height: 58px; max-height: 240px; resize: vertical;
+  padding: 6px 8px; font-family: inherit; font-size: 12.5px; line-height: 1.5;
+  background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border); border-radius: 4px; outline: none;
+}
+.gg-cbar-input:focus { outline: 1px solid var(--vscode-focusBorder); }
+.gg-cbar-bottom { justify-content: flex-start; }
+.gg-cbar-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.gg-cbar-chk input { accent-color: var(--vscode-button-background); }
+.gg-cbar-commit { margin-left: auto; font-weight: 600; padding: 4px 16px; }
+.gg-cbar-caret { padding: 4px 7px; border-left: 1px solid color-mix(in srgb, var(--vscode-button-foreground) 35%, transparent); }
+.gg-cbar-commit:disabled, .gg-cbar-caret:disabled { opacity: 0.5; }
+.gg-cbar-caret:disabled { cursor: default; }
+
+/* ---------------- 工具栏进度区（真实产品 v0.7.1） ---------------- */
+.gg-progress { display: none; align-items: center; gap: 6px; max-width: 380px; }
+.gg-progress.show { display: flex; }
+.gg-progress-text {
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11.5px; color: var(--vscode-descriptionForeground);
+}
+.gg-spinner {
+  width: 12px; height: 12px; flex: none;
+  border: 2px solid var(--vscode-descriptionForeground);
+  border-top-color: transparent; border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+/* 按钮状态反馈（v0.7.1）：进行中=蓝色脉冲，成功=短暂绿色 */
+.gg-tb-btn.busy { color: var(--vscode-charts-blue); animation: pulse 1s ease-in-out infinite; }
+.gg-tb-btn.ok { color: var(--vscode-charts-green); }
+@keyframes pulse { 50% { opacity: .45; } }
+
+/* v0.8.0：推送询问条 / 冲突分组 */
+.gg-btn.tiny { padding: 1px 7px; font-size: 10.5px; border-radius: 3px; }
+.gg-btn.ghost { background: transparent; color: inherit; border: 1px solid var(--vscode-dropdown-border); }
+.gg-cbar-pushq {
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 10px; border-radius: 5px; font-size: 12px;
+  color: var(--vscode-charts-green);
+  background: color-mix(in srgb, var(--vscode-charts-green) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-charts-green) 40%, transparent);
+}
+.gg-cbar-pushq .gg-btn { margin-left: auto; }
+.gg-cbar-pushq .gg-btn + .gg-btn { margin-left: 0; }
+.gg-work-group-h.conflict b { color: var(--vscode-charts-red); }
+.gg-work-group-h.conflict .gg-work-cnt { background: color-mix(in srgb, var(--vscode-charts-red) 30%, transparent); }
+.gg-st.C { color: var(--vscode-charts-red); }
+.gg-work-cbtns { margin-left: auto; display: flex; gap: 4px; flex: none; }
+.gg-work-row.conflict { background: color-mix(in srgb, var(--vscode-charts-red) 6%, transparent); }
+.gg-work-row.conflict:hover { background: color-mix(in srgb, var(--vscode-charts-red) 12%, transparent); }
+.gg-work-row.conflict.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+
+/* 时序步骤指示条（预览专用） */
+#stepbar {
+  position: fixed; top: 44px; right: 12px; z-index: 90;
+  display: none; align-items: center; gap: 4px; padding: 5px 10px;
+  background: #111; color: #eee; border: 1px solid #444; border-radius: 8px;
+  font-size: 12px; font-family: system-ui; box-shadow: 0 3px 12px rgba(0,0,0,.45);
+}
+#stepbar.show { display: flex; }
+#stepbar .stp { padding: 2px 8px; border-radius: 4px; background: #2a2a2a; color: #999; }
+#stepbar .stp.cur { background: #0e639c; color: #fff; }
+#stepbar .stp.done { background: #2d7d3a; color: #fff; }
+#stepbar .arr { color: #666; }
+
+/* ---------------- 下拉菜单 / toast ---------------- */
+.gg-menu {
+  position: fixed; z-index: 60; min-width: 180px; padding: 4px;
+  background: var(--vscode-editorWidget-background); color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-dropdown-border); border-radius: 5px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4); font-size: 12.5px;
+}
+.gg-menu .mi { padding: 4px 10px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.gg-menu .mi:hover { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.gg-menu .sep { height: 1px; margin: 4px 6px; background: var(--vscode-panel-border); }
+.gg-toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 70;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 5px; font-size: 12.5px;
+  color: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.35);
+  animation: toast-in .18s ease;
+}
+.gg-toast.info { background: #0e639c; }
+.gg-toast.ok { background: #2d7d3a; }
+.gg-toast.warn { background: #9d6c00; }
+.gg-toast.error { background: #b02a2a; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+
+/* ================= 预览工具条（非产品 UI） ================= */
+#previewbar {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 12px; z-index: 100;
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  background: #111; color: #eee; border: 1px solid #444; border-radius: 8px;
+  font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.5); font-family: system-ui;
+}
+#previewbar button {
+  background: #2a2a2a; color: #ddd; border: 1px solid #444; border-radius: 5px;
+  padding: 3px 10px; cursor: pointer; font-size: 12px;
+}
+#previewbar button.on { background: #0e639c; border-color: #0e639c; color: #fff; }
+#previewbar .cap { color: #888; }
+</style>
+</head>
+<body class="theme-dark">
+
+<!-- ================= 工具栏 ================= -->
+<div class="gg-toolbar">
+  <div class="gg-toolbar-left">
+    <select class="gg-select"><option>GitBoard</option></select>
+    <span class="gg-branch-label">⑂ main</span>
+  </div>
+  <div class="gg-toolbar-right">
+    <div class="gg-viewseg">
+      <button class="gg-viewseg-btn" onclick="toast('info','切换到提交图（预览外）')">⎔ 提交图</button>
+      <button class="gg-viewseg-btn on"><span>⎔ 工作副本</span><span class="gg-viewseg-badge hidden" id="workBadge">2</span></button>
+    </div>
+    <button class="gg-btn gg-tb-btn" title="抓取">⟳</button>
+    <button class="gg-btn gg-tb-btn" title="拉取（合并）">⤓</button>
+    <button class="gg-btn gg-tb-btn" title="推送" id="pushBtn">⤒</button>
+    <button class="gg-btn gg-tb-btn" title="刷新">⟲</button>
+    <button class="gg-btn gg-tb-btn" title="界面语言">中</button>
+    <button class="gg-btn gg-tb-btn" title="设置">⚙</button>
+    <span class="gg-version">v0.7.2</span>
+    <span class="gg-progress" id="tbProgress"><span class="gg-spinner"></span><span class="gg-progress-text" id="tbProgressText"></span></span>
+  </div>
+</div>
+
+<!-- ================= 工作副本 ================= -->
+<div class="gg-work-wrap">
+  <div class="gg-work">
+    <!-- 左：文件状态 -->
+    <div class="gg-work-files" id="filesPane">
+      <div class="gg-work-fhead">
+        <span class="gg-work-ftitle">文件状态</span>
+        <div class="gg-work-fbtns">
+          <button class="gg-icon-btn" title="全部取消暂存">⬆</button>
+          <button class="gg-icon-btn" title="全部暂存">⬇</button>
+        </div>
+      </div>
+      <input class="gg-work-search" placeholder="筛选文件…">
+      <div class="gg-work-groups">
+        <div class="gg-work-group-h conflict hidden" id="conflictHead"><span class="gg-work-caret">▾</span><b>冲突</b><span class="gg-work-cnt" id="conflictCnt">0</span>
+          <div class="gg-work-cbtns" id="conflictBatch">
+            <button class="gg-btn tiny" onclick="event.stopPropagation(); resolveAll(true)">全部用我的</button>
+            <button class="gg-btn tiny" onclick="event.stopPropagation(); resolveAll(false)">全部用对方的</button>
+          </div>
+        </div>
+        <div class="gg-work-rows" id="conflictRows"></div>
+        <div class="gg-work-group-h"><span class="gg-work-caret">▾</span><b>已暂存</b><span class="gg-work-cnt" id="stagedCnt">0</span></div>
+        <div class="gg-work-rows" id="stagedRows"></div>
+        <div class="gg-work-group-h"><span class="gg-work-caret">▾</span><b>未暂存</b><span class="gg-work-cnt" id="unstagedCnt">0</span></div>
+        <div class="gg-work-rows" id="unstagedRows"></div>
+      </div>
+      <div class="gg-work-resizer"></div>
+    </div>
+    <!-- 右：diff -->
+    <div class="gg-work-diff">
+      <div class="gg-work-dhead">
+        <span class="gg-work-dpath" id="dpath"></span>
+        <span class="gg-work-dstats" id="dstats"></span>
+        <span class="gg-work-dspacer"></span>
+        <button class="gg-icon-btn" title="上一文件">‹</button>
+        <button class="gg-icon-btn" title="下一文件">›</button>
+        <button class="gg-icon-btn" title="打开文件">↗</button>
+        <button class="gg-icon-btn" title="在差异编辑器中打开">⇄</button>
+        <button class="gg-icon-btn" title="在文件管理器中显示">📂</button>
+        <button class="gg-icon-btn" title="复制路径">⧉</button>
+        <button class="gg-btn small" id="diffModeBtn">紧凑 diff</button>
+      </div>
+      <div class="gg-work-dbox" id="dbox"></div>
+    </div>
+  </div>
+
+  <!-- 底部：提交信息栏 -->
+  <div class="gg-cbar">
+    <div class="gg-cbar-row">
+      <button class="gg-ai-btn" id="aiBtn" title="基于全部更改生成">✨ AI 生成</button>
+      <select class="gg-cbar-select"><option>GPT-5.2 Copilot</option><option>Claude Sonnet 4.5</option></select>
+      <button class="gg-btn small">🕘 最近信息</button>
+      <span class="gg-cbar-count" id="cbarCount"></span>
+    </div>
+    <div class="gg-cbar-amend hidden" id="amendTip">
+      <span id="amendText">修订模式：合并到 a1b2c3d（本次提交将替换它，不产生新提交）</span>
+      <a onclick="exitAmend()">退出修订</a>
+    </div>
+    <div class="gg-cbar-pushq hidden" id="pushq">
+      <span id="pushqText">✓ 已提交 e5f6a7b —— 是否推送到远程？</span>
+      <button class="gg-btn small" onclick="acceptPush()">推送</button>
+      <button class="gg-btn small ghost" onclick="hidePushq()">暂不</button>
+    </div>
+    <textarea class="gg-cbar-input" id="cbarInput" placeholder="提交信息：首行 = 摘要（50 字内），空行后为正文 — 可点击 ✨ 由 Copilot 生成"></textarea>
+    <div class="gg-cbar-row gg-cbar-bottom">
+      <label class="gg-cbar-chk"><input type="checkbox" id="pushChk"><span>提交后推送</span></label>
+      <button class="gg-btn primary gg-cbar-commit" id="commitBtn" disabled title="请先暂存文件">提交 ⏎</button>
+      <button class="gg-btn primary gg-cbar-caret" id="caretBtn" onclick="commitMenu(event)">▾</button>
+    </div>
+  </div>
+</div>
+
+<!-- 时序步骤指示（预览专用） -->
+<div id="stepbar"></div>
+
+<!-- 预览工具条（非产品 UI） -->
+<div id="previewbar">
+  <span class="cap">场景</span>
+  <button id="scA" class="on" onclick="setScene('A')">A · 提交成功·全部干净</button>
+  <button id="scB" onclick="setScene('B')">B · 提交成功·仍有残留</button>
+  <button id="scC" onclick="setScene('C')">C · 修订模式</button>
+  <button id="scD" onclick="setScene('D')">D · 点击提交时序 ▶</button>
+  <button id="scE" onclick="setScene('E')">E · 冲突解决</button>
+  <span class="cap">|</span>
+  <button onclick="toggleTheme()">切换深/浅主题</button>
+  <button onclick="replayToast()">重放「已提交」提示</button>
+  <button onclick="demoWarn()">演示校验警告</button>
+  <button onclick="demoFail()">演示提交失败</button>
+</div>
+
+<script>
+// ---------- 数据 ----------
+const SCENES = {
+  A: {   // 提交成功后：全部干净
+    staged: [], unstaged: [],
+    clean: true, head: 'a1b2c3d · feat: 新增工作副本 Commit 功能与 Copilot AI 生成提交信息',
+  },
+  B: {   // 提交成功后：工作副本又出现新的未暂存更改
+    staged: [],
+    unstaged: [
+      { path: 'src/ui/app/toolbar.ts', letter: 'M', add: 12, del: 4 },
+      { path: 'src/ui/styles/main.css', letter: 'M', add: 33, del: 8 },
+      { path: 'src/common/i18n.ts', letter: 'M', add: 6, del: 1 },
+      { path: 'docs/设计稿-v2.md', letter: 'U' },
+    ],
+    clean: false,
+    diff: {
+      path: 'src/ui/app/toolbar.ts', stats: '+12 −4',
+      hunks: [
+        { old: 60, new: 60, lines: [
+          ['ctx', '', 'const refreshBtn = mkBtn(\'⟲\', () => app.runRefresh());'],
+          ['del', '61', 'refreshBtn.title = S.t(\'refresh\');'],
+          ['add', '61', 'refreshBtn.title = S.t(\'refresh\');   // v0.7.2：显式刷新必推送'],
+          ['add', '62', 'toolbar.syncFilterInputs(S.logFilter);'],
+          ['ctx', '', ''],
+          ['ctx', '63', 'const langBtn = mkBtn(\'\', () => app.pickLanguage());'],
+          ['fold', '⋯ 18 行未更改上下文 ⋯'],
+          ['add', '82', 'function updateProgress() {'],
+          ['add', '83', '  progress.textContent = [...S.activeOps.values()].at(-1)?.text ?? \'\';'],
+          ['add', '84', '}'],
+        ]},
+      ],
+    },
+  },
+  C: {   // 修订模式：黄条 + 预填上次提交信息
+    staged: [ { path: 'README.md', letter: 'M', add: 8, del: 2 } ],
+    unstaged: [ { path: 'package.json', letter: 'M', add: 1, del: 1 } ],
+    clean: false,
+    amend: true,
+    amendSha: 'a1b2c3d',
+    message: 'feat: 新增工作副本 Commit 功能与 Copilot AI 生成提交信息\n\n- 已暂存/未暂存分组与勾选乐观暂存\n- 单文件 diff 预览（未跟踪=全新增）\n- AI 提交信息：Copilot 流式生成，遵循工程指示文件',
+    diff: {
+      path: 'README.md', stats: '+8 −2',
+      hunks: [
+        { old: 1, new: 1, lines: [
+          ['ctx', '1', '# GitBoard'],
+          ['add', '2', ''],
+          ['add', '3', '> SourceTree 式 Git 可视化：提交图 + 工作副本（暂存 / 提交 / AI 信息）'],
+          ['del', '2', '# GitBoard — VS Code 提交图扩展'],
+          ['ctx', '3', ''],
+          ['fold', '⋯ 42 行未更改上下文 ⋯'],
+          ['add', '50', '## 工作副本'],
+          ['add', '51', ''],
+          ['add', '52', '勾选即暂存；✨ AI 生成提交信息（Copilot）。'],
+        ]},
+      ],
+    },
+  },
+  D: {   // 点击提交的时序起点：已暂存 2 + 未暂存 2，信息已填，勾选提交后推送
+    staged: [
+      { path: 'README.md', letter: 'M', add: 8, del: 2 },
+      { path: 'package.json', letter: 'M', add: 1, del: 1 },
+    ],
+    unstaged: [
+      { path: 'src/ui/app/toolbar.ts', letter: 'M', add: 12, del: 4 },
+      { path: 'docs/设计稿-v2.md', letter: 'U' },
+    ],
+    clean: false,
+    message: 'feat: 提交流程优化\n\n- 提交按钮禁用防重复点击\n- 进度与结果 toast 反馈',
+    pushAfter: true,
+    diff: {
+      path: 'README.md', stats: '+8 −2',
+      hunks: [
+        { old: 1, new: 1, lines: [
+          ['ctx', '1', '# GitBoard'],
+          ['add', '2', ''],
+          ['add', '3', '> SourceTree 式 Git 可视化：提交图 + 工作副本（暂存 / 提交 / AI 信息）'],
+          ['del', '2', '# GitBoard — VS Code 提交图扩展'],
+          ['ctx', '3', ''],
+          ['fold', '⋯ 42 行未更改上下文 ⋯'],
+          ['add', '50', '## 工作副本'],
+          ['add', '51', ''],
+          ['add', '52', '勾选即暂存；✨ AI 生成提交信息（Copilot）。'],
+        ]},
+      ],
+    },
+  },
+  E: {   // 冲突解决：pull 产生冲突后（merge 进行中）
+    conflicts: [
+      { path: 'src/ui/app/toolbar.ts' },
+      { path: 'src/common/i18n.ts' },
+    ],
+    staged: [ { path: 'src/ui/styles/main.css', letter: 'M', add: 20, del: 5 } ],
+    unstaged: [ { path: 'docs/设计稿-v2.md', letter: 'U' } ],
+    clean: false,
+    diff: {
+      path: 'src/ui/app/toolbar.ts', stats: '冲突',
+      hunks: [
+        { old: 60, new: 60, lines: [
+          ['ctx', '60', 'const refreshBtn = mkBtn(\'⟲\', () => app.runRefresh());'],
+          ['del', '61', '<<<<<<< HEAD'],
+          ['del', '62', 'refreshBtn.title = S.t(\'refresh\');   // 本地新增行 A'],
+          ['add', '61', '======='],
+          ['add', '62', 'refreshBtn.title = t(\'refresh\');        // 远程合入行 B'],
+          ['add', '63', '>>>>>>> feature/toolbar'],
+          ['ctx', '63', ''],
+          ['ctx', '64', 'const langBtn = mkBtn(\'\', () => app.pickLanguage());'],
+          ['fold', '⋯ 12 行未更改上下文 ⋯'],
+        ]},
+      ],
+    },
+  },
+};
+
+let scene = 'A';
+
+// ---------- 渲染 ----------
+function row(e, stagedGroup) {
+  const r = document.createElement('div');
+  r.className = 'gg-work-row' + (sceneData().diff && e.path === sceneData().diff.path ? ' selected' : '');
+  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = stagedGroup;
+  cb.onclick = ev => { ev.stopPropagation(); toast('info', stagedGroup ? '已取消暂存（乐观更新）' : '已暂存（乐观更新）'); };
+  r.appendChild(cb);
+  const st = document.createElement('span'); st.className = 'gg-st ' + e.letter; st.textContent = e.letter;
+  r.appendChild(st);
+  const p = document.createElement('span'); p.className = 'gg-work-fpath';
+  const slash = e.path.lastIndexOf('/');
+  if (slash >= 0) { const d = document.createElement('span'); d.className = 'gg-work-fdir'; d.textContent = e.path.slice(0, slash + 1); p.appendChild(d); }
+  const b = document.createElement('b'); b.textContent = e.path.slice(slash + 1); p.appendChild(b);
+  r.appendChild(p);
+  const num = document.createElement('span'); num.className = 'gg-work-fnum';
+  if (e.letter === 'U') { const i = document.createElement('i'); i.textContent = '未跟踪'; num.appendChild(i); }
+  else { const a = document.createElement('b'); a.className = 'a'; a.textContent = '+' + e.add;
+         const d = document.createElement('b'); d.className = 'd'; d.textContent = '−' + e.del; num.append(a, d); }
+  r.appendChild(num);
+  r.onclick = () => toast('info', '选中文件 → 加载 HEAD↔工作副本 diff');
+  return r;
+}
+
+function renderDiff(d) {
+  const box = document.getElementById('dbox');
+  document.getElementById('dpath').textContent = d ? d.path : '';
+  document.getElementById('dstats').textContent = d ? d.stats : '';
+  box.innerHTML = '';
+  if (!d) return;
+  const t = document.createElement('table'); t.className = 'dtable';
+  for (const h of d.hunks) {
+    let o = h.old, n = h.new;
+    for (const [kind, no, text] of h.lines) {
+      const tr = document.createElement('tr');
+      const lno = document.createElement('td'); lno.className = 'ln';
+      const body = document.createElement('td');
+      if (kind === 'add') { tr.className = 'add'; lno.textContent = no; }
+      else if (kind === 'del') { tr.className = 'del'; lno.textContent = no; }
+      else if (kind === 'ctx') { tr.className = 'ctx'; lno.textContent = no; }
+      else if (kind === 'fold') {
+        const f = document.createElement('span'); f.className = 'fold'; f.textContent = text;
+        const td = document.createElement('td'); td.colSpan = 2; td.appendChild(f);
+        const tr2 = document.createElement('tr'); tr2.appendChild(td); t.appendChild(tr2); continue;
+      }
+      body.textContent = text;
+      tr.append(lno, body); t.appendChild(tr);
+    }
+  }
+  box.appendChild(t);
+}
+
+// 冲突行：状态码 C + 路径 + 行内「我的/对方的」（merge 语义）
+function conflictRow(e) {
+  const r = document.createElement('div');
+  r.className = 'gg-work-row conflict' + (sceneData().diff && e.path === sceneData().diff.path ? ' selected' : '');
+  const st = document.createElement('span'); st.className = 'gg-st C'; st.textContent = 'C';
+  r.appendChild(st);
+  const p = document.createElement('span'); p.className = 'gg-work-fpath';
+  const slash = e.path.lastIndexOf('/');
+  if (slash >= 0) { const d = document.createElement('span'); d.className = 'gg-work-fdir'; d.textContent = e.path.slice(0, slash + 1); p.appendChild(d); }
+  const b = document.createElement('b'); b.textContent = e.path.slice(slash + 1); p.appendChild(b);
+  r.appendChild(p);
+  const btns = document.createElement('span'); btns.className = 'gg-work-cbtns';
+  const mk = (label, ours, tip) => {
+    const btn = document.createElement('button'); btn.className = 'gg-btn tiny'; btn.textContent = label; btn.title = tip;
+    btn.onclick = ev => { ev.stopPropagation(); resolveOne(e.path, ours); };
+    return btn;
+  };
+  btns.append(mk('我的', true, '保留当前分支的版本（--ours）'), mk('对方的', false, '采用合入方的版本（--theirs）'));
+  r.appendChild(btns);
+  r.onclick = () => toast('info', '选中冲突文件 → diff 显示冲突标记');
+  return r;
+}
+
+let liveConflicts = [];
+function renderConflicts() {
+  const box = document.getElementById('conflictRows');
+  const head = document.getElementById('conflictHead');
+  box.innerHTML = '';
+  head.classList.toggle('hidden', !liveConflicts.length);
+  document.getElementById('conflictCnt').textContent = liveConflicts.length;
+  for (const e of liveConflicts) box.appendChild(conflictRow(e));
+}
+function resolveOne(path, ours) {
+  liveConflicts = liveConflicts.filter(c => c.path !== path);
+  renderConflicts();
+  if (!liveConflicts.length) toast('ok', '✓ 已按所选版本解决，合并完成（自动提交 merge）');
+  else toast('info', (ours ? '「我的」' : '「对方的」') + '已应用：' + path);
+}
+function resolveAll(ours) {
+  liveConflicts = [];
+  renderConflicts();
+  toast('ok', '✓ 已全部按' + (ours ? '我的' : '对方的') + '解决，合并完成（自动提交 merge）');
+}
+function hidePushq() { document.getElementById('pushq').classList.add('hidden'); }
+function acceptPush() {
+  hidePushq();
+  toast('info', 'Push · 推送内容至 origin (main)…');
+  setTimeout(() => toast('ok', '已推送：main → origin'), 1200);
+}
+
+function sceneData() { return SCENES[scene]; }
+
+function setScene(s) {
+  scene = s;
+  stopFlow();
+  hidePushq();
+  for (const k of ['A', 'B', 'C', 'D', 'E']) document.getElementById('sc' + k).classList.toggle('on', k === s);
+  const d = sceneData();
+  liveConflicts = (d.conflicts ?? []).map(c => ({ ...c }));
+  renderConflicts();
+  const stagedBox = document.getElementById('stagedRows');
+  const unstagedBox = document.getElementById('unstagedRows');
+  stagedBox.innerHTML = ''; unstagedBox.innerHTML = '';
+  for (const e of d.staged) stagedBox.appendChild(row(e, true));
+  for (const e of d.unstaged) unstagedBox.appendChild(row(e, false));
+  if (!d.staged.length) stagedBox.innerHTML = '<div class="gg-work-rowempty">— 无 —</div>';
+  if (!d.unstaged.length) unstagedBox.innerHTML = '<div class="gg-work-rowempty">— 无 —</div>';
+  document.getElementById('stagedCnt').textContent = d.staged.length;
+  document.getElementById('unstagedCnt').textContent = d.unstaged.length;
+  const badge = document.getElementById('workBadge');
+  const dirty = d.staged.length + d.unstaged.length;
+  badge.textContent = dirty; badge.classList.toggle('hidden', !dirty);
+
+  const box = document.getElementById('dbox');
+  document.getElementById('amendTip').classList.toggle('hidden', !d.amend);
+  const input = document.getElementById('cbarInput');
+  input.value = d.message ?? '';
+  document.getElementById('pushChk').checked = !!d.pushAfter;
+  const commitBtn = document.getElementById('commitBtn');
+  if (d.clean) {
+    // 干净空态
+    document.getElementById('dpath').textContent = '';
+    document.getElementById('dstats').textContent = '';
+    box.innerHTML =
+      '<div class="gg-work-clean"><div class="gg-work-clean-icon">✓</div>' +
+      '<div class="gg-work-clean-title">工作副本干净</div>' +
+      '<div class="gg-work-clean-last" title="' + d.head + '">上次提交 ' + d.head + '</div>' +
+      '<div class="gg-work-clean-btns"><button class="gg-btn small">↓ 拉取</button><button class="gg-btn small">↑ 推送</button></div></div>';
+    commitBtn.disabled = true; commitBtn.title = '请先暂存文件'; commitBtn.textContent = '提交 ⏎';
+    document.getElementById('cbarCount').textContent = '';
+  } else {
+    renderDiff(d.diff);
+    commitBtn.disabled = !(d.amend || d.staged.length);
+    commitBtn.title = d.amend ? 'Ctrl+Enter' : (d.staged.length ? 'Ctrl+Enter' : '请先暂存文件');
+    commitBtn.textContent = d.amend ? '修订 ⏎' : '提交 ⏎';
+    const first = (input.value.split('\n')[0] || '');
+    document.getElementById('cbarCount').textContent = first ? first.length + ' / 50' : '';
+    document.getElementById('cbarCount').classList.toggle('warn', first.length > 50);
+  }
+}
+
+// ---------- D 场景：点击提交的完整时序（自动播放，映射真实产品交互） ----------
+const STEPS = ['① 就绪', '② 提交中', '③ 已提交', '④ 推送中', '⑤ 完成'];
+let flowTimers = [];
+
+function stopFlow() {
+  for (const t of flowTimers) clearTimeout(t);
+  flowTimers = [];
+  document.getElementById('stepbar').classList.remove('show');
+  const prog = document.getElementById('tbProgress');
+  prog.classList.remove('show');
+  document.getElementById('commitBtn').textContent = (sceneData().amend ? '修订' : '提交') + ' ⏎';
+  document.getElementById('caretBtn').disabled = false;
+  document.getElementById('pushBtn').classList.remove('busy', 'ok');
+  hidePushq();
+}
+
+function stepbar(cur) {
+  const bar = document.getElementById('stepbar');
+  bar.innerHTML = '';
+  STEPS.forEach((s, i) => {
+    if (i) { const a = document.createElement('span'); a.className = 'arr'; a.textContent = '→'; bar.appendChild(a); }
+    const e = document.createElement('span');
+    e.className = 'stp' + (i < cur ? ' done' : i === cur ? ' cur' : '');
+    e.textContent = s;
+    bar.appendChild(e);
+  });
+  bar.classList.add('show');
+}
+
+const progress = (show, text) => {
+  const p = document.getElementById('tbProgress');
+  document.getElementById('tbProgressText').textContent = text ?? '';
+  p.classList.toggle('show', !!show);
+};
+
+function playCommit() {
+  if (flowTimers.length) return;   // 播放中防重入
+  const commitBtn = document.getElementById('commitBtn');
+  const caretBtn = document.getElementById('caretBtn');
+  const pushBtn = document.getElementById('pushBtn');
+  const T = (ms, fn) => flowTimers.push(setTimeout(fn, ms));
+
+  // ② 提交中：按钮禁用防重复点击；工具栏进度区播报（本地 git commit 通常 <1s）
+  stepbar(1);
+  commitBtn.disabled = true; caretBtn.disabled = true;
+  commitBtn.textContent = '提交中…';
+  progress(true, '提交 · 写入对象库…');
+
+  // ③ 已提交：toast；已暂存清空；信息清空；未勾「提交后推送」→ 显示推送询问条（回初始状态）
+  T(1400, () => {
+    stepbar(2);
+    progress(false);
+    toast('ok', '✓ 提交完成 e5f6a7b');
+    document.getElementById('stagedRows').innerHTML = '<div class="gg-work-rowempty">— 无 —</div>';
+    document.getElementById('stagedCnt').textContent = '0';
+    document.getElementById('cbarInput').value = '';
+    document.getElementById('cbarCount').textContent = '';
+    commitBtn.textContent = '提交 ⏎';   // 无暂存 → 维持禁用
+    caretBtn.disabled = false;
+    // 未勾选「提交后推送」：绿色询问条出现，由用户决定（模拟点击「推送」）
+    document.getElementById('pushq').classList.remove('hidden');
+    T(1800, () => {
+      hidePushq();
+      stepbar(3);
+      progress(true, 'Push · 推送内容至 origin (main)…');
+      pushBtn.classList.add('busy');
+      T(1600, () => {
+        stepbar(4);
+        progress(false);
+        pushBtn.classList.remove('busy');
+        pushBtn.classList.add('ok');
+        toast('ok', '已推送：main → origin');
+        T(1300, () => {
+          pushBtn.classList.remove('ok');
+          flowTimers = [];
+        });
+      });
+    });
+  });
+}
+
+function demoWarn() { toast('warn', '请先暂存文件（或使用下拉中的「暂存全部并提交」）'); }
+function demoFail() { toast('error', '提交 失败： pre-commit hook exited with code 1（输出详见对话框）'); }
+
+// ---------- 交互演示 ----------
+function toggleTheme() {
+  document.body.classList.toggle('theme-dark');
+  document.body.classList.toggle('theme-light');
+}
+let toastEl = null, toastTimer = 0;
+function toast(kind, text) {
+  if (toastEl) toastEl.remove();
+  toastEl = document.createElement('div');
+  toastEl.className = 'gg-toast ' + (kind === 'ok' ? 'ok' : 'info');
+  toastEl.textContent = text;
+  document.body.appendChild(toastEl);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { if (toastEl) { toastEl.remove(); toastEl = null; } }, 2600);
+}
+function replayToast() { toast('ok', '✓ 已提交 a1b2c3d'); }
+function exitAmend() { toast('info', '退出修订模式（清空信息）'); }
+function commitMenu(ev) {
+  document.querySelectorAll('.gg-menu').forEach(m => m.remove());
+  const m = document.createElement('div'); m.className = 'gg-menu';
+  const items = ['提交  Ctrl+⏎', '提交并推送', null, '修订…', '全部提交'];
+  for (const it of items) {
+    if (!it) { const s = document.createElement('div'); s.className = 'sep'; m.appendChild(s); continue; }
+    const mi = document.createElement('div'); mi.className = 'mi'; mi.textContent = it;
+    mi.onclick = () => { m.remove(); toast('info', '「' + it + '」动作（演示）'); };
+    m.appendChild(mi);
+  }
+  const r = ev.target.getBoundingClientRect();
+  m.style.left = Math.max(8, r.right - 160) + 'px'; m.style.top = (r.bottom + 4) + 'px';
+  m.onclick = e => e.stopPropagation();
+  document.body.appendChild(m);
+  setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }), 0);
+}
+document.getElementById('aiBtn').onclick = () => toast('info', '✨ AI 生成中…（流式填充输入框，演示）');
+document.getElementById('diffModeBtn').onclick = function () {
+  this.textContent = this.textContent === '紧凑 diff' ? '上下文 diff' : '紧凑 diff';
+};
+document.getElementById('cbarInput').addEventListener('input', function () {
+  const first = this.value.split('\n')[0] || '';
+  const c = document.getElementById('cbarCount');
+  c.textContent = first ? first.length + ' / 50' : '';
+  c.classList.toggle('warn', first.length > 50);
+  document.getElementById('commitBtn').disabled = !(SCENES[scene].amend || SCENES[scene].staged.length) || !first.trim();
+});
+// 场景 D：点击可用态的「提交 ⏎」即播放完整时序（真实产品中此点击直达 git commit）
+// 场景 E：提交被未解决冲突阻塞 → 黄色警告引导
+document.getElementById('commitBtn').addEventListener('click', () => {
+  const btn = document.getElementById('commitBtn');
+  if (scene === 'E') {
+    toast('warn', '存在未解决的合并冲突——请在文件列表的「冲突」分组中选择保留版本');
+    return;
+  }
+  if (scene === 'D' && !btn.disabled) playCommit();
+});
+
+setScene('A');
+setTimeout(replayToast, 600);
+</script>
+</body>
+</html>

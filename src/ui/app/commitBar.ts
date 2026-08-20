@@ -14,7 +14,7 @@ export interface CommitBar {
   onAiDone(model: string, instructions: number): void;
   onAiError(code: string, message?: string): void;
   focusInput(): void;
-  afterCommitOk(): void;
+  afterCommitOk(shortSha?: string, pushed?: boolean): void;
   /** 恢复持久化草稿（视图首次打开 / 仓库切换） */
   applyDraft(d: { message: string; pushAfter: boolean; amend: boolean } | null): void;
 }
@@ -37,6 +37,15 @@ export function createCommitBar(app: App): CommitBar {
   amendExit.href = '#';
   amendTip.append(amendText, amendExit);
 
+  // 行 2.5：提交成功推送询问条（默认隐藏；未勾「提交后推送」时出现）
+  const pushq = el('div', 'gg-cbar-pushq hidden');
+  const pushqText = el('span');
+  const pushqBtn = el('button', 'gg-btn small');
+  const pushqSkip = el('button', 'gg-btn small ghost');
+  pushqBtn.addEventListener('click', () => { hidePushq(); app.runPush(); });
+  pushqSkip.addEventListener('click', hidePushq);
+  pushq.append(pushqText, pushqBtn, pushqSkip);
+
   // 行 3：唯一的多行提交信息输入框
   const input = el('textarea', 'gg-cbar-input') as HTMLTextAreaElement;
   input.spellcheck = false;
@@ -51,7 +60,19 @@ export function createCommitBar(app: App): CommitBar {
   const caretBtn = el('button', 'gg-btn primary gg-cbar-caret', '▾');
   btnrow.append(pushLabel, commitBtn, caretBtn);
 
-  root.append(airow, amendTip, input, btnrow);
+  root.append(airow, amendTip, pushq, input, btnrow);
+
+  function hidePushq(): void {
+    pushq.classList.add('hidden');
+  }
+
+  /** 提交成功：未直接推送 → 显示询问条（开始写下一次信息时自动让位） */
+  function showPushq(shortSha: string): void {
+    pushqText.textContent = S.t('pushqText', { sha: shortSha });
+    pushqBtn.textContent = S.t('pushNow');
+    pushqSkip.textContent = S.t('pushSkip');
+    pushq.classList.remove('hidden');
+  }
 
   // ---------- 草稿持久化（防抖 500ms） ----------
   const saveDraft = debounce(() => {
@@ -62,6 +83,7 @@ export function createCommitBar(app: App): CommitBar {
   input.addEventListener('input', () => {
     if (S.work.aiBusy) return;   // 流式期间不做用户输入源
     S.work.message = input.value;
+    hidePushq();                 // 开始撰写下一次提交：询问条让位，回到初始状态
     saveDraft();
     refreshCount();
     refreshCommitBtn();
@@ -132,6 +154,11 @@ export function createCommitBar(app: App): CommitBar {
 
   async function doCommit(opts: { push?: boolean; amend?: boolean; all?: boolean }): Promise<void> {
     const message = input.value;
+    if ((S.work.state?.conflicts.length ?? 0) > 0) {
+      // 未解决冲突阻塞提交：引导到冲突分组选择保留版本
+      toastWarn(S.t('conflictBlock'));
+      return;
+    }
     if (!message.split('\n')[0].trim()) {
       toastWarn(S.t('needMessage'));
       input.focus();
@@ -144,9 +171,10 @@ export function createCommitBar(app: App): CommitBar {
     }
     commitBtn.disabled = true;
     caretBtn.disabled = true;
+    const pushed = opts.push ?? S.work.pushAfter;   // 勾选「提交后推送」/下拉「提交并推送」= 直接推不询问
     try {
-      const r = await app.workCommit({ message, push: opts.push ?? S.work.pushAfter, amend: opts.amend, all: opts.all });
-      if (r?.ok) afterCommitOk();
+      const r = await app.workCommit({ message, push: pushed, amend: opts.amend, all: opts.all });
+      if (r?.ok) afterCommitOk(r.shortSha, pushed);
     } catch {
       /* 失败信息经 opResult 事件展示 */
     } finally {
@@ -182,7 +210,8 @@ export function createCommitBar(app: App): CommitBar {
     update();
   }
 
-  function afterCommitOk(): void {
+  /** 提交成功：清场回初始状态；未直接推送时显示推送询问条 */
+  function afterCommitOk(shortSha?: string, pushed = false): void {
     if (S.config.commitClearMessage) {
       S.work.message = '';
       input.value = '';
@@ -192,6 +221,8 @@ export function createCommitBar(app: App): CommitBar {
       S.work.amendSha = '';
     }
     S.work.aiMeta = undefined;
+    hidePushq();
+    if (!pushed && shortSha) showPushq(shortSha);
     saveDraft();
     update();
   }

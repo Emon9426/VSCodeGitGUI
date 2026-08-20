@@ -19,6 +19,7 @@ export interface ConfigDto {
   fetchOnOpen: boolean;
   fetchPrune: boolean;
   defaultPullStrategy: 'merge' | 'rebase' | 'ff-only';
+  logOrder: 'topo' | 'date';      // topo=走线规整（默认）；date=大仓库 log 更快
   // Commit 功能（v0.7）
   aiEnabled: boolean;
   aiLanguage: 'auto' | 'en' | 'zh-cn';
@@ -30,7 +31,9 @@ export interface ConfigDto {
 }
 
 export type OpKind = 'fetch' | 'pull' | 'push' | 'reset' | 'checkout'
-  | 'stage' | 'unstage' | 'discard' | 'discardClean' | 'commit';
+  | 'stage' | 'unstage' | 'discard' | 'discardClean' | 'commit'
+  | 'resolveConflict' | 'commitNoEdit'
+  | 'tagCreate' | 'tagDelete' | 'tagDeleteRemote' | 'tagPush';
 
 export interface OpProgress {
   t: 'opProgress';
@@ -114,6 +117,10 @@ export type WVCommand =
   | 'work.state'            // {} -> WorkState
   | 'work.stage'            // { paths: string[] }
   | 'work.unstage'          // { paths: string[] }
+  | 'work.resolveConflict'  // { paths: string[], ours: boolean }（冲突二选一；全解决自动完成合并）
+  | 'tag.create'            // { name, sha?, message? }（message 非空=附注标签）
+  | 'tag.delete'            // { name, remote? }（remote 存在=同时删远端）
+  | 'tag.push'              // { name, remote? }
   | 'work.stageAll'         // {}
   | 'work.unstageAll'       // {}
   | 'work.discard'          // { paths: string[] }
@@ -127,7 +134,8 @@ export type WVCommand =
   | 'work.saveDraft'        // { draft: CommitDraft }
   | 'work.loadDraft'        // {} -> CommitDraft | null
   | 'work.saveLayout'        // { filesW, barH }
-  | 'ui:setView';            // { view: 'graph' | 'work' } —— 记忆上次视图（startView=last）
+  | 'ui:setView'             // { view: 'graph' | 'work' } —— 记忆上次视图（startView=last）
+  | 'ui:pickLanguage';       // {} → 宿主弹 QuickPick 三选一并写回 gitboard.language
 
 export interface Pending {
   resolve: (v: any) => void;
