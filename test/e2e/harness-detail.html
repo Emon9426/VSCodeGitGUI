@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>detail-e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<!-- mock VS Code API：必须先于 webview.js 定义 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * 场景还原：还原用户截图——GitBoard 打开自己的仓库，选中一条提交，
+ * 详情面板显示 5 个变更文件（out/extension.js 等，大 diff）。
+ * 模拟扩展宿主响应 commitDetail / diff 两个 RPC，让详情面板完整渲染。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchOnOpen: false, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: '09_GitGraph', root: 'D:/09_GitGraph' }],
+    language: 'zh-CN', selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  const mk = (i) => ({
+    sha: 'ee6f99a' + String(i) + 'f'.repeat(32),
+    shortSha: 'ee6f99' + String(i),
+    parents: i > 0 ? ['ee6f99a' + String(i - 1) + 'f'.repeat(32)] : [],
+    author: { name: 'Emon', email: 'emon@test', date: '2026-08-21T21:00:00+08:00' },
+    committer: { name: 'Emon', email: 'emon@test', date: '2026-08-21T21:00:00+08:00' },
+    subject: i === 0 ? 'feat: AI 大批量提交防卡死、SVG 按钮图标与删除文件功能（v0.8.1/v0.9.0）' : `历史提交 ${i}`,
+    body: i === 0 ? 'v0.8.1 = AI 防卡死；v0.9.0 = SVG 图标 + 删除文件。' : '',
+    refs: i === 0 ? [{ name: 'HEAD → main', kind: 'head', isHead: true }, { name: 'origin/main', kind: 'remote' }] : [],
+  });
+  const commits = Array.from({ length: 30 }, (_, i) => mk(i));
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: commits[0].sha, branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: commits[0].sha, isHead: true, upstream: 'origin/main' }],
+      remotes: [{ name: 'origin', branches: [{ name: 'origin/main', fullName: 'refs/remotes/origin/main', sha: commits[0].sha }] }],
+      tags: [],
+      status: { dirtyCount: 4 },
+      filterRef: null, logFilter: { author: '', since: '', until: '' },
+      commits, commitsLoaded: commits.length, hasMore: false, stateVersion: 1,
+    },
+  });
+  await twoFrames(); await sleep(100);
+
+  // 模拟点击第一行提交（触发 selectCommit → commitDetail RPC）
+  const row = document.querySelector('.gg-list .gg-row');
+  if (!row) { finish('FAIL: no row'); return; }
+  row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sleep(100);
+
+  // mock 扩展宿主：响应 commitDetail / diff
+  const FILES = [
+    { path: 'out/extension.js', status: 'M', additions: 416, deletions: 389 },
+    { path: 'out/webview.css', status: 'M', additions: 219, deletions: 204 },
+    { path: 'out/webview.js', status: 'M', additions: 419, deletions: 402 },
+    { path: 'src/git/watcher.ts', status: 'M', additions: 61, deletions: 12 },
+    { path: 'src/webview/panel.ts', status: 'M', additions: 8, deletions: 2 },
+  ];
+  const mkHunk = (oldStart, newStart, n) => {
+    const lines = [];
+    for (let i = 0; i < n; i++) {
+      const k = i % 10;
+      if (k < 6) lines.push({ kind: 'ctx', oldNo: oldStart + i, newNo: newStart + i, text: `  context line ${oldStart + i} — const config = readConfig();` });
+      else if (k < 8) lines.push({ kind: 'del', oldNo: oldStart + i, text: `-removed line ${oldStart + i} — const old = fingerprintOf(refs);` });
+      else lines.push({ kind: 'add', newNo: newStart + i, text: `+added line ${newStart + i} — const changed = fp !== lastPosted;` });
+    }
+    return { header: `@@ -${oldStart},${n} +${newStart},${n} @@`, oldStart, newStart, lines };
+  };
+  const bigDiff = {
+    kind: 'diff',
+    diff: { truncated: false, hunks: [mkHunk(1, 1, 400), mkHunk(500, 500, 400), mkHunk(1000, 1000, 400)] },
+  };
+
+  for (const m of window.__sent) {
+    if (m && m.id && m.cmd === 'commitDetail') {
+      window.__send({ t: 'res', id: m.id, ok: true, data: { ...commits[0], files: FILES, filesTruncated: false } });
+    } else if (m && m.id && m.cmd === 'diff') {
+      window.__send({ t: 'res', id: m.id, ok: true, data: bigDiff });
+    }
+  }
+  await twoFrames(); await sleep(300);
+
+  // 状态参数：?h=面板高度&pos=bottom|right&view=graph|work
+  const q = new URLSearchParams(location.search);
+  if (q.get('pos') === 'right' || q.get('view') === 'work') {
+    const cfg = {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true,
+      detailPanelPosition: q.get('pos') === 'right' ? 'right' : 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchOnOpen: false, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    };
+    window.__send({ t: 'configChanged', config: cfg, language: 'zh-CN' });
+    await twoFrames(); await sleep(100);
+  }
+  if (q.get('view') === 'work') window.__send({ t: 'showWork' });
+  const detail = document.querySelector('.gg-detail');
+  if (detail && q.get('h')) detail.style.setProperty('--gg-detail-h', q.get('h') + 'px');
+  await twoFrames(); await sleep(100);
+
+  finish('DONE');
+
+  function finish(result) {
+    window.__result = result;
+    document.title = 'detail-e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>

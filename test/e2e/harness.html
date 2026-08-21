@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<!-- mock VS Code API：必须先于 webview.js 定义 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * 驱动脚本：模拟扩展宿主行为，验证「repoState 到达后列表重渲染」。
+ * 场景：初次加载 30 条提交 → 模拟一次 git commit（推送新 repoState，新提交插在顶部）
+ * → 断言顶行内容更新。结果写入 window.__result 与 document.title。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  // 1. 等 webview 发出 bootstrap
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  // 2. ready（config 为完整 ConfigDto，防 webview 默认值缺失）
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchOnOpen: false, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', colWidths: undefined, selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  // 3. 首个 repoState：30 条旧提交
+  const mk = (i) => ({
+    sha: (i === -1 ? 'b' : 'a') + String(i).padStart(2, '0') + 'f'.repeat(37),
+    shortSha: (i === -1 ? 'b' : 'a') + String(i).padStart(2, '0') + 'fffff',
+    parents: [],
+    author: { name: 'e2e', email: 'e2e@test', date: '2026-08-21T10:00:00+08:00' },
+    committer: { name: 'e2e', email: 'e2e@test', date: '2026-08-21T10:00:00+08:00' },
+    subject: i === -1 ? 'E2E-NEW-COMMIT' : `E2E-OLD-${i}`,
+    body: '', refs: [],
+  });
+  const commits1 = Array.from({ length: 30 }, (_, i) => mk(i));
+  const state1 = {
+    repoId: 'r1',
+    head: { sha: 'a' + '0'.repeat(39), branch: 'main', detached: false },
+    branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'a' + '0'.repeat(39), isHead: true }],
+    remotes: [], tags: [],
+    status: { dirtyCount: 0 },
+    filterRef: null, logFilter: { author: '', since: '', until: '' },
+    commits: commits1, commitsLoaded: commits1.length, hasMore: false, stateVersion: 1,
+  };
+  window.__send({ t: 'repoState', state: state1 });
+  await twoFrames(); await sleep(150);
+  const topAfterFirst = topSubject();
+
+  // 4. 模拟 git commit 后的自动刷新推送：新提交插在顶部、HEAD 前移
+  const state2 = {
+    ...state1,
+    head: { sha: 'b' + '0'.repeat(39), branch: 'main', detached: false },
+    branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'b' + '0'.repeat(39), isHead: true }],
+    commits: [mk(-1), ...commits1], commitsLoaded: 31, stateVersion: 2,
+  };
+  window.__send({ t: 'repoState', state: state2 });
+  await twoFrames(); await sleep(150);
+  const topAfterRefresh = topSubject();
+
+  finish(topAfterFirst === 'E2E-OLD-0' && topAfterRefresh === 'E2E-NEW-COMMIT'
+    ? 'PASS'
+    : `FAIL firstTop="${topAfterFirst}" afterRefreshTop="${topAfterRefresh}"`);
+
+  function topSubject() {
+    const rows = [...document.querySelectorAll('.gg-list .gg-row')];
+    const top = rows.find(r => r.style.transform === 'translateY(0px)') || rows[0];
+    return top ? (top.querySelector('.gg-subject')?.textContent ?? '(no-subject)') : '(no-rows)';
+  }
+  function finish(result) {
+    window.__result = result;
+    document.title = 'e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>

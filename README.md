@@ -40,14 +40,14 @@ code --install-extension EmonZhang3438.gitboard
 **方式一：命令行安装 vsix（推荐）**
 
 ```bash
-code --install-extension gitboard-0.9.0.vsix
+code --install-extension gitboard-0.9.1.vsix
 ```
 
 安装后执行 **Ctrl+Shift+P → “开发者：重新加载窗口”**（每次覆盖安装新版本后都需要）。
 
 **方式二：VS Code 界面安装**
 
-扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.9.0.vsix` → 重新加载窗口。
+扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.9.1.vsix` → 重新加载窗口。
 
 **方式三：从源码构建**
 
@@ -75,7 +75,8 @@ npm run package     # 产出 gitboard-x.y.z.vsix
 - 图形列：短半径圆角走线，主干直线、换轨紧凑；普通节点为实心圆，**合并提交带外环**，**HEAD 节点带红色描边**；
 - 徽标颜色：绿色=本地分支、紫色=远程分支、黄色=标签、`HEAD → main` 表示当前分支；
 - 列表滚动到底部自动加载下一页（默认每页 500 条，自动加载上限 20000 条，超出后点“继续加载更多”）；
-- ↑ / ↓ 键盘上下移动选中；仓库发生变更（提交/切换分支/fetch）自动防抖刷新。
+- ↑ / ↓ 键盘上下移动选中；仓库发生变更（提交/切换分支/fetch）自动防抖刷新（v0.9.1 修复刷新后列表行不重绘的问题）。
+- 窄视口自适应（v0.9.1）：空间不足时工具栏自动换行、提交列表各列按最小宽收缩、列头与内容严格对齐、详情面板高度随窗口钳制——不再出现元素互相叠压。
 
 #### 3. 查看提交详情与差异
 
@@ -195,7 +196,7 @@ GitBoard brings a SourceTree-style commit graph to VS Code (desktop): browse his
 | Working-copy commits (v0.7.0) | Staged/Unstaged groups with checkbox staging; single-file HEAD↔worktree diff (no tabs); Commit / Commit & Push / Amend / Stage-all-and-commit; recent-message reuse; discard with double confirmation; delete files (v0.9.0 — inline trash button / context menu; tracked files move to Unstaged as D); per-repo message drafts |
 | AI commit messages (v0.7.0) | One-click generation via GitHub Copilot: streamed inline, stop/regenerate/model picker; based on the staged diff + style learned from the last 10 commits; automatically follows `.copilot/` and `.github/` workspace instruction files; uses your signed-in VS Code account — zero credentials stored. Hardened in v0.8.1 for huge changesets: capped summary & diff (no more oversized-prompt hangs), 60s no-response auto-stop, UI always unlocks on failure |
 | Filtering | Branch/remote/tag filter + author + date range, stackable and remembered per repository |
-| Large-repo performance | Paged loading, virtualized rows + viewport-only canvas rendering, debounced auto-refresh on `.git` changes |
+| Large-repo performance | Paged loading, virtualized rows + viewport-only canvas rendering, debounced auto-refresh on `.git` changes (v0.9.1 fixes stale list rows after refresh); narrow-viewport adaptive layout (v0.9.1): toolbar wraps, columns shrink to minimums, header/body stay aligned, detail panel height clamps — no more overlapping elements |
 | UI | Follows VS Code light/dark themes, drag-resizable persisted columns, English/中文, status-bar branch |
 
 ### Install
@@ -211,7 +212,7 @@ code --install-extension EmonZhang3438.gitboard
 **Option 1 — CLI (recommended)**
 
 ```bash
-code --install-extension gitboard-0.9.0.vsix
+code --install-extension gitboard-0.9.1.vsix
 ```
 
 Then run **Ctrl+Shift+P → “Developer: Reload Window”** (required after every upgrade).

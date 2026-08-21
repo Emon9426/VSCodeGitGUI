@@ -43,16 +43,17 @@ button.danger:hover { background: #c62121; }
 .gg-toolbar {
   flex: none;
   display: flex;
+  flex-wrap: wrap;          /* 空间不足时换行降级，避免元素互相叠压 */
   align-items: center;
-  gap: 10px;
-  height: 38px;
-  padding: 0 10px;
+  gap: 4px 10px;
+  min-height: 38px;
+  padding: 3px 10px;
   border-bottom: 1px solid var(--vscode-panel-border, #333);
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
 }
-.gg-toolbar-left, .gg-toolbar-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gg-toolbar-left, .gg-toolbar-right { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .gg-toolbar-right { margin-left: auto; }
-.gg-select { max-width: 200px; }
+.gg-select { max-width: 200px; min-width: 0; }
 .gg-branch-label { color: var(--vscode-charts-green); white-space: nowrap; }
 .gg-dirty-badge { margin-left: 6px; color: var(--vscode-charts-yellow); font-size: 11px; }
 .gg-tb-btn { min-width: 34px; font-size: 14px; line-height: 1; padding: 4px 8px; transition: color .15s ease; }
@@ -76,8 +77,8 @@ button.danger:hover { background: #c62121; }
 }
 
 /* 作者 + 时间段筛选 */
-.gg-logfilter { display: flex; align-items: center; gap: 4px; margin-left: 6px; }
-.gg-filter-input { height: 24px; padding: 2px 8px; font-size: 12px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border-color: var(--vscode-input-border, transparent); }
+.gg-logfilter { display: flex; align-items: center; gap: 4px; margin-left: 6px; flex-wrap: wrap; }
+.gg-filter-input { height: 24px; padding: 2px 8px; font-size: 12px; min-width: 0; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border-color: var(--vscode-input-border, transparent); }
 .gg-filter-input:focus { outline: 1px solid var(--vscode-focusBorder); }
 .gg-author-input { width: 110px; }
 .gg-date-input { width: 128px; }
@@ -147,12 +148,13 @@ button.danger:hover { background: #c62121; }
 .gg-list-header,
 .gg-row {
   display: grid;
+  /* 列按上限=用户设定宽、下限=最小可读宽收缩：空间不足时整体收窄而非溢出错位 */
   grid-template-columns:
-    var(--c-graph, 150px)
-    var(--c-msg, 460px)
-    var(--c-author, 120px)
-    var(--c-sha, 90px)
-    minmax(var(--c-time-min, 150px), 1fr);
+    minmax(60px, var(--c-graph, 150px))
+    minmax(140px, var(--c-msg, 460px))
+    minmax(70px, var(--c-author, 120px))
+    minmax(60px, var(--c-sha, 90px))
+    minmax(60px, 1fr);
 }
 .gg-list-header {
   flex: none;
@@ -160,6 +162,9 @@ button.danger:hover { background: #c62121; }
   line-height: 28px;
   border-bottom: 1px solid var(--vscode-panel-border, #333);
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  overflow: hidden;   /* 与列表体裁剪口径一致，头身对齐 */
+  /* 预留与 .gg-list 滚动条等宽（10px）的槽，保证列头与行内容同宽严格对齐 */
+  padding-right: 10px;
 }
 .gg-col-h {
   position: relative;
@@ -181,7 +186,8 @@ button.danger:hover { background: #c62121; }
   background: color-mix(in srgb, var(--vscode-focusBorder) 55%, transparent);
 }
 .gg-list-body { flex: 1; position: relative; min-height: 0; }
-.gg-list { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; outline: none; }
+/* 稳定滚动条槽：列头与行的可用宽度一致，头身严格对齐 */
+.gg-list { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; outline: none; }
 .gg-list-sizer { position: relative; width: 100%; }
 .gg-list-footer {
   position: absolute;
@@ -255,6 +261,8 @@ button.danger:hover { background: #c62121; }
 .gg-detail {
   flex: none;
   height: var(--gg-detail-h, 220px);
+  /* 拖高过的面板随窗口缩小自适应钳制，避免溢出视口 */
+  max-height: calc(100vh - 100px);
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--vscode-panel-border, #333);

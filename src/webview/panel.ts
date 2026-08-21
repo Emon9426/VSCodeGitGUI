@@ -465,7 +465,11 @@ export class GraphPanel {
     this.watchers.get(repoId)?.dispose();
     this.watchers.delete(repoId);
     const root = this.roots.get(repoId)!;
-    const watcher = new RepoWatcher(root, files => { this.onWatch(files); });
+    const watcher = new RepoWatcher(
+      root,
+      files => { this.onWatch(files); },
+      message => { this.channel.appendLine(message); },
+    );
     watcher.start();
     this.watchers.set(repoId, watcher);
 
@@ -485,6 +489,7 @@ export class GraphPanel {
   private onWatch(files: string[]): void {
     if (!this.service || !this.currentRepoId) return;
     const indexOnly = files.length > 0 && files.every(f => f === 'index');
+    this.channel.appendLine(`[watch] repo=${this.currentRepoId} files=${JSON.stringify(files)} → ${indexOnly ? '轻量' : '全量'}`);
     if (!indexOnly) {
       void this.refresh();
       return;
@@ -538,6 +543,7 @@ export class GraphPanel {
     if (!this.service || !this.currentRepoId) return;
     const repoId = this.currentRepoId;
     const root = this.roots.get(repoId)!;
+    const t0 = Date.now();
     const version = (this.stateVersions.get(repoId) ?? 0) + 1;
     this.stateVersions.set(repoId, version);
     try {
@@ -595,14 +601,17 @@ export class GraphPanel {
         state.remotes.flatMap(g => g.branches.map(b => b.name + b.sha)).join(';'),
         state.tags.map(t => t.name + t.sha).join(';'),
       ]);
-      if (fp !== this.lastPostedFingerprint) {
+      const changed = fp !== this.lastPostedFingerprint;
+      if (changed) {
         this.lastPostedFingerprint = fp;
         this.post({ t: 'repoState', state });
         this.updateStatusBar();
         GraphPanel.onDidStateChange.fire();
       }
+      this.channel.appendLine(`[refresh] repo=${repoId} head=${state.head.sha.slice(0, 7)} commits=${state.commits.length} pushed=${changed ? 'yes' : 'no(dedup)'} ${Math.round(Date.now() - t0)}ms`);
       void this.doWorkState({ entries: status.entries, merging: status.merging }).catch(() => undefined);
     } catch (e) {
+      this.channel.appendLine(`[refresh] repo=${repoId} failed: ${String((e as Error)?.message ?? e).slice(0, 200)}`);
       this.post({ t: 'notify', level: 'error', message: String((e as Error)?.message ?? e) });
     }
   }

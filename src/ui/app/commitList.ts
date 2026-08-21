@@ -25,7 +25,6 @@ export interface CommitList {
 
 type ColKey = 'graph' | 'msg' | 'author' | 'sha';
 const MIN_W: Record<ColKey, number> = { graph: 60, msg: 220, author: 70, sha: 60 };
-const TIME_MIN = 150;
 const COL_LABELS: ColKey[] = ['graph', 'msg', 'author', 'sha'];
 
 export function createCommitList(app: App): CommitList {
@@ -66,7 +65,6 @@ export function createCommitList(app: App): CommitList {
     wrap.style.setProperty('--c-msg', `${S.colWidths.msg}px`);
     wrap.style.setProperty('--c-author', `${S.colWidths.author}px`);
     wrap.style.setProperty('--c-sha', `${S.colWidths.sha}px`);
-    wrap.style.setProperty('--c-time-min', `${TIME_MIN}px`);
   }
 
   // 表头拖拽调宽（前四列右缘手柄；时间列自适应剩余空间）
@@ -278,10 +276,19 @@ export function createCommitList(app: App): CommitList {
     scheduleSync();
   }
 
+  /**
+   * 失效行池内容缓存：syncRows 以 _idx 判定是否重填，但 repoState 会整体替换
+   * S.commits 数组（新提交插在顶部）——位置相同内容已变，不清 _idx 顶行将
+   * 永远显示旧数据（idx 恒 0，滚动也无法使其错位重填），表现为"提交后列表不刷新"。
+   */
+  function invalidateRows(): void {
+    for (const r of pool) { (r as any)._idx = -1; delete r.dataset.sha; }
+  }
+
   return {
     el: wrap,
-    reset() { scroll.scrollTop = 0; loadingMore = false; refreshCommon(); },
-    refresh() { loadingMore = false; refreshCommon(); },
+    reset() { scroll.scrollTop = 0; loadingMore = false; invalidateRows(); refreshCommon(); },
+    refresh() { loadingMore = false; invalidateRows(); refreshCommon(); },
     appended() { loadingMore = false; refreshCommon(); },
     selectionChanged() {
       for (const row of pool) {
