@@ -33,7 +33,10 @@ export function renderDiff(
     return;
   }
 
-  // 先按行规格构建全部节点（不挂载），再分块挂载
+  // 先按行规格构建全部节点（不挂载），再分块挂载。
+  // 行统一挂在 .gg-diff-inner 内层（inline-block + min-width:100%）：
+  // 内层宽 = max(可视宽, 最长行)，行背景得以铺满整个横向滚动区，而非仅可视宽
+  const inner = el('div', 'gg-diff-inner');
   const rows: HTMLElement[] = [];
   for (const hunk of payload.diff.hunks) {
     rows.push(el('div', 'gg-dl hunk', hunk.header));
@@ -65,7 +68,7 @@ export function renderDiff(
     const next = Math.min(rows.length, shownCount + CHUNK);
     const frag = document.createDocumentFragment();
     for (; shownCount < next; shownCount++) frag.appendChild(rows[shownCount]);
-    container.insertBefore(frag, moreBtn ?? null);
+    inner.insertBefore(frag, null);
     if (moreBtn) {
       if (shownCount >= rows.length) moreBtn.remove();
       else moreBtn.textContent = S.t('showMoreLines', { n: rows.length - shownCount });
@@ -74,19 +77,23 @@ export function renderDiff(
   if (moreBtn) {
     moreBtn.addEventListener('click', appendChunk);
     moreBtn.textContent = S.t('showMoreLines', { n: rows.length - Math.min(CHUNK, rows.length) });
-    container.appendChild(moreBtn);
   }
+  container.appendChild(inner);
+  if (moreBtn) container.appendChild(moreBtn);
   appendChunk();
 }
 
 function lineRow(line: DiffLine): HTMLElement {
   const row = el('div', `gg-dl ${line.kind}`);
+  // 行号双列包一层 sticky：横向滚动长行时行号固定在左缘（背景不透明，遮挡滚过的文字）
+  const nos = el('span', 'gg-lnos');
   const oldNo = el('span', 'gg-ln', line.oldNo !== undefined ? String(line.oldNo) : '');
   const newNo = el('span', 'gg-ln', line.newNo !== undefined ? String(line.newNo) : '');
+  nos.append(oldNo, newNo);
   const marker = el('span', 'gg-mark', line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' ');
   const text = el('span', 'gg-text');
   text.textContent = line.text || ' ';
-  row.append(oldNo, newNo, marker, text);
+  row.append(nos, marker, text);
   return row;
 }
 

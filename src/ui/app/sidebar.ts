@@ -1,11 +1,12 @@
 /**
- * 左侧边栏（设计方案 4.2）：仓库区、本地分支（ahead/behind 徽标）、远程、标签。
+ * 左侧边栏（设计方案 4.2）：工程区（v0.11 跨工作区切换）、仓库区、本地分支（ahead/behind 徽标）、远程、标签。
  * 单击分支 = 过滤提交图；双击 = 检出；右键 = 操作菜单。
+ * 工程区：双击在当前窗口打开工程；右键可新窗口打开/重命名/移除。
  */
 import type { BranchInfo } from '../../common/models';
 import { S, type App } from '../state';
 import { el, clearChildren } from '../util';
-import { showContextMenu, confirmDialog, tagDialog } from './overlays';
+import { showContextMenu, confirmDialog, promptDialog, tagDialog } from './overlays';
 
 export interface Sidebar {
   el: HTMLElement;
@@ -14,11 +15,12 @@ export interface Sidebar {
 
 export function createSidebar(app: App): Sidebar {
   const root = el('div', 'gg-side');
+  const projSec = section(S.t('projects'));
   const repoSec = section(S.t('repos'));
   const branchSec = section(S.t('branches'));
   const remoteSec = section(S.t('remotes'));
   const tagSec = section(S.t('tags'));
-  root.append(repoSec.box, branchSec.box, remoteSec.box, tagSec.box);
+  root.append(projSec.box, repoSec.box, branchSec.box, remoteSec.box, tagSec.box);
 
   function section(title: string): { box: HTMLElement; list: HTMLElement } {
     const box = el('div', 'gg-side-sec');
@@ -33,6 +35,24 @@ export function createSidebar(app: App): Sidebar {
   }
 
   function update(): void {
+    // 工程（标题随语言刷新；＋入口挂标题栏，与标签区同款）
+    sectionTitle(projSec, S.t('projects'));
+    let projAdd = projSec.box.querySelector('.gg-side-add') as HTMLElement | null;
+    if (!projAdd) {
+      projAdd = el('button', 'gg-side-add', '＋');
+      projAdd.addEventListener('click', e => {
+        e.stopPropagation();
+        showProjectAddMenu(e.clientX, e.clientY);
+      });
+      projSec.box.firstElementChild!.appendChild(projAdd);
+    }
+    projAdd.title = S.t('projectAdd');
+    clearChildren(projSec.list);
+    for (const p of S.projects) projSec.list.appendChild(projectRow(app, p));
+    if (!S.projects.length) {
+      projSec.list.appendChild(el('div', 'gg-side-empty', S.t('noProjects')));
+    }
+
     // 仓库（标题随语言刷新：其余三个分区在下方 sectionTitle 处理）
     sectionTitle(repoSec, S.t('repos'));
     clearChildren(repoSec.list);
@@ -169,6 +189,71 @@ export function createSidebar(app: App): Sidebar {
       ], e.clientX, e.clientY);
     });
     return item;
+  }
+
+  // ---------- 工程（v0.11：跨工作区快速切换） ----------
+
+  const dirBase = (p: string): string => {
+    const tail = p.replace(/[\\/]+$/, '');
+    const seg = tail.split(/[\\/]/).pop();
+    return seg || tail || p;
+  };
+
+  function projectRow(app2: App, p: { id: string; name: string; path: string }): HTMLElement {
+    const active = S.activeProjectIds.includes(p.id);
+    const item = el('div', `gg-side-item project${active ? ' active' : ''}`);
+    item.appendChild(el('span', 'gg-side-name', `▤ ${p.name}`));
+    item.appendChild(el('span', 'gg-side-sub', p.path));
+    item.title = `${p.name}\n${p.path}\n${S.t('projectSwitchTip')}`;
+    item.addEventListener('dblclick', () => app2.projectOpen(p.id, false));   // 双击：当前窗口切换
+    item.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      showContextMenu([
+        { label: S.t('projectOpenCurrent'), run: () => app2.projectOpen(p.id, false) },
+        { label: S.t('projectOpenNew'), run: () => app2.projectOpen(p.id, true) },
+        { sep: true },
+        { label: S.t('projectRename'), run: () => {
+          void promptDialog(S.t('projectRename'), S.t('projectNameLabel'), p.name).then(name => {
+            if (name) app2.projectRename(p.id, name);
+          });
+        } },
+        { label: S.t('projectRemove'), danger: true, run: () => {
+          void confirmDialog(S.t('projectRemove'), S.t('projectRemoveConfirm', { name: p.name }), S.t('projectRemove'), true)
+            .then(ok => { if (ok) app2.projectRemove(p.id); });
+        } },
+        { sep: true },
+        { label: S.t('copyPath'), run: () => app2.copy(p.path) },
+      ], e.clientX, e.clientY);
+    });
+    return item;
+  }
+
+  /** ＋ 菜单：保存当前工作区（多根工作区逐个列出）/ 浏览任意文件夹 */
+  function showProjectAddMenu(x: number, y: number): void {
+    const items: Parameters<typeof showContextMenu>[0] = [];
+    const saved = new Set(S.projects.map(p => p.path.toLowerCase()));
+    const folders = S.workspaceFolders.filter(f => !saved.has(f.toLowerCase()));
+    if (folders.length) {
+      for (const f of folders) {
+        items.push({ label: `${S.t('projectAddCurrent')} — ${dirBase(f)}`, run: () => askProjectName(f) });
+      }
+    } else {
+      items.push({ label: S.t('projectAddCurrent'), disabled: true });
+    }
+    items.push(
+      { sep: true },
+      { label: S.t('projectBrowse'), run: () => {
+        void app.projectPickFolder().then(p => { if (p) askProjectName(p); });
+      } },
+    );
+    showContextMenu(items, x, y);
+  }
+
+  function askProjectName(dir: string): void {
+    const def = dirBase(dir) || dir;
+    void promptDialog(S.t('projectAdd'), S.t('projectNameLabel'), def).then(name => {
+      if (name !== null) app.projectAdd(dir, name || def);
+    });
   }
 
   return { el: root, update };

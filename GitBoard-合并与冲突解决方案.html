@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitBoard · 合并与冲突解决方案（v0.10.0 需求）v1.3</title>
+<style>
+  :root{
+    --fg:#1f2328; --fg2:#57606a; --line:#d0d7de; --bg:#ffffff; --bg2:#f6f8fa;
+    --accent:#0969da; --green:#1a7f37; --red:#cf222e; --amber:#9a6700; --purple:#8250df;
+    --code-bg:#0d1117; --code-fg:#e6edf3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.75 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;color:var(--fg);background:var(--bg)}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code.inline{background:var(--bg2);border:1px solid var(--line);border-radius:4px;padding:0 5px;font:12.5px/1.6 Consolas,"Courier New",monospace;color:#953800;white-space:nowrap}
+  pre.code{background:var(--code-bg);color:var(--code-fg);border-radius:8px;padding:14px 16px;overflow:auto;font:12.5px/1.6 Consolas,"Courier New",monospace;tab-size:2}
+  pre.code code{background:none;border:none;color:inherit;padding:0;font-size:inherit;white-space:pre}
+  table.tbl{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  table.tbl th{background:var(--bg2);text-align:left}
+  table.tbl th,table.tbl td{border:1px solid var(--line);padding:6px 10px;vertical-align:top}
+  table.tbl tr:nth-child(even) td{background:#fbfcfd}
+  h1{font-size:28px;margin:.2em 0 .3em}
+  h2{font-size:21px;margin:2.2em 0 .6em;padding-left:12px;border-left:4px solid var(--accent)}
+  h3{font-size:17px;margin:1.6em 0 .5em;color:#24292f}
+  h4{font-size:15px;margin:1.2em 0 .4em;color:var(--fg2)}
+  p{margin:.6em 0}
+  ul,ol{padding-left:1.6em}
+  li{margin:.25em 0}
+  hr.sect{border:none;border-top:1px solid var(--line);margin:2.5em 0}
+  aside.toc{position:fixed;top:0;left:0;bottom:0;width:250px;overflow-y:auto;padding:20px 14px;border-right:1px solid var(--line);background:var(--bg2);font-size:13px}
+  aside.toc .toc-title{font-weight:600;margin-bottom:10px}
+  aside.toc a{display:block;color:var(--fg2);padding:2px 6px;border-radius:4px;line-height:1.5}
+  aside.toc a:hover{background:#eaeef2;text-decoration:none;color:var(--accent)}
+  aside.toc a.sub{padding-left:18px;font-size:12.3px}
+  main.doc{margin-left:250px;padding:36px 44px 80px;max-width:1080px}
+  .docmeta{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:12px 18px;margin:14px 0 8px;font-size:13.5px}
+  .box{border-radius:8px;padding:10px 16px;margin:14px 0;font-size:13.8px;border:1px solid}
+  .box.note{background:#ddf4ff;border-color:#54aeff66}
+  .box.warn{background:#fff8c5;border-color:#d4a72c66}
+  .box.decision{background:#dafbe1;border-color:#4ac26b66}
+  .box.assume{background:#fbefff;border-color:#c297ff66}
+  .prio{display:inline-block;border-radius:10px;padding:0 9px;font-size:12px;font-weight:600;line-height:20px}
+  .p0{background:#dafbe1;color:var(--green)}
+  .p1{background:#fff8c5;color:var(--amber)}
+  .p2{background:#fbefff;color:var(--purple)}
+  .kbd{display:inline-block;border:1px solid #c9d1d9;border-bottom-width:2px;border-radius:5px;padding:0 6px;font:12px/1.7 Consolas,monospace;background:#f6f8fa;color:#24292f}
+
+  /* ============ 高保真示意图（模拟 VS Code Dark Modern） ============ */
+  .mockwrap{margin:18px 0}
+  .mock-cap{font-size:12.5px;color:var(--fg2);margin:0 0 6px;display:flex;gap:8px;align-items:center}
+  .mock-cap .tag{background:#1f1f1f;color:#e6edf3;border-radius:4px;padding:0 8px;font-size:11.5px;font-weight:600;letter-spacing:.4px}
+  .mock{border:1px solid #30363d;border-radius:10px;overflow:hidden;background:#1f1f1f;color:#cccccc;
+        font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-size:12.5px;line-height:1.45;
+        box-shadow:0 10px 30px rgba(0,0,0,.22);text-align:left}
+  .mock *{box-sizing:border-box}
+  .ann{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;
+       background:#f0b72f;color:#1f1f1f;font-size:10.5px;font-weight:700;font-style:normal;margin-left:5px;flex:none;vertical-align:1px}
+  .ann-list{font-size:13px;color:var(--fg2);margin:8px 0 0;padding-left:0;list-style:none}
+  .ann-list li{margin:.15em 0}
+
+  /* 合并器 mock 专属 */
+  .mg-top{display:flex;align-items:center;gap:8px;height:40px;background:#181818;border-bottom:1px solid #2b2b2b;padding:0 10px}
+  .mg-top .fname{font-weight:600;color:#e6edf3;font-size:12.5px}
+  .mg-top .prog{background:#5a1d1d;border:1px solid #b3443d;color:#ffb9b3;border-radius:9px;padding:0 8px;font-size:11px;line-height:17px;font-weight:600}
+  .mg-btn{background:#2a2a2a;border:1px solid #3c3c3c;border-radius:5px;padding:3px 10px;color:#ccc;font-size:11.5px;white-space:nowrap}
+  .mg-btn.primary{background:#0078d4;border-color:#0078d4;color:#fff}
+  .mg-btn.ghost{background:transparent}
+  .mg-btn.warn{border-color:#b3443d;color:#ffb9b3}
+  .mg-btn.ai{border-color:#8250df;color:#d2baff}
+  .mg-cols{display:grid;grid-template-columns:1fr 1.25fr 1fr;min-height:330px}
+  .mg-col{border-right:1px solid #2b2b2b;display:flex;flex-direction:column;min-width:0}
+  .mg-col:last-child{border-right:none}
+  .mg-col-h{display:flex;align-items:center;justify-content:space-between;gap:6px;height:28px;padding:0 8px;font-size:11.5px;font-weight:600;border-bottom:1px solid #232323;flex:none}
+  .mg-col-h.mine{background:#14203a;color:#79b8ff}
+  .mg-col-h.res{background:#1f1f10;color:#e3b341}
+  .mg-col-h.theirs{background:#122a1d;color:#7ee787}
+  .mg-col-h .hint{font-weight:400;font-size:10.5px;opacity:.75}
+  .mg-lines{flex:1;padding:4px 0;font:11.8px/1.5 Consolas,"Courier New",monospace;overflow:hidden}
+  .cl{display:flex;padding:0 8px;white-space:pre}
+  .cl .ln{width:26px;flex:none;color:#6e7681;text-align:right;padding-right:8px;user-select:none}
+  .cl .tx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .cl.ctx{color:#c9d1d9}
+  .cl.ours{background:#0c2d6b33;background:rgba(9,105,218,.18);color:#a5d6ff}
+  .cl.theirs{background:rgba(26,127,55,.20);color:#b6f2c4}
+  .cl.res{background:rgba(154,106,0,.22);color:#ffe08a}
+  .cl.base{background:rgba(139,148,158,.14);color:#b1bac4;text-decoration:line-through;text-decoration-color:#8b949e66}
+  .cl.resolved-ok{background:rgba(26,127,55,.10)}
+  .cl.del{background:rgba(207,34,46,.14);color:#ffb1ab;text-decoration:line-through;text-decoration-color:#f8514966}
+  .chunkbar{display:flex;align-items:center;gap:5px;height:24px;padding:0 8px;background:#161b22;border-top:1px solid #21262d;border-bottom:1px solid #21262d;font-size:11px;color:#8b949e;flex:none}
+  .chunkbar .take{display:inline-flex;align-items:center;gap:4px;background:#21262d;border:1px solid #30363d;border-radius:4px;padding:1px 7px;color:#c9d1d9;cursor:default;font-size:10.5px}
+  .chunkbar .take.mine{border-color:#1f6feb;color:#79b8ff}
+  .chunkbar .take.theirs{border-color:#238636;color:#7ee787}
+  .chunkbar .take.both{border-color:#9e6a03;color:#e3b341}
+  .chunkbar .take.none{border-color:#8b949e;color:#b1bac4}
+  .chunkbar .sp{flex:1}
+
+  /* 三栏合并器（v1.3：回归三栏，呈现清晰化） */
+  .mock{position:relative}
+  .sarr{flex:none;margin-left:6px;width:18px;height:15px;border:1px solid #1f6feb;border-radius:3px;color:#79b8ff;font-size:10px;display:inline-flex;align-items:center;justify-content:center}
+  .sarr.t{border-color:#238636;color:#7ee787}
+  .cl.src-m{background:rgba(154,106,0,.20);border-left:3px solid #1f6feb;color:#ffd8a8;padding-left:5px}
+  .cl.src-t{background:rgba(154,106,0,.20);border-left:3px solid #238636;color:#ffd8a8;padding-left:5px}
+  .cl.src-x{background:rgba(154,106,0,.20);border-left:3px solid #8b949e;color:#ffd8a8;padding-left:5px}
+  .cl.ai{background:rgba(130,80,223,.20);border-left:3px solid #8250df;color:#e2d5ff;padding-left:5px}
+  .resolvedbar{display:flex;align-items:center;gap:8px;padding:3px 8px;background:rgba(26,127,55,.12);border-left:3px solid #238636;color:#96e8a8;font-size:11px}
+  .resolvedbar .redo{margin-left:auto;background:#21262d;border:1px solid #30363d;border-radius:4px;padding:1px 8px;font-size:10.5px;color:#c9d1d9}
+  .mg-map{position:absolute;top:40px;bottom:38px;right:0;width:13px;border-left:1px solid #2b2b2b;background:#161b22}
+  .mg-map i{position:absolute;left:2px;right:2px;height:5px;border-radius:2px}
+  .mg-map i.todo{background:#9a6700}
+  .mg-map i.ok{background:#238636}
+  .mg-map i.vp{background:#0078d4;opacity:.45;height:36px !important}
+
+  .mg-foot{display:flex;align-items:center;gap:8px;height:38px;background:#181818;border-top:1px solid #2b2b2b;padding:0 10px}
+  .mg-foot .msg{color:#8b949e;font-size:11.5px}
+  .mg-foot .sp{flex:1}
+
+  /* 冲突横幅 mock */
+  .banner{display:flex;align-items:center;gap:10px;margin:8px 10px;padding:7px 12px;border:1px solid #b3443d;background:#2d1418;border-radius:6px;font-size:12px;color:#ffc2bd}
+  .banner b{color:#ff9d94}
+  .banner .bbtn{background:#3a1d20;border:1px solid #b3443d;border-radius:4px;padding:2px 9px;font-size:11.5px;color:#ffd9d5;white-space:nowrap}
+  .banner .bbtn.hero{background:#0078d4;border-color:#0078d4;color:#fff}
+  .banner .bsp{flex:1}
+
+  /* 流程步骤条 */
+  .flow{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;margin:10px 0}
+  .flow .step{flex:1;min-width:150px;border:1px solid #d0d7de;border-radius:8px;background:#f6f8fa;padding:8px 12px;font-size:13px}
+  .flow .step b{display:block;color:#0969da;font-size:12.5px;margin-bottom:2px}
+  .flow .step.hot{border-color:#1a7f37;background:#dafbe1}
+  .flow .step.hot b{color:#1a7f37}
+  .arrow{align-self:center;color:#8c959f;font-size:16px;flex:none}
+</style>
+</head>
+<body>
+<aside class="toc">
+  <div class="toc-title">目录</div>
+  <a href="#bg">1 背景：现状与差距</a>
+  <a href="#req">2 需求定义</a>
+  <a href="#story">3 典型场景走查</a>
+  <a href="#design">4 总体方案</a>
+  <a class="sub" href="#d1">4.1 冲突拦截与引导</a>
+  <a class="sub" href="#d2">4.2 冲突横幅</a>
+  <a class="sub" href="#d3">4.3 合并解决器（三栏）</a>
+  <a class="sub" href="#d4">4.4 三种解决策略</a>
+  <a class="sub" href="#d5">4.5 二进制文件</a>
+  <a class="sub" href="#d6">4.6 rebase / cherry-pick 语义</a>
+  <a class="sub" href="#d7">4.7 中止与完成</a>
+  <a class="sub" href="#d8">4.8 AI 辅助合并</a>
+  <a href="#tech">5 技术设计</a>
+  <a class="sub" href="#t1">5.1 协议与命令扩展</a>
+  <a class="sub" href="#t2">5.2 Git 语义映射</a>
+  <a class="sub" href="#t3">5.3 冲突块解析与写回</a>
+  <a class="sub" href="#t4">5.4 边界与安全</a>
+  <a href="#plan">6 优先级与版本规划</a>
+  <a href="#risk">7 风险与对策</a>
+  <a href="#open">8 待审查确认问题</a>
+</aside>
+<main class="doc">
+
+<h1>GitBoard 合并与冲突解决方案</h1>
+<div class="docmeta">
+  <b>文档版本</b>：v1.3（需求，<b style="color:#1a7f37">已审查 · 决议见 §8；v1.3 三审：回归三栏布局（我的-合并-他人），呈现清晰化，AI 保留</b>）&nbsp;·&nbsp;
+  <b>目标产品版本</b>：v0.10.x&nbsp;·&nbsp;
+  <b>日期</b>：2026-08-23&nbsp;·&nbsp;
+  <b>参考</b>：IntelliJ IDEA 合并界面 / VS Code Merge Editor 交互范式
+</div>
+<p>本文档定义 GitBoard 的<b>代码合并与冲突解决</b>功能：以<b>三栏合并解决器</b>（我的版本 – 合并版本 – 他人版本，IDEA / Beyond Compare 式块级交互、更清晰的呈现）为核心，
+为 <code class="inline">pull</code> / <code class="inline">commit</code> / <code class="inline">push</code>
+过程中出现的冲突提供<strong>主动引导 + 逐文件可视化解决</strong>的完整闭环，
+并可选接入 AI 模型辅助解决复杂冲突。</p>
+
+<hr class="sect">
+<h2 id="bg">1 背景：现状与差距</h2>
+<p>v0.8.0 已实现冲突「二选一」最小闭环：</p>
+<ul>
+  <li>工作副本视图将 <code class="inline">UU/DD/AA/AU/…</code> 状态文件归入「冲突」独立分组，行内提供 <b>我的 / 对方的</b> 二选一按钮与组级全选（<code class="inline">git checkout --ours/--theirs</code> + <code class="inline">add</code>）；</li>
+  <li>冲突全部解决且 <code class="inline">MERGE_HEAD</code> 存在时自动 <code class="inline">commit --no-edit</code> 完成合并；</li>
+  <li>存在未解决冲突时提交被拦截（<code class="inline">conflictBlock</code>）。</li>
+</ul>
+<p><b>差距</b>（本次要补齐的能力）：</p>
+<table class="tbl">
+<tr><th style="width:30%">现状</th><th>差距</th></tr>
+<tr><td>只有"整文件二选一"，无法保留双方改动</td><td>没有可视化合并界面，无法<b>以合并后的代码为准</b>（手动融合两侧/多冲突块逐块取舍）</td></tr>
+<tr><td>冲突靠用户自己发现（切到工作副本视图才看到）</td><td>pull/commit/push 触发冲突时<b>无主动引导</b>；push 被拒（non-fast-forward）只显示一段 stderr</td></tr>
+<tr><td>二进制冲突与文本冲突同等对待</td><td>二进制无法对照合并，也看不出差异，应<b>只提供二选一</b>+预览</td></tr>
+<tr><td>rebase 场景（<code class="inline">mergeKind=other</code>）语义反转仅靠文案提示，完成后不能 <code class="inline">--continue</code></td><td>rebase/cherry-pick 冲突走不通完整闭环</td></tr>
+<tr><td>没有"反悔"入口</td><td>缺少 <code class="inline">merge --abort</code> / <code class="inline">rebase --abort</code> 中止能力</td></tr>
+<tr><td>AI 仅用于生成提交信息</td><td>未接入冲突合并场景</td></tr>
+</table>
+
+<hr class="sect">
+<h2 id="req">2 需求定义</h2>
+<table class="tbl">
+<tr><th style="width:52px">编号</th><th style="width:70px">优先级</th><th>需求描述</th></tr>
+<tr>
+  <td><b>R1</b></td><td><span class="prio p0">P0</span></td>
+  <td><b>合并解决器（三栏）</b>：<b>我的版本 – 合并版本 – 他人版本</b> 三栏并排（IDEA / Beyond Compare 式）——左右两栏只读对照、差异着色，<b>中间"合并版本"栏即最终保存的结果，可自由编辑</b>。每个冲突块就近提供快捷按钮：<b>⬅ 用我的 / 用他人 ➡ / 两个都要 / 都不要 / ✦ AI 融合</b>；左右栏块边提供 IDEA 式 « » 一键采纳箭头。冲突块全程以色块呈现，不暴露 git 冲突标记。AI 辅助合并保留（R7）。</td>
+</tr>
+<tr>
+  <td><b>R2</b></td><td><span class="prio p0">P0</span></td>
+  <td><b>三种文件级解决策略</b>：① <b>以我的代码为准</b>；② <b>以远端的代码为准</b>；③ <b>以合并后的代码为准</b>（接受编辑后的合并结果，含 git 已自动合并无冲突的部分）。三者均需一键完成并暂存（<code class="inline">git add</code>）。</td>
+</tr>
+<tr>
+  <td><b>R3</b></td><td><span class="prio p0">P0</span></td>
+  <td><b>冲突主动引导</b>：<code class="inline">pull</code> 出现冲突、<code class="inline">commit</code> 被冲突阻塞时，自动切到工作副本视图并弹出冲突引导横幅，一键进入合并器；<code class="inline">push</code> 被拒（远端领先）时引导"先拉取再推送"，拉取后若冲突则无缝进入冲突流程。全部解决后自动完成合并/变基并提示结果。</td>
+</tr>
+<tr>
+  <td><b>R4</b></td><td><span class="prio p0">P0</span></td>
+  <td><b>二进制文件</b>：自动识别（含 <code class="inline">\0</code> 字节 / numstat 为 <code class="inline">-</code>）。不提供版本对照与"合并后为准"，只提供<b>以我为准 / 以远端为准</b>二选一 + 用系统程序打开预览。</td>
+</tr>
+<tr>
+  <td><b>R5</b></td><td><span class="prio p0">P0</span></td>
+  <td><b>操作友好</b>：进度可见（N/M 个文件待解决）、逐文件"解决并进入下一个"自动流转、整组批量策略、随时<b>中止合并</b>（恢复到操作前状态）、CRLF/编码保持、误操作可反悔（重新打开合并器改选另一侧）。</td>
+</tr>
+<tr>
+  <td><b>R6</b></td><td><span class="prio p1">P1</span></td>
+  <td><b>rebase / cherry-pick 支持</b>：ours/theirs 语义按场景自动反转并在界面上始终以<b>语义标签</b>（"我的"/"远端"）呈现；全部解决后自动 <code class="inline">rebase --continue</code>，若下一个提交仍有冲突则继续引导，直至变基完成。</td>
+</tr>
+<tr>
+  <td><b>R7</b></td><td><span class="prio p2">P2</span></td>
+  <td><b>AI 辅助合并</b>：对单个冲突块（或全部冲突批量）调用 VS Code 语言模型（现有 <code class="inline">vscode.lm</code> 通道），输入 base/双方版本，生成融合结果填入<b>中栏对应块（紫色"AI 待审"色条）</b>供审查-修改-确认；流式输出、可取消、无模型时隐藏入口。</td>
+</tr>
+</table>
+<div class="box note"><b>明确不做</b>：跨仓库批量合并、submodule 冲突解决、锁文件（<code class="inline">.gitignore</code> 外的 lock 类）特殊策略、强制推送入口。首版聚焦单仓库文本/二进制两类冲突的完整闭环。</div>
+
+<hr class="sect">
+<h2 id="story">3 典型场景走查</h2>
+
+<h3>场景 A：pull 产生冲突（最主路径）</h3>
+<div class="flow">
+  <div class="step"><b>① 拉取</b>点工具栏 Pull，按默认策略执行</div><div class="arrow">→</div>
+  <div class="step hot"><b>② 检测到冲突</b>自动切工作副本视图，顶部弹出冲突横幅「发现 3 个文件冲突」</div><div class="arrow">→</div>
+  <div class="step"><b>③ 逐个解决</b>点「逐个解决」进入三栏合并器，逐块点「⬅用我的 / 用他人➡」或两侧 « » 箭头采纳，拿不准的可 ✦AI 融合或直接在中栏改</div><div class="arrow">→</div>
+  <div class="step hot"><b>④ 完成合并</b>最后一个文件解决后<b>弹确认「N 个冲突已全部解决，完成合并？」</b>（显示默认合并信息），确认后 <code>commit --no-edit</code>（决议 #2）</div>
+</div>
+
+<h3>场景 B：push 被拒（non-fast-forward）</h3>
+<div class="flow">
+  <div class="step"><b>① 推送</b>点 Push</div><div class="arrow">→</div>
+  <div class="step"><b>② 事前拦截</b>检测到本地落后远端（behind&gt;0）：弹确认「远端有 N 个新提交，建议先拉取」<br>[拉取并推送] [仅拉取] [取消]</div><div class="arrow">→</div>
+  <div class="step"><b>③ 拉取</b>按默认策略 pull；若失败被拒（fetch first / rejected）同款引导兜底</div><div class="arrow">→</div>
+  <div class="step hot"><b>④ 分流</b>无冲突 → 自动继续推送；有冲突 → 进入场景 A 的冲突横幅（推送暂停），冲突全部解决并<b>完成合并后弹确认条「继续推送？」</b>，由用户点击确认（<b style="color:#cf222e">决议 #3</b>）</div>
+</div>
+
+<h3>场景 C：提交时存在未解决冲突</h3>
+<div class="flow">
+  <div class="step"><b>① 提交</b>Commit 面板点「提交」</div><div class="arrow">→</div>
+  <div class="step hot"><b>② 引导而非报错</b>存在冲突时不抛 <code>conflictBlock</code> 硬错误，而是自动展开冲突横幅并高亮第一个冲突文件，提示「先解决 N 个冲突再提交」</div><div class="arrow">→</div>
+  <div class="step"><b>③ 解决完成</b>合并完成后停留在提交面板，提交信息草稿保留，用户直接提交</div>
+</div>
+
+<hr class="sect">
+<h2 id="design">4 总体方案</h2>
+
+<h3 id="d1">4.1 冲突拦截与引导 <span class="prio p0">P0</span></h3>
+<p>三个触发点的判定与动作：</p>
+<table class="tbl">
+<tr><th style="width:15%">触发点</th><th style="width:42%">判定</th><th>动作</th></tr>
+<tr>
+  <td><b>pull 后</b></td>
+  <td>pull 结束（无论 opResult 成败）后刷新 <code class="inline">workState</code>：<code class="inline">conflicts.length &gt; 0</code>；或 stderr 含 <code class="inline">CONFLICT</code></td>
+  <td>自动切工作副本视图（<code class="inline">showWork</code>）→ 推送冲突横幅（见 4.2）+ <code class="inline">notify</code> 提示音级提醒</td>
+</tr>
+<tr>
+  <td><b>commit 前</b></td>
+  <td>点「提交」时 <code class="inline">S.work.state.merging === true</code></td>
+  <td>不执行提交；自动切工作副本视图 + 弹横幅 + 高亮首个冲突行（替换现有 <code class="inline">conflictBlock</code> 纯报错）</td>
+</tr>
+<tr>
+  <td><b>push 前/后</b></td>
+  <td>事前：<code class="inline">RepoState</code> 中 HEAD 分支 <code class="inline">behind &gt; 0</code>（数据已有）；事后兜底：stderr 匹配 <code class="inline">non-fast-forward|fetch first|rejected</code></td>
+  <td>三选一确认（拉取并推送 / 仅拉取 / 取消）；「拉取并推送」= pull → 无冲突自动 push、有冲突暂停进入横幅流程，<b>冲突解决并完成合并后弹确认条由用户确认续推</b>（决议 #3，不自动续推）</td>
+</tr>
+</table>
+
+<h3 id="d2">4.2 冲突横幅（工作副本视图顶部）<span class="prio p0">P0</span></h3>
+<p>替代"用户自己找冲突"：只要 <code class="inline">merging</code> 为真，工作副本视图顶部常驻一条横幅，直至冲突清零或中止。</p>
+<div class="mockwrap">
+  <div class="mock-cap"><span class="tag">MOCK 1</span>冲突横幅 —— 自动出现，聚合所有入口动作</div>
+  <div class="mock">
+    <div class="banner">
+      <b>⚠ 合并进行中 · 3 个文件待解决</b>
+      <span style="color:#e6b0ac">（本地 HEAD ↔ origin/feature-x，默认策略 merge）</span>
+      <span class="bsp"></span>
+      <span class="bbtn hero">逐个解决（打开合并器）</span>
+      <span class="bbtn">全部以我为准</span>
+      <span class="bbtn">全部以远端为准</span>
+      <span class="bbtn">中止合并</span>
+    </div>
+    <div style="padding:4px 10px 10px;color:#8b949e;font-size:11.5px">
+      ↑ 横幅下方即现有工作副本文件列表；「冲突」分组行内保留二选一快捷按钮，点击行本身改为<b style="color:#c9d1d9">打开合并器</b>（原为看 diff）。
+    </div>
+  </div>
+</div>
+
+<h3 id="d3">4.3 合并解决器（三栏：我的 – 合并 – 他人）<span class="prio p0">P0</span></h3>
+<p>呈现演变：初稿三栏（v1.0，中栏暴露 git 标记）→ 逐块向导（v1.2）→ <b>三审定稿（v1.3）：保留经典三栏布局，交互参考 IDEA / Beyond Compare，呈现上做清晰化改造</b>。布局：</p>
+<div class="flow" style="margin:8px 0 4px">
+  <div class="step"><b>⬅ 我的版本</b>只读对照 · 蓝色高亮我的改动 · 块边「»」一键采纳</div>
+  <div class="step hot"><b>⬇ 合并版本</b>可编辑 · <b>最终保存的就是它</b> · 黄块=待处理，绿块=已解决</div>
+  <div class="step"><b>他人版本 ➡</b>只读对照 · 绿色高亮他人改动 · 块边「«」一键采纳</div>
+</div>
+<div class="box note" style="font-size:13.5px"><b>一句话心智模型</b>：「中间栏就是最终结果——点两侧按钮把想保留的代码搬进来，或直接在里面改；全部黄块变绿，点完成合并。」</div>
+<p><b>相对初稿（v1.0）的五个清晰化改造</b>——解决"难以理解"的反馈根源：</p>
+<ol>
+  <li><b>中栏不显示 <code class="inline">&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code> 等冲突标记</b>（初稿最大障碍）：冲突块渲染为黄色区块，块内直接显示该块当前结果（初始=我的版本），来源用左缘色条标识（蓝=来自我的 / 绿=来自他人 / 灰=已手动修改 / 紫=AI 待审）；</li>
+  <li><b>按钮就近放</b>：每个黄块头部一行操作条「⬅ 用我的 / 两个都要 / 用他人 ➡ / 都不要 / ✦ AI」，不藏在顶栏或底部；左右栏块边的 IDEA 式 « » 箭头点一下即采纳该块；</li>
+  <li><b>栏头大白话 + 角色徽标</b>：「我的版本（只读 · 本地 HEAD）」「合并版本（最终保存的就是它 · 可编辑）」「他人版本（只读 · origin/feature-x）」；</li>
+  <li><b>状态色语义全局固定</b>并常驻图例：黄=待处理冲突、绿=已解决、蓝/绿高亮=两侧各自改动、灰=三栏相同的公共部分（弱化显示）；</li>
+  <li><b>右侧导航细条</b>（Beyond Compare 式 minimap）：整根细条映射全文件，黄点/绿点=冲突分布，蓝框=当前视口，点击跳转——比"上一处/下一处"更直观地回答"还剩几处、都在哪"。</li>
+</ol>
+<div class="mockwrap">
+  <div class="mock-cap"><span class="tag">MOCK 2</span>三栏合并解决器 —— src/app/http.ts · 三栏同步滚动</div>
+  <div class="mock">
+    <div class="mg-top">
+      <span class="fname">src/app/http.ts</span>
+      <span style="color:#8b949e;font-size:11px">冲突文件 2/5</span>
+      <span class="mg-btn ghost">⟨ 上一处冲突</span>
+      <span class="mg-btn ghost">下一处冲突 ⟩</span>
+      <span style="flex:1"></span>
+      <span class="mg-btn">整文件快选 ▾</span>
+      <span class="mg-btn ai">✦ AI 融合此文件</span>
+      <span class="mg-btn warn">中止合并</span>
+    </div>
+    <div class="mg-cols">
+      <div class="mg-col">
+        <div class="mg-col-h mine"><span>⬅ 我的版本</span><span class="hint">只读 · 本地 HEAD</span></div>
+        <div class="mg-lines">
+          <div class="cl ctx"><span class="ln">88</span><span class="tx">async function request(url, opts) {</span></div>
+          <div class="cl ctx"><span class="ln">89</span><span class="tx">  const cfg = defaults(url, opts);</span></div>
+          <div class="cl ours"><span class="ln">90</span><span class="tx">  cfg.timeout = opts.timeout ?? 3000;</span><span class="sarr">»</span></div>
+          <div class="cl ours"><span class="ln">91</span><span class="tx">  cfg.retries = 2;</span><span class="sarr">»</span></div>
+          <div class="cl ctx"><span class="ln">92</span><span class="tx">  return fetch(url, cfg);</span></div>
+          <div class="cl ctx"><span class="ln">93</span><span class="tx">}</span></div>
+        </div>
+      </div>
+      <div class="mg-col">
+        <div class="mg-col-h res"><span>⬇ 合并版本（最终保存的就是它）</span><span class="hint">本文件冲突 1/2 · 可编辑</span></div>
+        <div class="mg-lines">
+          <div class="cl ctx"><span class="ln">88</span><span class="tx">async function request(url, opts) {</span></div>
+          <div class="cl ctx"><span class="ln">89</span><span class="tx">  const cfg = defaults(url, opts);</span></div>
+          <div class="chunkbar"><span>冲突 1</span>
+            <span class="take mine">⬅ 用我的</span><span class="take both">⇆ 两个都要</span><span class="take theirs">用他人 ➡</span><span class="take none">✕ 都不要</span><span class="sp"></span><span style="color:#d2baff">✦ AI</span>
+          </div>
+          <div class="cl src-m"><span class="ln">90</span><span class="tx">  cfg.timeout = opts.timeout ?? 3000;</span></div>
+          <div class="cl src-m"><span class="ln">91</span><span class="tx">  cfg.retries = 2;</span></div>
+          <div class="resolvedbar">✓ 冲突 0 已解决（用了我的）<span class="redo">重选</span></div>
+          <div class="cl ctx"><span class="ln">92</span><span class="tx">  return fetch(url, cfg);</span></div>
+        </div>
+      </div>
+      <div class="mg-col">
+        <div class="mg-col-h theirs"><span>他人版本 ➡</span><span class="hint">只读 · origin/feature-x</span></div>
+        <div class="mg-lines">
+          <div class="cl ctx"><span class="ln">88</span><span class="tx">async function request(url, opts) {</span></div>
+          <div class="cl ctx"><span class="ln">89</span><span class="tx">  const cfg = defaults(url, opts);</span></div>
+          <div class="cl theirs"><span class="ln">90</span><span class="tx">  cfg.timeout = opts.timeout ?? 8000;</span><span class="sarr t">«</span></div>
+          <div class="cl ctx"><span class="ln">91</span><span class="tx">  return fetch(url, cfg);</span></div>
+          <div class="cl ctx"><span class="ln">92</span><span class="tx">}</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="mg-map"><i class="ok" style="top:18%"></i><i class="todo" style="top:46%"></i><i class="todo" style="top:78%"></i><i class="vp" style="top:38%"></i></div>
+    <div class="mg-foot">
+      <span class="msg">✓ 已解决 1/2 处冲突 · 色条：蓝=来自我的 / 绿=来自他人 / 灰=手动修改 / 紫=AI 待审</span>
+      <span class="sp"></span>
+      <span class="mg-btn ghost">在 VS Code 打开对照</span>
+      <span class="mg-btn primary" style="opacity:.55">全部解决，完成合并 →</span>
+    </div>
+  </div>
+  <ul class="ann-list">
+    <li><i class="ann">1</i> <b>采纳整块</b>：点左栏块边「<b>»</b>」或中栏块头的「⬅ 用我的」，该黄块立即替换为我的版本并变绿（resolvedbar 可「重选」）；右栏「<b>«</b>」同理。「两个都要」= 我的在前、他人在后（决议 #6）；「都不要」= 删除该块（两侧改动都放弃）。</li>
+    <li><i class="ann">2</i> <b>自由编辑</b>：中栏任意位置可直接改代码（点击黄块进入编辑，行左缘色条随之变灰=手动修改）；块级按钮只是快捷方式，不限制手工融合。</li>
+    <li><i class="ann">3</i> <b>三栏同步滚动</b>：滚动任一栏，其余两栏按公共行（灰行）对齐跟随；右侧 minimap 显示全文件冲突分布（黄点待处理/绿点已解决）与当前视口位置，点击跳转。</li>
+    <li><i class="ann">4</i> <b>整文件快选 ▾</b>：菜单「以我的为准（整文件）/ 以远端为准（整文件）」一键清空本文件全部冲突（带确认），对应 R2 文件级策略。</li>
+    <li><i class="ann">5</i> <b>完成</b>：全部黄块变绿后底栏主按钮点亮，点「全部解决，完成合并 →」→ 写回文件并暂存（=以合并后的代码为准）→ 进入 §4.7 完成确认。栏头语义标签随场景动态（rebase 时左=变基基底、右=我的提交，见 4.6）。</li>
+  </ul>
+</div>
+<div class="box decision"><b>决策（决议 #1 + #8 三审定稿）</b>：<b>内嵌 Webview 自绘</b>（VS Code 原生 Merge Editor 无公开 API，放弃）。布局为经典三栏<b>我的 – 合并 – 他人</b>（IDEA / Beyond Compare 交互），叠加五个清晰化改造（无标记呈现 / 按钮就近 / 大白话栏头 / 固定色语义 / 冲突 minimap）。提供「在 VS Code 打开对照」逃生口（ours/theirs 虚拟文档 + <code class="inline">vscode.diff</code>，机制已有）。</div>
+
+<h3 id="d4">4.4 三种文件级解决策略 <span class="prio p0">P0</span></h3>
+<table class="tbl">
+<tr><th style="width:22%">策略</th><th style="width:40%">行为</th><th>git 语义</th></tr>
+<tr><td><b>以我的代码为准</b></td><td>整文件取语义"我的"一侧，不打开编辑</td><td><code class="inline">checkout --ours/--theirs</code>（按场景映射，见 4.6）+ <code class="inline">add</code></td></tr>
+<tr><td><b>以远端的代码为准</b></td><td>整文件取语义"远端"一侧</td><td>同上，另一侧</td></tr>
+<tr><td><b>以合并后的代码为准</b></td><td>接受中栏"合并版本"的最终内容（= git 自动合并成功的部分 + 你在各冲突块上的采纳/手改）</td><td>中栏内容写回工作副本文件 + <code class="inline">add</code>（点「全部解决，完成合并」时执行）</td></tr>
+</table>
+<p>三个入口层级一致：<b>块级</b>（块头操作条 + 左右栏 « » 箭头 + 中栏直接编辑）、<b>文件级</b>（顶栏「整文件快选 ▾」）、<b>组级</b>（横幅「全部以我为准/全部以远端为准」，弹确认显示文件数）。「两个都要」= <b>我的在前、他人在后</b>（IDEA 默认，决议 #6）。</p>
+
+<h3 id="d5">4.5 二进制文件 <span class="prio p0">P0</span></h3>
+<div class="mockwrap">
+  <div class="mock-cap"><span class="tag">MOCK 3</span>二进制冲突 —— 简化为二选一 + 预览</div>
+  <div class="mock">
+    <div class="mg-top">
+      <span class="fname">res/logo.png</span>
+      <span class="prog">二进制冲突 · 双方均修改</span>
+      <span style="flex:1"></span>
+      <span class="mg-btn ghost">用系统程序打开（我的）</span>
+      <span class="mg-btn ghost">用系统程序打开（远端）</span>
+      <span class="mg-btn warn">中止合并</span>
+    </div>
+    <div style="display:flex;gap:10px;padding:18px 14px">
+      <div style="flex:1;border:1px solid #3c3c3c;border-radius:6px;padding:12px;text-align:center">
+        <div style="color:#79b8ff;font-weight:600">⬅ 我的（本地 HEAD）</div>
+        <div style="color:#8b949e;font-size:11px;margin:4px 0 10px">res/logo.png · 24.3 KB · 2026-08-20 14:22</div>
+        <span class="mg-btn primary">以我的为准</span>
+      </div>
+      <div style="flex:1;border:1px solid #3c3c3c;border-radius:6px;padding:12px;text-align:center">
+        <div style="color:#7ee787;font-weight:600">远端（origin/feature-x）➡</div>
+        <div style="color:#8b949e;font-size:11px;margin:4px 0 10px">res/logo.png · 26.1 KB · 2026-08-21 09:10</div>
+        <span class="mg-btn primary">以远端为准</span>
+      </div>
+    </div>
+  </div>
+</div>
+<ul>
+  <li>识别：阶段版本内容含 <code class="inline">\0</code>，或该路径 numstat 为 <code class="inline">-</code>；DD/AU/UD 等组合（一方删除）同样走此简化界面，仅存的侧直接展示"保留/放弃"。</li>
+  <li>预览用系统默认程序（复用 v0.9.0 的原生 <code class="inline">spawn</code> 打开机制，写临时文件后打开）。</li>
+</ul>
+
+<h3 id="d6">4.6 rebase / cherry-pick：语义反转 <span class="prio p1">P1</span></h3>
+<div class="box warn"><b>核心坑</b>：rebase 时 git 的 <code class="inline">--ours</code> 是<b>变基基底（远端）</b>、<code class="inline">--theirs</code> 才是<b>本地正在重放的提交</b>，与 merge 恰好相反。界面上永远只显示语义标签（"我的"/"远端"），<b>语义→git 参数的映射由扩展侧完成</b>：</div>
+<table class="tbl">
+<tr><th style="width:28%">场景（mergeKind）</th><th>判定</th><th>「我的」对应</th><th>「远端」对应</th><th>全部解决后</th></tr>
+<tr><td><code class="inline">merge</code></td><td><code class="inline">.git/MERGE_HEAD</code> 存在</td><td><code class="inline">:2</code> / <code class="inline">--ours</code></td><td><code class="inline">:3</code> / <code class="inline">--theirs</code></td><td>弹确认后 <code class="inline">commit --no-edit</code>（决议 #2）</td></tr>
+<tr><td><code class="inline">rebase</code></td><td><code class="inline">.git/rebase-merge</code> 或 <code class="inline">rebase-apply</code> 存在</td><td><code class="inline">:3</code> / <code class="inline">--theirs</code></td><td><code class="inline">:2</code> / <code class="inline">--ours</code></td><td>弹确认后 <code class="inline">rebase --continue</code>，若后续提交再冲突则循环引导（横幅显示"第 k 个提交"）</td></tr>
+<tr><td><code class="inline">cherry-pick / revert</code></td><td><code class="inline">.git/CHERRY_PICK_HEAD</code> 等</td><td>按 merge 同向（:2）</td><td>:3</td><td>弹确认后 <code class="inline">--continue</code>（无 editor）</td></tr>
+</table>
+
+<h3 id="d7">4.7 中止与完成 <span class="prio p0">P0</span></h3>
+<ul>
+  <li><b>中止合并</b>：横幅/合并器内「中止合并」→ 二次确认（说明将丢弃所有取舍、恢复到合并前）→ <code class="inline">merge --abort</code> / <code class="inline">rebase --abort</code>（按 mergeKind 分派）→ 刷新并提示"已取消，工作副本已还原"。未跟踪文件不受影响。</li>
+  <li><b>完成（弹确认，决议 #2）</b>：最后一个冲突解决并暂存后<b>不自动提交</b>，弹出确认框——merge 场景：「3 个冲突已全部解决，完成合并提交？」+ 默认合并信息（MERGE_MSG 首行）预览 + [完成合并] [稍后自己提交]；rebase 场景：「继续变基？（第 2/4 个提交）」+ [继续变基] [稍后]。确认后执行对应完成命令（见 4.6 表），成功 → 绿色提示 + 图形/工作副本刷新；失败（如 hooks 拒绝）→ 显示 stderr 并保留现场。「稍后」时横幅保持常驻（仍 merging=false 但 MERGE_HEAD 在，显示"待完成合并"状态与 [完成合并] 按钮），用户也可随时在提交面板自行提交。</li>
+  <li><b>拉取并推送流程的续推（决议 #3）</b>：处于「拉取并推送」链条且冲突已解决、合并已确认完成后，显示确认条「冲突已解决并完成合并，继续推送？」+ [推送] [暂不]（复用 v0.8.0 提交后推送询问条的交互形态），<b>由用户点击触发</b>，不自动续推。</li>
+  <li><b>反悔</b>：已解决的文件仍显示在「已暂存」组（M 状态）；重新产生冲突的途径（再次 pull 等）以外，提供文件右键「重新解决冲突」不做（git 已无冲突态，语义不成立）——仅在同一合并会话内（冲突未清零时）允许对<b>尚未解决</b>的文件反复改选。</li>
+</ul>
+
+<h3 id="d8">4.8 AI 辅助合并 <span class="prio p2">P2</span></h3>
+<ul>
+  <li><b>入口</b>：① 冲突块头操作条「✦ AI」——融合当前块；② 顶栏「AI 融合此文件」——对该文件全部未解决块生成；③ 横幅「AI 解决全部」（批量，逐文件串行，进度可取消）。依赖 <code class="inline">aiEnabled</code> 探测，无模型隐藏；<b>模型选择复用现有提交信息功能的模型选择器与 <code class="inline">aiLanguage</code> 配置，不新增独立配置项（决议 #4）</b>。</li>
+  <li><b>输入</b>：base（<code class="inline">:1</code>）、我的（<code class="inline">:2/:3</code> 按语义）、远端，各带少量上下文（文件路径、语言、块序号）。要求模型<b>只输出融合后的代码</b>（无解释、无 Markdown 围栏），复用现有 <code class="inline">vscode.lm</code> 流式通道（<code class="inline">aiChunk</code> 事件族扩展 <code class="inline">merge</code> 场景）。</li>
+  <li><b>安全底线</b>：AI 输出<b>只填入中栏对应冲突块</b>（紫色"AI 待审"来源色条，仍属未解决状态），<b>绝不自动标记已解决/自动暂存</b>；用户审查/手改（色条变灰）或点块头确认采纳后计入已解决；提供「撤销 AI 结果」；批量模式逐文件生成后汇总「N 个文件已由 AI 融合，请逐个审查」，由用户逐个确认。</li>
+</ul>
+
+<hr class="sect">
+<h2 id="tech">5 技术设计</h2>
+
+<h3 id="t1">5.1 协议与命令扩展</h3>
+<p>新增 Webview 命令（<code class="inline">WVCommand</code>）：</p>
+<pre class="code"><code>merge.session      { path }        -> MergeSession | MergeSessionBinary | MergeSessionTooLarge
+merge.resolve      { path, side: 'mine' | 'theirs' }          // 语义侧二选一（含 add）
+merge.save         { path, content }                          // 合并后为准：写回 + add
+merge.abort        {}                                         // merge/rebase --abort（按 mergeKind）
+merge.continue     {}                                         // rebase/cherry-pick --continue
+merge.aiSuggest    { path, blockIndex? }                      // AI 融合（流式，见下）
+merge.aiCancel     {}</code></pre>
+<p>新增事件：</p>
+<pre class="code"><code>{ t: 'mergeAiChunk'; path: string; blockIndex?: number; text: string }   // 流式增量
+{ t: 'mergeAiDone';  path: string; blockIndex?: number }
+{ t: 'mergeAiError'; path: string; code: 'noModel'|'auth'|'quota'|'canceled'|'error'; message? }
+{ t: 'conflictBanner'; count: number; merging: boolean }                 // 拦截引导（也可由 workState 派生）</code></pre>
+<p>数据模型（<code class="inline">models.ts</code>）：</p>
+<pre class="code"><code>interface MergeSession {
+  path: string;
+  kind: 'merge' | 'rebase' | 'cherry-pick';   // 标签与完成动作分派
+  labels: { mine: string; theirs: string };   // 语义标签（"我的版本 · 本地 HEAD" / "远端版本 · origin/feature-x"…）
+  rebaseStep?: { current: number; total: number };
+  binary: false;
+  base?: string;      // :1 原始内容（AI 输入用；ADD/DELETE 侧可为空）
+  mine: string;       // 语义"我的"完整内容
+  theirs: string;     // 语义"远端"完整内容
+  result: string;     // 工作副本当前内容（含冲突标记；扩展侧解析为冲突块数组推给三栏 UI）
+}
+// 二进制：{ path, binary: true, mineSize, theirsSize, mineDate, theirsDate, deletedSide?: 'mine'|'theirs' }
+// 过大：{ path, tooLarge: true, lines: number, bytes: number, limit: { lines: 16000, bytes: 2MB } }  → UI 显式警告 + 降级三选一 + "用 VS Code 打开"</code></pre>
+
+<h3 id="t2">5.2 Git 语义映射（扩展侧职责）</h3>
+<table class="tbl">
+<tr><th>用途</th><th>merge 场景</th><th>rebase 场景</th></tr>
+<tr><td>我的内容 / 一侧为准</td><td><code class="inline">git show :2:path</code> / <code class="inline">checkout --ours</code></td><td><code class="inline">git show :3:path</code> / <code class="inline">checkout --theirs</code></td></tr>
+<tr><td>远端内容 / 一侧为准</td><td><code class="inline">:3</code> / <code class="inline">--theirs</code></td><td><code class="inline">:2</code> / <code class="inline">--ours</code></td></tr>
+<tr><td>base（AI 与对照）</td><td colspan="2"><code class="inline">git show :1:path</code>（两侧新增等场景可能无 :1，容错为空）</td></tr>
+<tr><td>完成</td><td><code class="inline">commit --no-edit</code></td><td><code class="inline">rebase --continue</code>（<code class="inline">GIT_EDITOR=true</code> 防挂起）</td></tr>
+<tr><td>中止</td><td><code class="inline">merge --abort</code></td><td><code class="inline">rebase --abort</code></td></tr>
+</table>
+<p>所有写命令走现有 <code class="inline">OpRunner</code> 串行队列（新增 <code class="inline">mergeAbort / mergeContinue</code> OpKind），保留进度行/取消/结果播报一致性。<code class="inline">merge.save</code> 的文件写回经 <code class="inline">safeJoin</code> 根内校验后原子写（先写临时文件再 rename）。</p>
+
+<h3 id="t3">5.3 冲突块解析、中栏状态与写回</h3>
+<ul>
+  <li><b>解析</b>：对 <code class="inline">result</code> 按 <code class="inline">&lt;&lt;&lt;&lt;&lt;&lt;&lt; </code>、<code class="inline">=======</code>、<code class="inline">&gt;&gt;&gt;&gt;&gt;&gt;&gt; </code> 三标记切分为冲突块数组（兼容 <code class="inline">|||||||</code> diff3 段，只读忽略），每块记录我的段/他人段文本与行号区间。<b>git 标记只在扩展侧出现，三栏 UI 永不显示</b>。</li>
+  <li><b>中栏模型</b>：中栏 = 公共部分按序 + 各冲突块的当前结果；每块状态为 <code class="inline">{ 来源: mine|theirs|both|none|manual|ai, 文本, 已解决 }</code>。块按钮/箭头只改对应块；块内手改后来源转 <code class="inline">manual</code>；点「全部解决」要求所有块已解决。同一合并会话内已解决块可「重选」。</li>
+  <li><b>三栏同步滚动</b>：按公共行（灰色行）锚点对齐——三栏公共部分行文本相同，滚动任一栏时以锚点行推算其余两栏 scrollTop；首版允许以冲突块为锚点的近似对齐，不追求逐行 diff 算法。</li>
+  <li><b>写回保真</b>：解析时记录行尾风格（CRLF/LF）与 BOM，<code class="inline">merge.save</code> 原样保留；内容一律 UTF-8 读写（与现有 diff/未跟踪预览一致）。</li>
+</ul>
+
+<h3 id="t4">5.4 边界与安全</h3>
+<table class="tbl">
+<tr><th style="width:30%">边界</th><th>处理</th></tr>
+<tr><td>超大文件</td><td>任一侧 &gt; <b>16000 行或 &gt; 2 MB</b>（阈值较初稿扩倍，决议 #5）→ <code class="inline">MergeSessionTooLarge</code>，<b>显式警告提示</b>：「<code>src/generated/api.d.ts 共 2.3 万行（3.5 MB），超过合并编辑器上限（16000 行 / 2 MB），已降级为三选一。可用 VS Code 手动合并后再点『已手工解决』」——不静默降级；降级为文件级三选一 + 「在 VS Code 中打开」手动编辑后回来点「已手工解决（暂存）」。<b>大文件无渲染压力</b>：三栏各自窗口化渲染（只渲染视口 ± 缓冲行，复用提交列表虚拟行池经验），DOM 与文件行数解耦。</td></tr>
+<tr><td>非 UTF-8 / 疑似乱码</td><td>内容含非法 UTF-8 序列比例超阈值 → 提示"该文件非 UTF-8，建议用外部合并工具"，仅提供二选一</td></tr>
+<tr><td>一方删除（DD/UD/AU）</td><td>合并器显示"对方已删除此文件"：保留我的版本 / 采纳删除（<code class="inline">git rm</code>）二选一</td></tr>
+<tr><td>重命名+冲突（R+U）</td><td>按冲突路径处理，行内显示原路径提示；不提供两侧改名选择（首版）</td></tr>
+<tr><td>合并器打开期间外部修改</td><td>「标记已解决」前用文件 mtime+size 比对，变化则提示"文件已被外部修改"并刷新会话</td></tr>
+<tr><td>多仓库 / 面板重建</td><td>会话不持久化：Webview 回收后重进合并器重新读取（取舍未暂存的内容会丢——「标记已解决」即落盘，风险窗口小；横幅常驻提醒）</td></tr>
+<tr><td>AI 输出含围栏/解释</td><td>剥取首个代码围栏内容；解析失败则标记"AI 结果可疑"要求手改</td></tr>
+</table>
+
+<hr class="sect">
+<h2 id="plan">6 优先级与版本规划</h2>
+<table class="tbl">
+<tr><th style="width:110px">里程碑</th><th style="width:70px">范围</th><th>内容</th></tr>
+<tr>
+  <td><b>v0.10.0</b></td><td><span class="prio p0">P0</span></td>
+  <td>三栏合并器（我的-合并-他人 + 块级采纳按钮/«»箭头 + 中栏可编辑 + 冲突 minimap）、三种文件级策略、pull/commit 冲突引导横幅、push 事前/事后引导、二进制二选一、中止合并、大文件降级</td>
+</tr>
+<tr>
+  <td><b>v0.10.1</b></td><td><span class="prio p1">P1</span></td>
+  <td>rebase/cherry-pick 完整闭环（语义反转 + <code class="inline">--continue</code> 循环）、「拉取并推送」续推确认、三栏同步滚动与中栏行内编辑打磨、一方删除场景</td>
+</tr>
+<tr>
+  <td><b>v0.10.2</b></td><td><span class="prio p2">P2</span></td>
+  <td>AI 融合（块级/文件级/批量三入口、待审机制、撤销）、外部修改检测、非 UTF-8 提示</td>
+</tr>
+</table>
+
+<hr class="sect">
+<h2 id="risk">7 风险与对策</h2>
+<table class="tbl">
+<tr><th style="width:34%">风险</th><th>对策</th></tr>
+<tr><td>中栏可编辑的输入法/光标/快捷键复杂度</td><td>首版中栏行内编辑用受控 <code class="inline">textarea</code> 叠加行号槽（点击冲突块进入编辑态），块按钮/箭头为纯按钮操作不受影响；验证后再升级自绘行组件</td></tr>
+<tr><td>单个冲突块两侧都很长（数百行）</td><td>块内行区限高（约 40% 视口高）内部滚动，minimap 同步反映；不影响其他块与主流程</td></tr>
+<tr><td>rebase 多提交连续冲突让用户困惑</td><td>横幅/合并器顶栏显示「变基进行中 第 2/4 个提交」，每步完成后自动进入下一步，不要求用户理解 <code class="inline">--continue</code></td></tr>
+<tr><td>AI 合并质量不稳定破坏代码</td><td>绝不自动暂存/自动标记已解决（只进中栏紫色待审块 + 一键撤销）；批量模式逐个人工确认</td></tr>
+<tr><td>「拉取并推送」链条中途失败定位难</td><td>沿用 v0.9.2 进度行：拉取→合并→推送 三段进度分别播报，失败停在出错的段落并显示 outputTail</td></tr>
+</table>
+
+<hr class="sect">
+<h2 id="open">8 审查决议（2026-08-23，全部确认）</h2>
+<table class="tbl">
+<tr><th style="width:56px">#</th><th style="width:26%">问题</th><th>决议（已并入正文）</th></tr>
+<tr><td><b>1</b></td><td>合并器内嵌 vs 原生</td><td><b>内嵌自绘</b>（§4.3）。VS Code 原生 Merge Editor 无公开 API，放弃；保留「在 VS Code 打开」逃生口。</td></tr>
+<tr><td><b>2</b></td><td>全部解决后自动完成合并？</td><td><b>弹确认</b>（§4.7）：merge 场景显示默认合并信息预览 + [完成合并]/[稍后自己提交]；「稍后」时横幅保持"待完成合并"状态可随时一键完成。</td></tr>
+<tr><td><b>3</b></td><td>「拉取并推送」冲突解决后续推？</td><td><b>用户点击确认续推</b>（§4.7）：完成合并后弹确认条 [推送]/[暂不]（复用 v0.8.0 推送询问条形态），不自动续推。</td></tr>
+<tr><td><b>4</b></td><td>AI 融合模型配置</td><td><b>复用现有模型选择器与 <code class="inline">aiLanguage</code></b>（§4.8），不新增独立配置项。</td></tr>
+<tr><td><b>5</b></td><td>大文件阈值与超限行为</td><td><b>扩倍至 16000 行 / 2 MB</b>；三栏各自窗口化虚拟渲染（视口 ± 缓冲行），大文件无渲染压力（§5.4/§7）；<b>超限显式警告报错</b>（含实际行数/体积、上限值、降级说明与手动合并指引），不静默降级。</td></tr>
+<tr><td><b>6</b></td><td>「两个都保留」顺序</td><td><b>我的在前、远端在后</b>（§4.4，IDEA 默认）。</td></tr>
+<tr><td style="color:#8b949e"><b>7</b></td><td style="color:#8b949e">合并解决器 UI 难以理解（v1.2 二审）</td><td style="color:#8b949e">~~三栏 → 逐块向导卡片~~ <b>（已被决议 #8 取代）</b>：v1.3 三审用户定稿回归三栏。</td></tr>
+<tr><td><b>8</b></td><td>合并解决器 UI 定稿（v1.3 三审）</td><td><b>回归三栏「我的版本 – 合并版本 – 他人版本」</b>（§4.3），交互参考 IDEA / Beyond Compare（块级采纳按钮 + «» 一键箭头 + 中栏可编辑 + 冲突 minimap），叠加清晰化改造：中栏不显示 git 冲突标记（黄块 + 来源色条呈现）、按钮就近放块头、大白话栏头角色徽标、固定色语义图例、右侧冲突分布导航条。<b>AI 合并保留</b>（块级 ✦AI / 整文件 AI / 横幅批量，R7·P2）。</td></tr>
+</table>
+
+<p style="color:#57606a;font-size:13px;margin-top:40px">— 文档结束 · 需求已确认，按 §6 规划实施：v0.10.0（P0）→ v0.10.1（P1）→ v0.10.2（P2 AI 融合）—</p>
+</main>
+</body>
+</html>

@@ -7,6 +7,8 @@ import { S } from '../state';
 
 const PADDING = 8;
 const LANE_W = 11;
+/** 纯提交视图的时间线列宽（固定窄列：竖线 + 每提交一个圆点） */
+const PURE_W = 28;
 
 const PALETTE_VARS = [
   '--vscode-charts-blue', '--vscode-charts-orange', '--vscode-charts-green',
@@ -23,6 +25,8 @@ export class GraphCanvas {
   private lastHeight = 0;
   private laneCount = 1;
   private userGraphWidth = 0;
+  /** 纯提交视图模式：单列时间线（setPure 切换并重算列宽） */
+  private pure = false;
 
   constructor() {
     this.canvas.className = 'gg-graph-canvas';
@@ -30,6 +34,13 @@ export class GraphCanvas {
 
   attach(scrollEl: HTMLElement): void {
     this.scrollEl = scrollEl;
+  }
+
+  /** 视图模式切换（graph=完整拓扑多 lane；pure=固定窄列时间线），列宽随之重算 */
+  setPure(pure: boolean): void {
+    if (this.pure === pure) return;
+    this.pure = pure;
+    this.recomputeWidth();
   }
 
   /** lanes 重算后调用 */
@@ -51,6 +62,7 @@ export class GraphCanvas {
   }
 
   private recomputeWidth(): void {
+    if (this.pure) { this.lastWidth = PURE_W; return; }
     const need = PADDING * 2 + this.laneCount * LANE_W;
     this.lastWidth = Math.max(this.userGraphWidth || S.config.graphColumnWidth, need);
   }
@@ -62,6 +74,7 @@ export class GraphCanvas {
   redraw(): void {
     const ctx = this.canvas.getContext('2d');
     if (!ctx || !S.graph || !this.scrollEl) return;
+    if (this.pure) { this.redrawPure(ctx); return; }
     this.readColors();
     const dpr = window.devicePixelRatio || 1;
     const w = this.graphWidth;
@@ -153,7 +166,7 @@ export class GraphCanvas {
       }
     }
 
-    // 3) 节点（普通/合并外环/HEAD 描边）
+    // 3) 节点：普通=实心圆；合并=同色外环；HEAD=SourceTree 式醒目空心圆环（主题红）
     const bg = cssVar('--vscode-editor-background', '#1e1e1e');
     for (let r = first; r <= last; r++) {
       const c = S.commits[r];
@@ -164,7 +177,7 @@ export class GraphCanvas {
       const isMerge = c.parents.length > 1;
       const radius = Math.max(2.5, Math.min(4.5, R * 0.16));
       const color = segColor(c.seg ?? c.lane ?? 0);
-      if (isMerge) {
+      if (isMerge && !isHead) {   // HEAD 已有更大的红环，不再叠加同色环
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -172,12 +185,78 @@ export class GraphCanvas {
         ctx.stroke();
       }
       ctx.fillStyle = color;
-      ctx.strokeStyle = isHead ? cssVar('--vscode-charts-red', '#f85149') : bg;
-      ctx.lineWidth = isHead ? 2 : 1.5;
+      ctx.strokeStyle = bg;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(cx, y0, isHead ? radius + 0.5 : radius, 0, Math.PI * 2);
+      ctx.arc(cx, y0, radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+      if (isHead) {
+        // 当前 HEAD：醒目圆环标记（半径 +2.5，不越相邻 lane 走线间距 LANE_W=11）
+        ctx.strokeStyle = cssVar('--vscode-charts-red', '#f85149');
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, y0, radius + 2.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+  }
+
+  /**
+   * 纯提交视图时间线：列中央一条竖线贯穿可视区，每个提交一个圆点；
+   * HEAD 沿用提交图的红色圆环标注；圆点描边用编辑器背景色抠出竖线。
+   */
+  private redrawPure(ctx: CanvasRenderingContext2D): void {
+    const dpr = window.devicePixelRatio || 1;
+    const w = this.graphWidth;
+    const h = this.scrollEl.clientHeight;
+    if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) {
+      this.canvas.width = Math.round(w * dpr);
+      this.canvas.height = Math.round(h * dpr);
+      this.canvas.style.width = `${w}px`;
+      this.canvas.style.height = `${h}px`;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const R = S.config.rowHeightPx;
+    const n = S.commits.length;
+    if (!n) return;
+    const scrollTop = this.scrollEl.scrollTop;
+    const first = Math.max(0, Math.floor(scrollTop / R) - 1);
+    const last = Math.min(n - 1, Math.ceil((scrollTop + h) / R));
+    const yc = (row: number) => row * R + R / 2 - scrollTop;
+    const cx = w / 2;
+    const color = cssVar('--vscode-charts-blue', '#4fc1ff');
+
+    // 竖线：连接首尾行圆心；列表还有更多行时延伸到视口边缘
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx, first > 0 ? 0 : yc(first));
+    ctx.lineTo(cx, last < n - 1 ? h : yc(last));
+    ctx.stroke();
+
+    const radius = Math.max(2.5, Math.min(4.5, R * 0.16));
+    const bg = cssVar('--vscode-editor-background', '#1e1e1e');
+    for (let r = first; r <= last; r++) {
+      const c = S.commits[r];
+      const y0 = yc(r);
+      if (y0 < -R || y0 > h + R) continue;
+      ctx.fillStyle = color;
+      ctx.strokeStyle = bg;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, y0, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      if (c.refs.some(ref => ref.isHead)) {
+        ctx.strokeStyle = cssVar('--vscode-charts-red', '#f85149');
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, y0, radius + 2.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
   }
 

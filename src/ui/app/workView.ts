@@ -9,7 +9,7 @@ import { el, clearChildren } from '../util';
 import { rpc } from '../rpc';
 import { renderDiff } from '../diff/render';
 import { showContextMenu, confirmDialog } from './overlays';
-import { setIcon } from '../icons';
+import { setIcon, type IconName } from '../icons';
 
 export interface WorkView {
   el: HTMLElement;
@@ -19,6 +19,13 @@ export interface WorkView {
 
 export function createWorkView(app: App): WorkView {
   const root = el('div', 'gg-work');
+  // 外层：冲突横幅（merging 时常驻）+ 原有 row 布局
+  const outer = el('div', 'gg-work-outer');
+  const banner = el('div', 'gg-merge-banner hidden');
+  const bannerText = el('div', 'gg-merge-banner-t');
+  const bannerBtns = el('div', 'gg-merge-banner-btns');
+  banner.append(bannerText, bannerBtns);
+  outer.append(banner, root);
 
   // ---------- 左：文件状态 ----------
   const files = el('div', 'gg-work-files');
@@ -26,8 +33,12 @@ export function createWorkView(app: App): WorkView {
   const fhead = el('div', 'gg-work-fhead');
   const ftitle = el('span', 'gg-work-ftitle');
   const fbtns = el('div', 'gg-work-fbtns');
+  const refreshBtn = el('button', 'gg-icon-btn');
+  const cleanTempBtn = el('button', 'gg-icon-btn');  // 一键移除 Office 临时文件（~$ 开头；仅存在时显示）
   const stageAllBtn = el('button', 'gg-icon-btn');
   const unstageAllBtn = el('button', 'gg-icon-btn');   // 清单勾选/空框：与行内"勾选即暂存"直接对应
+  setIcon(refreshBtn, 'refresh');
+  setIcon(cleanTempBtn, 'broom');
   setIcon(stageAllBtn, 'checklist');
   setIcon(unstageAllBtn, 'checklistEmpty');
   const fsearch = el('input', 'gg-work-search') as HTMLInputElement;
@@ -38,7 +49,7 @@ export function createWorkView(app: App): WorkView {
   const stagedBox = el('div', 'gg-work-rows');
   const unstagedHead = mkGroupHead();
   const unstagedBox = el('div', 'gg-work-rows');
-  fbtns.append(unstageAllBtn, stageAllBtn);
+  fbtns.append(refreshBtn, cleanTempBtn, unstageAllBtn, stageAllBtn);
   fhead.append(ftitle, fbtns);
   groups.append(conflictHead.el, conflictBox, stagedHead.el, stagedBox, unstagedHead.el, unstagedBox);
   files.append(fhead, fsearch, groups);
@@ -51,13 +62,11 @@ export function createWorkView(app: App): WorkView {
   conflictHead.el.querySelector('.gg-work-cnt')!.after(conflictBtns);
   allOursBtn.addEventListener('click', e => {
     e.stopPropagation();   // 不触发组头折叠
-    const paths = (S.work.state?.conflicts ?? []).map(c => c.path);
-    if (paths.length) app.resolveConflict(paths, true);
+    for (const c of S.work.state?.conflicts ?? []) app.mergeResolve(c.path, false);
   });
   allTheirsBtn.addEventListener('click', e => {
     e.stopPropagation();
-    const paths = (S.work.state?.conflicts ?? []).map(c => c.path);
-    if (paths.length) app.resolveConflict(paths, false);
+    for (const c of S.work.state?.conflicts ?? []) app.mergeResolve(c.path, true);
   });
   bindCollapse(conflictHead, conflictBox);
   bindCollapse(stagedHead, stagedBox);
@@ -103,6 +112,27 @@ export function createWorkView(app: App): WorkView {
 
   stageAllBtn.addEventListener('click', () => app.workStageAll());
   unstageAllBtn.addEventListener('click', () => app.workUnstageAll());
+
+  /** Office 锁定临时文件（Word/PPT/Excel 打开时产生，~$ 开头；关闭文档后即为垃圾） */
+  function officeTemps(): string[] {
+    const st = S.work.state;
+    if (!st) return [];
+    const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
+    return [...st.unstaged, ...st.staged]
+      .filter(e => base(e.path).startsWith('~$'))
+      .map(e => e.path);
+  }
+  cleanTempBtn.addEventListener('click', () => {
+    const temps = officeTemps();
+    if (temps.length) app.deleteFile(temps);   // 复用「删除文件」：磁盘移除 + 关闭悬空标签 + 刷新列表
+  });
+  // 手动刷新：编辑器改文件不动 .git/index（watcher 侦听不到），点击立即跑 git status 取最新修改状态
+  refreshBtn.addEventListener('click', () => {
+    app.requestWorkState();
+    refreshBtn.classList.remove('spin');
+    void refreshBtn.offsetWidth;   // 重启动画
+    refreshBtn.classList.add('spin');
+  });
   fsearch.addEventListener('input', () => {
     S.work.filter = fsearch.value.trim().toLowerCase();
     update();
@@ -164,25 +194,29 @@ export function createWorkView(app: App): WorkView {
     return [...st.conflicts, ...st.staged, ...st.unstaged].filter(match);
   }
 
-  /** 冲突行：状态码 ⚠ + 路径 + 行内「我的/对方的」二选一（点击行仍可看 diff） */
-  function conflictRow(e: FileEntry, mergeKind: 'merge' | 'other'): HTMLElement {
+  /** 冲突行：状态码 ⚠ + 文件名 + 行内「合并…」与「我的/他人的」二选一（语义侧，扩展侧映射 ours/theirs） */
+  function conflictRow(e: FileEntry, mergeKind: 'merge' | 'rebase' | 'other'): HTMLElement {
     const r = el('div', 'gg-work-row conflict' + (e.path === S.work.selectedPath ? ' selected' : ''));
     r.appendChild(el('span', 'gg-st C', 'C'));
     const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
-    const dir = (p: string) => p.slice(0, p.lastIndexOf('/') + 1);
     const pathEl = el('span', 'gg-work-fpath');
-    if (dir(e.path)) pathEl.appendChild(el('span', 'gg-work-fdir', dir(e.path)));
     pathEl.appendChild(el('b', undefined, base(e.path)));
     pathEl.title = e.path;
     r.appendChild(pathEl);
     const btns = el('div', 'gg-work-cbtns');
-    const oursBtn = el('button', 'gg-btn tiny', S.t(mergeKind === 'merge' ? 'resolveOurs' : 'resolveOursOther'));
-    const theirsBtn = el('button', 'gg-btn tiny', S.t(mergeKind === 'merge' ? 'resolveTheirs' : 'resolveTheirsOther'));
-    oursBtn.title = S.t('resolveOursTip');
+    const mergeBtn = el('button', 'gg-btn tiny merge', S.t('mergeOpenBtn'));
+    mergeBtn.title = S.t('mergeOpenBtnTip');
+    mergeBtn.addEventListener('click', ev => { ev.stopPropagation(); app.openMerge(e.path); });
+    const mineLabel = mergeKind === 'merge' ? S.t('resolveOurs') : mergeKind === 'rebase' ? S.t('resolveOurs') : S.t('resolveOursOther');
+    const theirsLabel = mergeKind === 'other' ? S.t('resolveTheirsOther') : S.t('resolveTheirs');
+    const oursBtn = el('button', 'gg-btn tiny', mineLabel);
+    const theirsBtn = el('button', 'gg-btn tiny', theirsLabel);
+    oursBtn.title = mergeKind === 'rebase' ? S.t('resolveOursRebaseTip') : S.t('resolveOursTip');
     theirsBtn.title = S.t('resolveTheirsTip');
-    oursBtn.addEventListener('click', ev => { ev.stopPropagation(); app.resolveConflict([e.path], true); });
-    theirsBtn.addEventListener('click', ev => { ev.stopPropagation(); app.resolveConflict([e.path], false); });
-    btns.append(oursBtn, theirsBtn);
+    // 语义侧调用（merge: mine=--ours；rebase: mine=--theirs，反转由扩展侧完成）
+    oursBtn.addEventListener('click', ev => { ev.stopPropagation(); app.mergeResolve(e.path, false); });
+    theirsBtn.addEventListener('click', ev => { ev.stopPropagation(); app.mergeResolve(e.path, true); });
+    btns.append(mergeBtn, oursBtn, theirsBtn);
     r.appendChild(btns);
     r.addEventListener('click', () => selectEntry(e));
     return r;
@@ -198,12 +232,76 @@ export function createWorkView(app: App): WorkView {
 
   // ---------- 渲染 ----------
 
+  /** 冲突横幅：merging=红（待解决）；mergeActive 且清零=绿（待完成合并）；否则隐藏 */
+  function updateBanner(): void {
+    const st = S.work.state;
+    clearChildren(bannerBtns);
+    if (!st) { banner.classList.add('hidden'); return; }
+    const n = st.conflicts.length;
+    const kindText = S.t(st.mergeKind === 'rebase' ? 'mergeKindRebase' : st.mergeKind === 'merge' ? 'mergeKindMerge' : 'mergeKindOther');
+    if (n > 0) {
+      banner.classList.remove('hidden', 'ok');
+      banner.classList.add('warn');
+      bannerText.textContent = S.t('mergeBannerTitle', { kind: kindText, n: String(n) });
+      const mk = (label: string, cls: string, fn: () => void, confirmN?: number) => {
+        const b = el('button', 'gg-btn tiny ' + cls, label);
+        b.addEventListener('click', () => {
+          if (confirmN === undefined) { fn(); return; }
+          void confirmDialog(label, S.t('mergeBannerAllConfirm', { n: String(confirmN) }), S.t('confirm'), true).then(ok => { if (ok) fn(); });
+        });
+        return b;
+      };
+      bannerBtns.append(
+        mk(S.t('mergeBannerResolve'), 'primary', () => app.openMerge()),
+        mk(S.t('mergeBannerAllMine'), '', () => { for (const c of st.conflicts) app.mergeResolve(c.path, false); }, n),
+        mk(S.t('mergeBannerAllTheirs'), '', () => { for (const c of st.conflicts) app.mergeResolve(c.path, true); }, n),
+        mk(S.t('mergeBannerAbort'), 'danger', () => app.mergeAbort()),
+      );
+      return;
+    }
+    if (st.mergeActive) {
+      // 冲突已清但未完成提交（决议 #2 的「稍后」状态）
+      banner.classList.remove('hidden', 'warn');
+      banner.classList.add('ok');
+      bannerText.textContent = S.t('mergePendingTitle');
+      const finish = el('button', 'gg-btn tiny primary', S.t('mergeFinishShort'));
+      finish.addEventListener('click', () => app.mergeFinishAsk());
+      const abort = el('button', 'gg-btn tiny danger', S.t('mergeAbortBtn'));
+      abort.addEventListener('click', () => app.mergeAbort());
+      bannerBtns.append(finish, abort);
+      return;
+    }
+    // 手动移动检测（v0.14 R7）：未暂存"同前缀批量删除 + 同名未跟踪"→ 引导按移动 stage 并预填信息
+    const md = st.moveDetect;
+    if (md) {
+      banner.classList.remove('hidden', 'warn', 'ok');
+      banner.classList.add('mv');
+      bannerText.textContent = S.t('moveDetectText', { from: md.from || '/', to: md.to || '/', n: String(md.count) });
+      const commitMove = el('button', 'gg-btn tiny primary', S.t('moveDetectStage'));
+      commitMove.addEventListener('click', () => {
+        app.workStage(md.paths, true);
+        S.work.message = S.t('moveCommitMsg', { from: md.from || '/', to: md.to || '/' });
+        update();
+      });
+      const skip = el('button', 'gg-btn tiny', S.t('moveIgnore'));
+      skip.addEventListener('click', () => { st.moveDetect = undefined; update(); });
+      bannerBtns.append(commitMove, skip);
+      return;
+    }
+    banner.classList.add('hidden');
+  }
+
   function update(): void {
     const w = S.work;
     const st = w.state;
+    updateBanner();
     ftitle.textContent = S.t('workFiles');
     stageAllBtn.title = S.t('stageAll');
     unstageAllBtn.title = S.t('unstageAll');
+    refreshBtn.title = S.t('refreshWork');
+    const temps = officeTemps().length;
+    cleanTempBtn.classList.toggle('hidden', !temps);
+    cleanTempBtn.title = S.t('cleanTempTip', { n: String(temps) });
     fsearch.placeholder = S.t('filterFiles');
     prevBtn.title = S.t('prevFile');
     nextBtn.title = S.t('nextFile');
@@ -228,11 +326,11 @@ export function createWorkView(app: App): WorkView {
     conflictHead.name.textContent = S.t('workConflicts');
     conflictHead.cnt.textContent = String(st.conflicts.length);
     conflictBtns.classList.toggle('hidden', !conflicts.length);
-    allOursBtn.textContent = S.t(st.mergeKind === 'merge' ? 'resolveAllOurs' : 'resolveAllOursOther');
-    allTheirsBtn.textContent = S.t(st.mergeKind === 'merge' ? 'resolveAllTheirs' : 'resolveAllTheirsOther');
+    allOursBtn.textContent = st.mergeKind === 'other' ? S.t('resolveAllOursOther') : S.t('resolveAllOurs');
+    allTheirsBtn.textContent = st.mergeKind === 'other' ? S.t('resolveAllTheirsOther') : S.t('resolveAllTheirs');
     conflictBox.classList.toggle('hidden', conflictHead.isCollapsed() || !st.conflicts.length);
     clearChildren(conflictBox);
-    for (const e of conflicts) conflictBox.appendChild(conflictRow(e, st.mergeKind));
+    appendGrouped(conflictBox, conflicts, e => conflictRow(e, st.mergeKind));
     renderGroup(stagedHead, stagedBox, S.t('workStaged'), st.staged.filter(match), true);
     renderGroup(unstagedHead, unstagedBox, S.t('workUnstaged'), st.unstaged.filter(match), false);
 
@@ -281,7 +379,29 @@ export function createWorkView(app: App): WorkView {
       box.appendChild(el('div', 'gg-work-rowempty', `— ${S.t('workEmpty')} —`));
       return;
     }
-    for (const e of list) box.appendChild(row(e, head === stagedHead));
+    appendGrouped(box, list, e => row(e, head === stagedHead));
+  }
+
+  /**
+   * 按目录分组渲染（与提交详情一致）：目录头行显示完整路径一次（根目录显示仓库绝对路径），
+   * 组内行只显示文件名；目录按字母序、根目录置顶，组内按路径序。
+   */
+  function appendGrouped(box: HTMLElement, list: FileEntry[], mkRow: (e: FileEntry) => HTMLElement): void {
+    if (!list.length) return;
+    const sorted = [...list].sort((a, b) => a.path.localeCompare(b.path));
+    const repoRoot = S.repos.find(r => r.id === S.repoId)?.root;
+    let curDir: string | null = null;
+    for (const e of sorted) {
+      const dir = e.path.includes('/') ? e.path.slice(0, e.path.lastIndexOf('/') + 1) : '';
+      if (dir !== curDir) {
+        curDir = dir;
+        const text = dir === '' ? (repoRoot ?? '/') : dir;
+        const h = el('div', 'gg-work-dirgroup', text);
+        h.title = text;
+        box.appendChild(h);
+      }
+      box.appendChild(mkRow(e));
+    }
   }
 
   function row(e: FileEntry, inStagedGroup: boolean): HTMLElement {
@@ -298,33 +418,40 @@ export function createWorkView(app: App): WorkView {
     const stLetter = e.untracked ? 'U' : inStagedGroup ? (e.staged ?? 'M') : (e.unstaged ?? 'M');
     r.appendChild(el('span', `gg-st ${stLetter}`, stLetter));
     const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
-    const dir = (p: string) => p.slice(0, p.lastIndexOf('/') + 1);
     const pathEl = el('span', 'gg-work-fpath');
     if (e.origPath) {
       pathEl.appendChild(el('span', 'gg-work-fdir', base(e.origPath) + ' → '));
       pathEl.appendChild(el('b', undefined, base(e.path)));
       pathEl.title = `${e.origPath} → ${e.path}`;
     } else {
-      if (dir(e.path)) pathEl.appendChild(el('span', 'gg-work-fdir', dir(e.path)));
       pathEl.appendChild(el('b', undefined, base(e.path)));
       pathEl.title = e.path;
     }
     r.appendChild(pathEl);
-    const num = el('span', 'gg-work-fnum');
+    // 增减行数已不显示（文件名占满行宽）；未跟踪仍以文字标签提示状态
     if (e.untracked) {
-      num.appendChild(el('i', undefined, S.t('untrackedLabel')));
-    } else if (e.additions !== undefined) {
-      num.appendChild(el('b', 'a', `+${e.additions}`));
-      num.appendChild(el('b', 'd', `−${e.deletions ?? 0}`));
+      const badge = el('span', 'gg-work-fnum');
+      badge.appendChild(el('i', undefined, S.t('untrackedLabel')));
+      r.appendChild(badge);
     }
-    r.appendChild(num);
 
-    // 行内删除（hover 显示）：从磁盘移除，语义与「丢弃」（恢复内容）相反
-    const delBtn = el('button', 'gg-work-del');
-    setIcon(delBtn, 'trash');
-    delBtn.title = S.t('deleteFile');
-    delBtn.addEventListener('click', ev => { ev.stopPropagation(); askDelete([e.path]); });
-    r.appendChild(delBtn);
+    // 行内快捷操作（hover 显示）：新选项卡打开（可编辑）/ 复制文件名 / 复制路径 / 删除
+    const acts = el('div', 'gg-work-acts');
+    const mkAct = (icon: IconName, title: string, extra: string, run: () => void): HTMLElement => {
+      const b = el('button', 'gg-work-act' + (extra ? ' ' + extra : ''));
+      setIcon(b, icon);
+      b.title = title;
+      b.addEventListener('click', ev => { ev.stopPropagation(); run(); });
+      return b;
+    };
+    acts.append(
+      mkAct('goToFile', S.t('openFile'), '', () => app.openFile(e.path)),
+      mkAct('copyName', S.t('copyFileName'), '', () => app.copy(base(e.path))),
+      mkAct('copy', S.t('copyPath'), '', () => app.copy(e.path)),
+      // 行内删除：从磁盘移除，语义与「丢弃」（恢复内容）相反
+      mkAct('trash', S.t('deleteFile'), 'gg-work-del', () => askDelete([e.path])),
+    );
+    r.appendChild(acts);
 
     r.addEventListener('click', () => selectEntry(e));
     r.addEventListener('contextmenu', ev => {
@@ -340,6 +467,7 @@ export function createWorkView(app: App): WorkView {
         { label: `${S.t('deleteFile')}…`, danger: true, run: () => askDelete([e.path]) },
         { label: S.t('openFile'), run: () => app.openFile(e.path) },
         { label: S.t('revealInFM'), run: () => app.revealInFM(e.path) },
+        { label: S.t('copyFileName'), run: () => app.copy(base(e.path)) },
         { label: S.t('copyPath'), run: () => app.copy(e.path) },
       );
       showContextMenu(items, ev.clientX, ev.clientY);
@@ -396,5 +524,5 @@ export function createWorkView(app: App): WorkView {
   }
 
   root.append(files, diffPane);
-  return { el: root, update, updateDiff };
+  return { el: outer, update, updateDiff };
 }

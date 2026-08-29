@@ -3,10 +3,10 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import type { Commit, CommitDetail, DiffPayload, FileChange, FileEntry, LogFilter, RepoState, DiffLine, DiffHunk } from '../common/models';
+import type { Commit, CommitDetail, DiffPayload, FileChange, FileEntry, LogFilter, PullSummaryEntry, RepoState, DiffLine, DiffHunk } from '../common/models';
 import { GitError, type GitExecutor } from './executor';
 import {
-  LOG_FORMAT, EACH_REF_FORMAT, parseLog, parseForEachRef, parseFiles, parseStatus, parseStatusZ,
+  LOG_FORMAT, SUMMARY_FORMAT, EACH_REF_FORMAT, parseLog, parseSummaryLog, parseForEachRef, parseFiles, parseStatus, parseStatusZ,
   parseUnifiedDiff, countDiffLines, buildRefTree, type RawRef, type StatusInfo,
 } from './parse';
 
@@ -14,6 +14,17 @@ import {
 export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
 export const DIFF_MAX_LINES = 5000;
+
+/**
+ * 作者筛选白名单：字母/数字/姓名与 email 常见符号，限长 100。
+ * webview 传来的任意文本先经此清洗再拼进 git 参数（execFile 参数数组，
+ * 值以等号形式整体作为选项参数，从根上杜绝选项注入）。
+ */
+const AUTHOR_RE = /^[\p{L}\p{N} .@_+'-]{1,100}$/u;
+export function safeAuthorName(s: string): string | null {
+  const t = s.trim();
+  return AUTHOR_RE.test(t) ? t : null;
+}
 
 export class GitService {
   constructor(private readonly exec: GitExecutor) {}
@@ -50,17 +61,24 @@ export class GitService {
     return r.stdout.split('\n').map(s => s.trim()).filter(Boolean);
   }
 
-  /** 分页获取提交；LogFilter = ref（null 时 --all）+ 作者 + 时间段；order：topo（默认，走线规整）/ date（大仓库更快） */
+  /** 分页获取提交；LogFilter = ref（null 时 --all）+ 作者多选 + 时间段 + 纯提交；order：topo（默认，走线规整）/ date（大仓库更快） */
   async commitsPage(root: string, filter: LogFilter, offset: number, limit: number, ctx?: { localBranches: Set<string>; remoteBranches: Set<string> }, order: 'topo' | 'date' = 'topo'): Promise<{ commits: Commit[]; hasMore: boolean }> {
+    // 纯提交视图强制日期序：去掉合并提交后拓扑序会把平行支线排成时间倒错
+    // （如 B 合并 A 的场景，A 反而排在 B 前）
+    const ord = filter.noMerges ? 'date' : order;
     const args = [
       'log',
-      ...(order === 'topo' ? ['--topo-order'] : []),
+      ...(ord === 'topo' ? ['--topo-order'] : ['--date-order']),
       '--date=iso-strict', `--pretty=format:${LOG_FORMAT}`,
       '-n', String(limit), '--skip', String(offset),
     ];
+    if (filter.noMerges) args.push('--no-merges');
     if (filter.ref) args.push(filter.ref); else args.push('--all');
     const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-    if (filter.author) args.push(`--author=${filter.author}`);
+    for (const a of filter.authors) {
+      const name = safeAuthorName(a);
+      if (name) args.push('--author=' + name);   // 等号形式：值整体作为选项参数，多个 --author 为或关系
+    }
     if (DATE_RE.test(filter.since)) args.push(`--since=${filter.since} 00:00:00`);
     if (DATE_RE.test(filter.until)) args.push(`--until=${filter.until} 23:59:59`);
     try {
@@ -99,7 +117,7 @@ export class GitService {
       tags: tree.tags,
       status: { dirtyCount: status.dirtyCount },
       filterRef: filter.ref,
-      logFilter: { author: filter.author, since: filter.since, until: filter.until },
+      logFilter: { authors: filter.authors, since: filter.since, until: filter.until, noMerges: filter.noMerges },
       commits,
       commitsLoaded: commits.length,
       hasMore,
@@ -167,7 +185,7 @@ export class GitService {
    * merging = 存在未解决冲突；mergeKind = 是否处于普通合并（决定"我的/对方的"文案语义）。
    * pre 允许复用外层已取的 status（v0.7.2：全量刷新周期内不再重复跑 status）。
    */
-  async workingCopyOf(root: string, pre?: { entries: FileEntry[]; merging: boolean }): Promise<{ staged: FileEntry[]; unstaged: FileEntry[]; conflicts: FileEntry[]; merging: boolean; mergeKind: 'merge' | 'other'; dirtyCount: number }> {
+  async workingCopyOf(root: string, pre?: { entries: FileEntry[]; merging: boolean }): Promise<{ staged: FileEntry[]; unstaged: FileEntry[]; conflicts: FileEntry[]; merging: boolean; mergeActive: boolean; mergeKind: 'merge' | 'rebase' | 'other'; dirtyCount: number }> {
     let entries: FileEntry[];
     let merging: boolean;
     if (pre) {
@@ -190,20 +208,69 @@ export class GitService {
     staged.sort(byPath);
     unstaged.sort(byPath);
     conflicts.sort(byPath);
-    const mergeKind: 'merge' | 'other' = merging
-      ? (this.isMergeInProgress(root) ? 'merge' : 'other')
-      : 'other';
+    // merge=MERGE_HEAD 在（我=:2）；rebase=rebase 目录在（我=:3，ours/theirs 语义反转）；other=cherry-pick 等
+    const mergeKind: 'merge' | 'rebase' | 'other' = this.mergeKindOf(root);
     // 各组增删统计：cached numstat（staged 侧）与 worktree numstat（unstaged 侧），两者并行
     await Promise.all([
       this.fillNumstat(root, staged, true).catch(() => undefined),
       this.fillNumstat(root, unstaged, false).catch(() => undefined),
     ]);
-    return { staged, unstaged, conflicts, merging, mergeKind, dirtyCount: entries.length };
+    return { staged, unstaged, conflicts, merging, mergeActive: this.mergeActiveOf(root), mergeKind, dirtyCount: entries.length };
   }
 
   /** 普通合并进行中（MERGE_HEAD 存在）：此时 ours=本地、theirs=合入方 */
   private isMergeInProgress(root: string): boolean {
     try { return fs.statSync(path.join(root, '.git', 'MERGE_HEAD')).isFile(); } catch { return false; }
+  }
+
+  /** 变基进行中（交互式 rebase-merge / 非交互 rebase-apply 目录） */
+  private isRebaseInProgress(root: string): boolean {
+    try {
+      return fs.statSync(path.join(root, '.git', 'rebase-merge')).isDirectory()
+        || fs.statSync(path.join(root, '.git', 'rebase-apply')).isDirectory();
+    } catch { return false; }
+  }
+
+  /** 合并会话类型（决定语义侧 → git stage 的映射与完成动作） */
+  mergeKindOf(root: string): 'merge' | 'rebase' | 'other' {
+    if (this.isMergeInProgress(root)) return 'merge';
+    if (this.isRebaseInProgress(root)) return 'rebase';
+    return 'other';
+  }
+
+  /** 合并/变基进行中（含"冲突已清但未完成提交"的待完成状态） */
+  mergeActiveOf(root: string): boolean {
+    return this.isMergeInProgress(root) || this.isRebaseInProgress(root);
+  }
+
+  /**
+   * 合并会话语义标签（UI 栏头 hint）：
+   * merge → 他人=MERGE_MSG 提取的分支名（回退 MERGE_HEAD 短 sha）；
+   * rebase → 我的=正在重放（HEAD），他人=变基基底（rebase-merge/onto 短 sha）。
+   */
+  mergeLabelsOf(root: string, kind: 'merge' | 'rebase' | 'other'): { mineRef: string; theirsRef: string } {
+    try {
+      if (kind === 'merge') {
+        const firstLine = fs.readFileSync(path.join(root, '.git', 'MERGE_MSG'), 'utf8').split('\n')[0] ?? '';
+        const quoted = firstLine.match(/'([^']+)'/);   // "Merge branch 'x' ..." → x
+        if (quoted) return { mineRef: '', theirsRef: quoted[1] };
+        const head = fs.readFileSync(path.join(root, '.git', 'MERGE_HEAD'), 'utf8').trim();
+        return { mineRef: '', theirsRef: head.slice(0, 7) };
+      }
+      if (kind === 'rebase') {
+        const onto = fs.readFileSync(path.join(root, '.git', 'rebase-merge', 'onto'), 'utf8').trim();
+        return { mineRef: 'HEAD', theirsRef: onto ? onto.slice(0, 7) : '' };
+      }
+    } catch { /* 标签尽力而为，失败留空 */ }
+    return { mineRef: '', theirsRef: '' };
+  }
+
+  /** 完成合并确认框预览的默认信息（MERGE_MSG 首行；非 merge 返回 undefined） */
+  mergeMsgOf(root: string): string | undefined {
+    try {
+      const first = fs.readFileSync(path.join(root, '.git', 'MERGE_MSG'), 'utf8').split('\n')[0] ?? '';
+      return first.trim() || undefined;
+    } catch { return undefined; }
   }
 
   private async fillNumstat(root: string, entries: FileEntry[], cached: boolean): Promise<void> {
@@ -263,9 +330,19 @@ export class GitService {
     return { kind: 'diff', diff: { hunks, truncated: false } };
   }
 
+  /** 仓库全部作者（姓名去重，字母序）——作者多选下拉的候选来源 */
+  async authorsOf(root: string): Promise<string[]> {
+    const r = await this.exec.exec(root, ['log', '--all', '--format=%an'], { timeoutMs: 30_000, maxBytes: 4 * 1024 * 1024 });
+    const names = new Set<string>();
+    for (const line of r.stdout.split('\n')) {
+      const n = line.trim();
+      if (n) names.add(n);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }
   /** 近期提交信息（复用按钮，取 n 条） */
   async recentMessages(root: string, n: number): Promise<{ subject: string; body: string }[]> {
-    const { commits } = await this.commitsPage(root, { ref: null, author: '', since: '', until: '' }, 0, n);
+    const { commits } = await this.commitsPage(root, { ref: null, authors: [], since: '', until: '', noMerges: false }, 0, n);
     return commits.map(c => ({ subject: c.subject, body: c.body }));
   }
 

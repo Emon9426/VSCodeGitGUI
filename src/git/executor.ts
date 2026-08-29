@@ -1,9 +1,11 @@
 /**
  * Git 命令执行器（设计方案 6.1）：
- * - 参数数组传递（无 shell 拼接），完整继承 process.env（含 VS Code 注入的 askpass 凭据变量）
+ * - execFile + 参数数组（绝不经 shell，无命令行拼接），完整继承 process.env（含 VS Code 注入的 askpass 凭据变量）
  * - 只读命令默认 30s 超时、8MB 输出上限；网络命令流式进度、可取消
  */
-import { spawn, type ChildProcess } from 'child_process';
+import { execFile, type ChildProcess } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import { StringDecoder } from 'string_decoder';
 
 export interface ExecOpts {
@@ -45,10 +47,11 @@ export function isGitError(e: unknown): e is GitError {
 export class GitExecutor {
   constructor(private readonly gitPath: string) {}
 
-  /** 探测顺序：设置 gitPath → 内置 Git 扩展提供的路径 → PATH */
+  /** 探测顺序：设置 gitPath（仅接受已存在的绝对路径，任意值不得直达执行）→ 内置 Git 扩展提供的路径 → PATH */
   static async detect(configuredPath: string, builtinGitPath?: string): Promise<GitExecutor> {
     const candidates: string[] = [];
-    if (configuredPath) candidates.push(configuredPath);
+    const cfg = (configuredPath ?? '').trim();
+    if (cfg && path.isAbsolute(cfg) && fs.existsSync(cfg)) candidates.push(path.resolve(cfg));
     if (builtinGitPath) candidates.push(builtinGitPath);
     candidates.push('git');
 
@@ -70,7 +73,7 @@ export class GitExecutor {
   exec(root: string, args: string[], opts: ExecOpts = {}): Promise<ExecResult> {
     const fullArgs = ['-C', root, '--no-optional-locks', '-c', 'core.quotepath=false', ...args];
     return new Promise<ExecResult>((resolve, reject) => {
-      const child = spawn(this.gitPath, fullArgs, {
+      const child = execFile(this.gitPath, fullArgs, {
         env: opts.env ? { ...process.env, ...opts.env } : process.env,
         windowsHide: true,
       });
@@ -140,7 +143,7 @@ function rawExec(cmd: string, args: string[], timeoutMs: number): Promise<{ exit
   return new Promise((resolve, reject) => {
     let child: ChildProcess;
     try {
-      child = spawn(cmd, args, { windowsHide: true });
+      child = execFile(cmd, args, { windowsHide: true });
     } catch (e) {
       reject(e);
       return;

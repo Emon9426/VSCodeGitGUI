@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>op-e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * 进度行 e2e：注入 opProgress/opResult 事件序列，断言
+ * 显示（进度条宽度/明细/取消按钮）→ 完成绿色闪现 → 自动收起 → refresh 不确定态。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const fails = [];
+  const check = (name, cond) => { if (!cond) fails.push(name); };
+  const qs = (s) => document.querySelector(s);
+  const visible = (el) => !!el && !el.classList.contains('off') && el.getBoundingClientRect().height > 5;
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curured'.replace('ured', 'ed'),
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchOnOpen: false, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: 'a' + '0'.repeat(39), branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'a' + '0'.repeat(39), isHead: true }],
+      remotes: [], tags: [], status: { dirtyCount: 0 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits: [], commitsLoaded: 0, hasMore: false, stateVersion: 1,
+    },
+  });
+  await twoFrames(); await sleep(100);
+
+  const row = () => qs('.gg-opstatus');
+
+  // 初始：收起
+  check('初始收起', row() && row().classList.contains('off'));
+
+  // 1) pull 进行中（带百分比）
+  window.__send({ t: 'opProgress', opId: 1, kind: 'pull', text: 'Receiving objects: 45% (1,234/2,678)', pct: 45 });
+  await twoFrames(); await sleep(60);
+  check('进行中可见', visible(row()));
+  check('操作名 Pull', row().querySelector('.gg-opstatus-name')?.textContent === 'Pull');
+  check('进度条 45%', Math.abs(parseFloat(row().querySelector('.gg-opstatus-fill').style.width) - 45) < 1);
+  check('百分比文本', row().querySelector('.gg-opstatus-pct')?.textContent === '45%');
+  check('git 明细', row().querySelector('.gg-opstatus-text')?.textContent.includes('Receiving objects'));
+  check('取消按钮可见', !row().querySelector('.gg-opstatus-cancel').classList.contains('hidden'));
+  check('确定进度非 indet', !row().querySelector('.gg-opstatus-bar').classList.contains('indet'));
+  if (new URLSearchParams(location.search).get('hold') === '1') return;   // 定格进行中，供截图
+
+  // 2) 完成闪现
+  window.__send({ t: 'opResult', opId: 1, kind: 'pull', ok: true });
+  await twoFrames(); await sleep(60);
+  check('完成态 done', row().classList.contains('done'));
+  check('完成图标 ✓', row().querySelector('.gg-opstatus-icon')?.textContent === '✓');
+  check('完成后仍可见', visible(row()));
+
+  // 3) 0.8s 后自动收起
+  await sleep(1100);
+  check('闪现后收起', row().classList.contains('off'));
+
+  // 4) refresh：不确定进度 + 无取消
+  window.__send({ t: 'opProgress', opId: 2, kind: 'refresh', text: '' });
+  await twoFrames(); await sleep(60);
+  check('refresh 可见', visible(row()));
+  check('refresh 不确定动画', row().querySelector('.gg-opstatus-bar').classList.contains('indet'));
+  check('refresh 无取消', row().querySelector('.gg-opstatus-cancel').classList.contains('hidden'));
+  check('refresh 无明细', row().querySelector('.gg-opstatus-text').classList.contains('empty'));
+  window.__send({ t: 'opResult', opId: 2, kind: 'refresh', ok: true });
+  await sleep(1100);
+  check('refresh 后收起', row().classList.contains('off'));
+
+  window.__result = fails.length ? 'FAIL: ' + fails.join(' | ') : 'PASS';
+  document.title = 'op-e2e:' + window.__result;
+})();
+</script>
+</body>
+</html>

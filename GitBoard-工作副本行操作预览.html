@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GitBoard · 工作副本行操作悬浮化预览（v0.13.3）</title>
+<!--
+  自包含预览页：模拟 v0.13.3 工作副本文件列表「行内快捷操作改悬浮层 + 文件名完整显示」的效果。
+  · 样式从 src/ui/styles/main.css 忠实复刻（gg-work-row/fpath/fnum/acts/act/dirgroup/st）；
+  · 「旧版对比」开关用 .legacy 覆盖回退到改前形态（按钮行内占位 + 文件名省略号截断），直观对比文件名可用宽度；
+  · 图标为 icons.ts 的 goToFile / copyName / copy / trash 原始 SVG path。
+  双击直接打开即可，无需服务器。鼠标悬浮文件行查看效果。
+-->
+<style>
+  /* ---------- VS Code 主题变量（dark+ 默认 / light+ 切换） ---------- */
+  :root, body[data-theme=dark] {
+    --vscode-font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+    --vscode-editor-font-family: Consolas, "Courier New", monospace;
+    --vscode-foreground: #cccccc;
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editorWidget-background: #252526;
+    --vscode-widget-border: #454545;
+    --vscode-panel-border: #3c3c3c;
+    --vscode-descriptionForeground: #9d9d9d;
+    --vscode-button-background: #0e639c;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-button-secondaryHoverBackground: #45494e;
+    --vscode-button-secondaryForeground: #ffffff;
+    --vscode-list-hoverBackground: rgba(128,128,128,0.12);
+    --vscode-list-activeSelectionBackground: #04395e;
+    --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-toolbar-hoverBackground: rgba(128,128,128,0.2);
+    --vscode-charts-red: #f14c4c;
+    --vscode-charts-yellow: #cca700;
+    --vscode-charts-green: #89d185;
+    --vscode-charts-blue: #75beff;
+  }
+  body[data-theme=light] {
+    --vscode-foreground: #3b3b3b;
+    --vscode-editor-background: #ffffff;
+    --vscode-editorWidget-background: #f8f8f8;
+    --vscode-widget-border: #cecece;
+    --vscode-panel-border: #e5e5e5;
+    --vscode-descriptionForeground: #616161;
+    --vscode-button-background: #007acc;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-secondaryBackground: #e4e4e4;
+    --vscode-button-secondaryHoverBackground: #d8d8d8;
+    --vscode-button-secondaryForeground: #3b3b3b;
+    --vscode-list-hoverBackground: rgba(0,0,0,0.05);
+    --vscode-list-activeSelectionBackground: #0060c0;
+    --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-toolbar-hoverBackground: rgba(0,0,0,0.08);
+    --vscode-charts-red: #e51400;
+    --vscode-charts-yellow: #bf8803;
+    --vscode-charts-green: #388a34;
+    --vscode-charts-blue: #0090f1;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100%; }
+  body {
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    color: var(--vscode-foreground);
+    background: var(--vscode-editor-background);
+  }
+  button {
+    font-family: inherit; font-size: 12px; cursor: pointer;
+    color: var(--vscode-button-secondaryForeground);
+    background: var(--vscode-button-secondaryBackground);
+    border: 1px solid transparent; border-radius: 4px; padding: 3px 10px;
+  }
+  button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  button.on { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+
+  /* ---------- 页面骨架（预览页自身） ---------- */
+  .pv-head { padding: 22px 28px 6px; max-width: 920px; }
+  .pv-head h1 { font-size: 17px; margin: 0 0 4px; }
+  .pv-head .sub { font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 12px; }
+  .pv-note {
+    font-size: 12px; line-height: 1.8;
+    border: 1px solid var(--vscode-panel-border); border-radius: 8px;
+    background: var(--vscode-editorWidget-background);
+    padding: 10px 14px; margin: 0 28px 18px; max-width: 920px;
+  }
+  .pv-note b { font-weight: 600; }
+  .pv-note code {
+    font-family: var(--vscode-editor-font-family); font-size: 11.5px;
+    background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+    padding: 0 4px; border-radius: 3px;
+  }
+  .pv-panel {
+    max-width: 920px; margin: 0 28px 130px;
+    border: 1px solid var(--vscode-panel-border); border-radius: 8px;
+    background: var(--vscode-editor-background);   /* 与扩展工作区面板同底色（悬浮层叠色基准） */
+    padding: 10px 6px;
+  }
+  .pv-grouplab {
+    font-size: 11px; font-weight: 600; color: var(--vscode-descriptionForeground);
+    padding: 6px 6px 2px 10px; letter-spacing: .3px;
+  }
+  .pv-bar {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 2000;
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center;
+    padding: 8px 12px; border-radius: 10px;
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-widget-border);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+  }
+  .pv-bar .sep { width: 1px; height: 18px; background: var(--vscode-panel-border); }
+  .pv-bar .lab { font-size: 11px; color: var(--vscode-descriptionForeground); padding: 0 2px; }
+  .pv-toast {
+    position: fixed; right: 14px; bottom: 76px; z-index: 2100;
+    display: flex; flex-direction: column; gap: 6px; max-width: 460px;
+  }
+  .pv-toast div {
+    font-size: 12px; padding: 7px 12px; border-radius: 6px;
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-widget-border);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    font-family: var(--vscode-editor-font-family); word-break: break-all;
+  }
+
+  /* ---------- 以下自 src/ui/styles/main.css 忠实复刻（新版：悬浮操作层） ---------- */
+  .gg-ic { width: 13px; height: 13px; display: block; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+  .gg-st { flex: none; width: 14px; font-weight: 700; text-align: center; }
+  .gg-st.M, .gg-st.T { color: var(--vscode-charts-yellow); }
+  .gg-st.A, .gg-st.C { color: var(--vscode-charts-green); }
+  .gg-st.D { color: var(--vscode-charts-red); }
+  .gg-st.R { color: var(--vscode-charts-blue); }
+  .gg-st.U { color: var(--vscode-descriptionForeground); }
+
+  .gg-work-rows { display: flex; flex-direction: column; }
+  .gg-work-row {
+    position: relative;   /* 行尾悬浮操作组的定位基准 */
+    display: flex; align-items: center; gap: 7px;
+    padding: 3px 10px 3px 14px; margin: 0 4px; border-radius: 4px;
+    cursor: default; white-space: nowrap;
+  }
+  .gg-work-row:hover { background: var(--vscode-list-hoverBackground); }
+  .gg-work-row.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+  .gg-work-row input[type='checkbox'] { accent-color: var(--vscode-button-background); flex: none; cursor: pointer; }
+  /* 文件名完整优先：过长换行（break-all）不省略号——操作按钮已改悬浮层，不再挤占行宽 */
+  .gg-work-fpath { flex: 1; min-width: 0; white-space: normal; word-break: break-all; font-family: var(--vscode-editor-font-family); font-size: 12px; }
+  .gg-work-fpath .gg-work-fdir { color: var(--vscode-descriptionForeground); }
+  .gg-work-fnum { flex: none; display: flex; font-size: 10.5px; color: var(--vscode-descriptionForeground); }
+  .gg-work-fnum i { font-style: normal; font-size: 10.5px; }
+  /* 行内快捷操作（悬浮层）：绝对定位悬浮于行尾，不占布局空间——文件名占满整行；行 hover 才浮现 */
+  .gg-work-acts {
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    display: flex; gap: 1px; padding: 0 3px; border-radius: 4px;
+    background:
+      linear-gradient(var(--vscode-list-hoverBackground), var(--vscode-list-hoverBackground)),
+      var(--vscode-editor-background);
+    box-shadow: 0 1px 5px rgba(0,0,0,0.28);
+    visibility: hidden; opacity: 0; transition: opacity 0.12s ease;
+  }
+  .gg-work-row:hover .gg-work-acts, .gg-work-acts:focus-within { visibility: visible; opacity: 1; }
+  .gg-work-row.selected .gg-work-acts {
+    background:
+      linear-gradient(var(--vscode-list-activeSelectionBackground), var(--vscode-list-activeSelectionBackground)),
+      var(--vscode-editor-background);
+  }
+  .gg-work-row.conflict:hover .gg-work-acts {
+    background:
+      linear-gradient(color-mix(in srgb, var(--vscode-charts-red) 12%, transparent), color-mix(in srgb, var(--vscode-charts-red) 12%, transparent)),
+      var(--vscode-editor-background);
+  }
+  .gg-work-row .gg-work-act {
+    flex: none; display: flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; padding: 0; border: none; background: none; cursor: pointer;
+    color: var(--vscode-descriptionForeground); border-radius: 4px;
+  }
+  .gg-work-row .gg-work-act:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2)); }
+  .gg-work-row .gg-work-act.gg-work-del:hover { color: var(--vscode-charts-red); background: color-mix(in srgb, var(--vscode-charts-red) 14%, transparent); }
+  .gg-work-row .gg-work-act .gg-ic { width: 12px; height: 12px; }
+  .gg-work-row.conflict { background: color-mix(in srgb, var(--vscode-charts-red) 6%, transparent); }
+  .gg-work-row.conflict:hover { background: color-mix(in srgb, var(--vscode-charts-red) 12%, transparent); }
+  .gg-work-row.conflict.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+  .gg-work-dirgroup {
+    padding: 5px 4px 1px 18px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-editor-font-family);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+  }
+
+  /* ---------- 旧版对比开关：恢复改前形态（按钮行内占位 + 文件名单行省略） ---------- */
+  body.legacy .gg-work-fpath { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: normal; }
+  body.legacy .gg-work-acts {
+    position: static; transform: none;
+    background: none; box-shadow: none; padding: 0;
+    visibility: visible; opacity: 1;
+  }
+  body.legacy .gg-work-row .gg-work-act { visibility: hidden; }
+  body.legacy .gg-work-row:hover .gg-work-act, body.legacy .gg-work-row .gg-work-act:focus-visible { visibility: visible; }
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="pv-head">
+  <h1>GitBoard · 工作副本文件行操作悬浮化预览（v0.13.3）</h1>
+  <div class="sub">下方为忠实复刻扩展样式的工作副本文件列表 —— 把鼠标悬浮到任意文件行查看效果；底部可切换「旧版对比」与主题。</div>
+</div>
+
+<div class="pv-note">
+  <b>本次修改（工作副本页，非拉取摘要弹窗）：</b><br>
+  ① <b>行内快捷操作改悬浮层</b> —— 打开 / 复制文件名 / 复制路径 / 删除 四个按钮原先<b>常驻占据行尾约 75px 宽度</b>（悬浮才显示但空间一直被占用），现改为<b>绝对定位悬浮于行尾</b>：鼠标移到行上才浮现（覆盖行尾文字，带与所在行一致的底色 + 微影），移开即隐藏，<b>完全不占布局空间</b>；选中行 / 冲突行上底色自动跟随。<br>
+  ② <b>文件名完整显示</b> —— 文件名原先超长时单行省略号截断（<code>text-overflow: ellipsis</code>），现改为<b>过长自动换行完整显示</b>（与拉取摘要弹窗同策略）；配合①释放的宽度，绝大多数文件名一行放得下。<br>
+  点「<b>旧版对比</b>」可切回修改前形态，直观对比文件名可用宽度的差异；悬浮操作组上的按钮可点击（弹模拟宿主动作提示，真实扩展走宿主执行）。
+</div>
+
+<div class="pv-panel">
+  <div class="pv-grouplab">未暂存更改</div>
+  <div class="gg-work-rows" id="unstaged"></div>
+  <div class="pv-grouplab" style="margin-top:8px">已暂存更改</div>
+  <div class="gg-work-rows" id="staged"></div>
+</div>
+
+<div class="pv-bar">
+  <span class="lab">形态</span>
+  <button id="newBtn" class="on">新版（悬浮操作）</button>
+  <button id="oldBtn">旧版对比</button>
+  <span class="sep"></span>
+  <span class="lab">主题</span>
+  <button id="thBtn">浅色</button>
+</div>
+<div class="pv-toast" id="toasts"></div>
+
+<script>
+'use strict';
+/* icons.ts 原始 path（goToFile / copyName / copy / trash） */
+const NS = 'http://www.w3.org/2000/svg';
+const ICON_PATHS = {
+  goToFile: ['M2.2 2h5.6', 'M2.2 2v12h7.6V9.4', 'M7.6 8.4L14 2', 'M9.8 2H14v4.2'],
+  copyName: ['M3.2 1.8h9.6v12.4H3.2z', 'M5.6 8h4.8'],
+  copy: ['M5.4 1.8H14v8.8h-3.8', 'M2 5.2h8.6V14.4H2z'],
+  trash: ['M2.3 3.2h11.4', 'M6.3 3.2V1.8h3.4v1.4', 'M4 3.2l.7 10.6q.05.9.95.9h4.7q.9 0 .95-.9L12 3.2', 'M6.6 6v4.6', 'M9.4 6v4.6'],
+};
+const iconSvg = name => {
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.classList.add('gg-ic');
+  for (const d of ICON_PATHS[name]) {
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', d);
+    svg.appendChild(p);
+  }
+  return svg;
+};
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+const base = p => p.slice(p.lastIndexOf('/') + 1);
+const dirOf = p => p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : '';
+const toast = msg => {
+  const t = el('div', undefined, msg);
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() => t.remove(), 3200);
+};
+
+/** 与 workView.ts row()/appendGrouped() 同构的行构建（按新路径归组排序 + 行内元素 + 悬浮操作组） */
+function buildRows(box, files) {
+  const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));
+  let curDir = null;
+  for (const f of sorted) {
+    const d = dirOf(f.path);   // 与扩展一致：按新路径归组
+    if (d !== curDir) {
+      curDir = d;
+      const text = d === '' ? 'D:/09_GitGraph' : d;
+      const h = el('div', 'gg-work-dirgroup', text);
+      h.title = text;
+      box.appendChild(h);
+    }
+    const r = el('div', 'gg-work-row' + (f.selected ? ' selected' : '') + (f.conflict ? ' conflict' : ''));
+    const cb = el('input');
+    cb.type = 'checkbox';
+    cb.checked = !!f.stagedGroup;
+    r.appendChild(cb);
+    r.appendChild(el('span', 'gg-st ' + (f.st ?? 'M'), f.st ?? 'M'));
+    const pathEl = el('span', 'gg-work-fpath');
+    if (f.origPath) {
+      pathEl.appendChild(el('span', 'gg-work-fdir', base(f.origPath) + ' → '));
+      pathEl.appendChild(el('b', undefined, base(f.path)));
+      pathEl.title = `${f.origPath} → ${f.path}`;
+    } else {
+      pathEl.appendChild(el('b', undefined, base(f.path)));
+      pathEl.title = f.path;
+    }
+    r.appendChild(pathEl);
+    if (f.untracked) {
+      const badge = el('span', 'gg-work-fnum');
+      badge.appendChild(el('i', undefined, '未跟踪'));
+      r.appendChild(badge);
+    }
+
+    const acts = el('div', 'gg-work-acts');
+    const mkAct = (icon, title, run) => {
+      const b = el('button', 'gg-work-act');
+      b.appendChild(iconSvg(icon));
+      b.title = title;
+      b.addEventListener('click', ev => { ev.stopPropagation(); run(); });
+      return b;
+    };
+    acts.append(
+      mkAct('goToFile', '打开工作区文件', () => toast(`模拟宿主 · vscode.open → ${f.path}`)),
+      mkAct('copyName', '复制文件名', () => toast(`模拟宿主 · 复制 → ${base(f.path)}`)),
+      mkAct('copy', '复制路径', () => toast(`模拟宿主 · 复制 → ${f.path}`)),
+      mkAct('trash', '删除文件', () => toast(`模拟宿主 · 磁盘删除（双重确认）→ ${f.path}`)),
+    );
+    r.appendChild(acts);
+    box.appendChild(r);
+  }
+}
+
+buildRows(document.getElementById('unstaged'), [
+  { path: 'README.md', st: 'M' },
+  { path: 'package.json', st: 'M' },
+  // 超长文件名：新版换行完整显示；旧版单行省略号截断
+  { path: 'src/services/InvoiceProcessing.Service.Registrations.V2.Internal.DefaultImplementationFactory.cs', st: 'M' },
+  { path: 'src/ui/app/workView.ts', st: 'M' },
+  { path: 'src/ui/app/commitBar.ts', st: 'M' },
+  { path: 'src/config.ts', st: 'R', origPath: 'legacy/prefs.ts' },          // 重命名：旧名 → 新名
+  { path: '文档（新建）.md', st: 'U', untracked: true },                    // 未跟踪：中文 + 标签
+  { path: 'src/merge-stage.ts', st: 'M', conflict: true, selected: true },  // 冲突行 + 选中态：悬浮层底色跟随
+]);
+buildRows(document.getElementById('staged'), [
+  { path: 'src/main.ts', st: 'M', stagedGroup: true },
+  { path: 'src/util.ts', st: 'A', stagedGroup: true },
+]);
+
+document.getElementById('newBtn').addEventListener('click', () => {
+  document.body.classList.remove('legacy');
+  document.getElementById('newBtn').classList.add('on');
+  document.getElementById('oldBtn').classList.remove('on');
+});
+document.getElementById('oldBtn').addEventListener('click', () => {
+  document.body.classList.add('legacy');
+  document.getElementById('oldBtn').classList.add('on');
+  document.getElementById('newBtn').classList.remove('on');
+});
+document.getElementById('thBtn').addEventListener('click', () => {
+  const dark = document.body.dataset.theme === 'dark';
+  document.body.dataset.theme = dark ? 'light' : 'dark';
+  document.getElementById('thBtn').textContent = dark ? '深色' : '浅色';
+});
+</script>
+</body>
+</html>

@@ -8,7 +8,8 @@ import type { GitExecutor } from './executor';
 
 export function repoIdOf(root: string): string {
   const norm = root.replace(/[\\/]+$/, '');
-  return crypto.createHash('md5').update(norm).digest('hex').slice(0, 8);
+  // 仅为路径生成稳定短 ID（globalState 持久化键），非加密用途；sha-256 取前 8 位十六进制
+  return crypto.createHash('sha256').update(norm).digest('hex').slice(0, 8);
 }
 
 export async function discoverRepos(executor: GitExecutor, workspaceFolders: readonly { uri: { fsPath: string } }[]): Promise<RepoMeta[]> {

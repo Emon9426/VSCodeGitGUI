@@ -11,3 +11,7 @@ tsconfig.ui.json
 *.vsix
 package-lock.json
 GitGraph-设计方案.html
+GitBoard-*.html
+.mimosa/**
+.playwright-mcp/**
+svg2png.js

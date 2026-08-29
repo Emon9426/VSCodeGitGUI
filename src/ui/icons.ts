@@ -34,8 +34,18 @@ const PATHS: Record<string, readonly string[]> = {
   compare: ['M6 1.8h8.2v9.2H6', 'M2 5.2h8.2v9.2H2z'],
   /** 复制路径：叠放两页 */
   copy: ['M5.4 1.8H14v8.8h-3.8', 'M2 5.2h8.6V14.4H2z'],
+  /** 复制文件名：文档框 + 文件名横线 */
+  copyName: ['M3.2 1.8h9.6v12.4H3.2z', 'M5.6 8h4.8'],
+  /** 刷新文件状态：圆弧箭头 */
+  refresh: ['M13.2 8a5.2 5.2 0 1 1-1.52-3.68', 'M13.6 1.6v3h-3'],
   /** 在文件管理器中定位：文件夹 */
   folder: ['M1.6 13.6V2.8h4.4l1.6 2h6.8v8.8z'],
+  /** 清理 Office 临时文件（~$…）：扫帚 */
+  broom: [
+    'M10.3 1.7L6.2 5.8',                       // 柄
+    'M4.6 6.6h4.2l1.6 6.2H2.8z',                // 刷体（梯形）
+    'M4.6 14.4l-.4 1.2', 'M6.9 14.6l.1 1.2', 'M9.2 14.3l.5 1.2',   // 扫毛
+  ],
 };
 
 export type IconName = keyof typeof PATHS;
@@ -57,4 +67,82 @@ export function iconSvg(name: IconName): SVGSVGElement {
 export function setIcon(btn: HTMLElement, name: IconName): void {
   btn.textContent = '';
   btn.appendChild(iconSvg(name));
+}
+
+// ---------- 文件类型图标（v0.14 文件历史页） ----------
+
+/** 类型映射：扩展名 → 缩写文字 + 类型色（深浅主题共用色值，浅色下由透明度自适应视觉重量） */
+const FILE_TYPES: { exts: string[]; label: string; color: string; type: string }[] = [
+  { exts: ['md', 'markdown'], label: 'M↓', color: '#519aba', type: 'Markdown' },
+  { exts: ['ts', 'tsx'], label: 'TS', color: '#519aba', type: 'TypeScript' },
+  { exts: ['js', 'jsx', 'mjs', 'cjs'], label: 'JS', color: '#cbcb41', type: 'JavaScript' },
+  { exts: ['json'], label: '{}', color: '#cbcb41', type: 'JSON' },
+  { exts: ['html', 'htm'], label: '<>', color: '#e37933', type: 'HTML' },
+  { exts: ['css', 'scss', 'less'], label: '#', color: '#519aba', type: 'CSS' },
+  { exts: ['vue'], label: 'V', color: '#41b883', type: 'Vue' },
+  { exts: ['py'], label: 'PY', color: '#3572a5', type: 'Python' },
+  { exts: ['java'], label: 'J', color: '#b07219', type: 'Java' },
+  { exts: ['go'], label: 'GO', color: '#00add8', type: 'Go' },
+  { exts: ['c', 'h', 'cpp', 'hpp'], label: 'C', color: '#555555', type: 'C/C++' },
+  { exts: ['cs'], label: 'C#', color: '#178600', type: 'C#' },
+  { exts: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'ico'], label: '🖼', color: '#a074c4', type: 'Image' },
+  { exts: ['svg'], label: 'SVG', color: '#ffb13b', type: 'SVG' },
+  { exts: ['pdf'], label: 'PDF', color: '#cc3e44', type: 'PDF' },
+  { exts: ['xlsx', 'xls', 'csv'], label: 'XLS', color: '#8dc149', type: 'Excel' },
+  { exts: ['docx', 'doc'], label: 'DOC', color: '#519aba', type: 'Word' },
+  { exts: ['pptx', 'ppt'], label: 'PPT', color: '#cc3e44', type: 'PowerPoint' },
+  { exts: ['zip', 'rar', '7z', 'gz', 'tar'], label: 'ZIP', color: '#6d8086', type: 'Archive' },
+  { exts: ['txt', 'log'], label: 'TXT', color: '#cccccc', type: 'Text' },
+  { exts: ['yml', 'yaml'], label: 'YML', color: '#cb171e', type: 'YAML' },
+  { exts: ['xml'], label: 'XML', color: '#e37933', type: 'XML' },
+];
+
+const FALLBACK_TYPE = { label: 'DOC', color: '#8b949e', type: 'File' };
+
+export function fileTypeInfo(fileName: string): { label: string; color: string; type: string } {
+  const dot = fileName.lastIndexOf('.');
+  if (dot < 0 || dot === fileName.length - 1) return { label: 'TXT', color: '#cccccc', type: 'File' };
+  const ext = fileName.slice(dot + 1).toLowerCase();
+  return FILE_TYPES.find(f => f.exts.includes(ext)) ?? FALLBACK_TYPE;
+}
+
+/** 构造文件/文件夹类型图标：文档基形 + 类型缩写（彩色）；文件夹为填充形 */
+export function fileIconSvg(fileName: string, isDir: boolean, size = 16): SVGSVGElement {
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.classList.add('gg-fileic');
+  if (size !== 16) svg.style.width = svg.style.height = size + 'px';
+  if (isDir) {
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', 'M1.5 13.5V2.8h4.5l1.7 2h6.8v8.7z');
+    p.setAttribute('fill', '#dcb67a');
+    svg.appendChild(p);
+    return svg;
+  }
+  const info = fileTypeInfo(fileName);
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', 'M3.2 1.5h6l3.6 3.6v9.4H3.2z');
+  p.setAttribute('fill', 'none');
+  p.setAttribute('stroke', info.color);
+  p.setAttribute('stroke-width', '1.1');
+  svg.appendChild(p);
+  const fold = document.createElementNS(NS, 'path');
+  fold.setAttribute('d', 'M9 1.7v3.4h3.6');
+  fold.setAttribute('fill', 'none');
+  fold.setAttribute('stroke', info.color);
+  fold.setAttribute('stroke-width', '1.1');
+  svg.appendChild(fold);
+  if (info.label.length <= 3) {
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('x', '8');
+    t.setAttribute('y', '11.2');
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('font-size', info.label.length >= 3 ? '4.2' : '5.5');
+    t.setAttribute('font-weight', '700');
+    t.setAttribute('font-family', 'Segoe UI, sans-serif');
+    t.setAttribute('fill', info.color);
+    t.textContent = info.label;
+    svg.appendChild(t);
+  }
+  return svg;
 }

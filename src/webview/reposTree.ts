@@ -13,6 +13,7 @@ interface RepoEntry {
   meta: RepoMeta;
   branch?: string;
   detached?: boolean;
+  dirty?: number;   // 未提交改动文件数（含未跟踪/冲突），活动栏角标数据源
 }
 
 export class ReposTreeProvider implements vscode.TreeDataProvider<RepoEntry> {
@@ -21,6 +22,12 @@ export class ReposTreeProvider implements vscode.TreeDataProvider<RepoEntry> {
   private entries: RepoEntry[] = [];
   private executor?: GitExecutor;
   private loading = false;
+  private view?: vscode.TreeView<RepoEntry>;
+
+  /** 注册 TreeView（设置活动栏角标用；extension.ts 在 createTreeView 后回填） */
+  bindView(view: vscode.TreeView<RepoEntry>): void {
+    this.view = view;
+  }
 
   refresh(): void {
     void this.load();
@@ -42,7 +49,7 @@ export class ReposTreeProvider implements vscode.TreeDataProvider<RepoEntry> {
         try {
           const r = await this.executor!.exec(m.root, ['status', '--porcelain=v1', '-b']);
           const st = parseStatus(r.stdout);
-          return { meta: m, branch: st.detached ? undefined : st.branch, detached: st.detached };
+          return { meta: m, branch: st.detached ? undefined : st.branch, detached: st.detached, dirty: st.dirtyCount };
         } catch {
           return { meta: m };
         }
@@ -52,6 +59,17 @@ export class ReposTreeProvider implements vscode.TreeDataProvider<RepoEntry> {
       this.entries = [];
     }
     this.loading = false;
+    // 活动栏图标角标：工作区全部仓库未提交改动文件总数（VS Code SCM 同语义）
+    if (this.view) {
+      const dirty = this.entries.reduce((s, e) => s + (e.dirty ?? 0), 0);
+      if (dirty > 0) {
+        const cfg = vscode.workspace.getConfiguration('gitboard');
+        const t = createT(resolveLang(cfg.get('language', 'auto'), vscode.env.language));
+        this.view.badge = { value: dirty, tooltip: t('dirtyCount', { n: dirty }) };
+      } else {
+        this.view.badge = undefined;
+      }
+    }
     this.emitter.fire();
   }
 

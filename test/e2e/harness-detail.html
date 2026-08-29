@@ -70,7 +70,7 @@
       remotes: [{ name: 'origin', branches: [{ name: 'origin/main', fullName: 'refs/remotes/origin/main', sha: commits[0].sha }] }],
       tags: [],
       status: { dirtyCount: 4 },
-      filterRef: null, logFilter: { author: '', since: '', until: '' },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
       commits, commitsLoaded: commits.length, hasMore: false, stateVersion: 1,
     },
   });
@@ -84,6 +84,8 @@
 
   // mock 扩展宿主：响应 commitDetail / diff
   const FILES = [
+    { path: 'README.md', status: 'M', additions: 8, deletions: 2 },           // 根目录组（绝对路径头）
+    { path: 'res/logo.png', status: 'A' },                                     // 二进制（无 ± 数字）→ 对齐验证
     { path: 'out/extension.js', status: 'M', additions: 416, deletions: 389 },
     { path: 'out/webview.css', status: 'M', additions: 219, deletions: 204 },
     { path: 'out/webview.js', status: 'M', additions: 419, deletions: 402 },
@@ -134,7 +136,21 @@
   if (detail && q.get('h')) detail.style.setProperty('--gg-detail-h', q.get('h') + 'px');
   await twoFrames(); await sleep(100);
 
-  finish('DONE');
+  // ---- 断言：文件分组与对齐 ----
+  const fails = [];
+  const groups = [...document.querySelectorAll('.gg-file-group')];
+  if (groups.length !== 5) fails.push(`组数=${groups.length} 应为5`);
+  if (groups[0]?.textContent !== 'D:/09_GitGraph') fails.push(`根组头=${groups[0]?.textContent} 应为绝对路径 D:/09_GitGraph`);
+  if (groups[1]?.textContent !== 'out/') fails.push(`组2=${groups[1]?.textContent} 应为 out/`);
+  if (groups[4]?.textContent !== 'src/webview/') fails.push(`组5=${groups[4]?.textContent} 应为 src/webview/`);
+  const pathOf = (name) => [...document.querySelectorAll('.gg-file-path')].find(e => e.textContent === name);
+  const logoX = Math.round(pathOf('logo.png')?.getBoundingClientRect().left ?? -1);
+  const jsX = Math.round(pathOf('extension.js')?.getBoundingClientRect().left ?? -2);
+  if (Math.abs(logoX - jsX) > 1) fails.push(`对齐失败 logo=${logoX} js=${jsX}`);
+  const rowTexts = [...document.querySelectorAll('.gg-file-path')].map(e => e.textContent);
+  if (rowTexts.some(t => t.includes('/'))) fails.push('行内含路径: ' + rowTexts.filter(t => t.includes('/')).join(','));
+
+  finish(fails.length ? 'FAIL ' + fails.join(' | ') : 'DONE');
 
   function finish(result) {
     window.__result = result;

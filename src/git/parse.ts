@@ -1,7 +1,8 @@
 /**
  * git 输出解析器（纯函数，设计方案 13.1 单测对象）。
  */
-import type { Commit, RefChip, BranchInfo, TagInfo, RemoteGroup, FileChange, FileStatus, UnifiedDiff, DiffHunk, DiffLine, FileEntry } from '../common/models';
+import { RENAME_SEP } from '../common/models';
+import type { Commit, RefChip, BranchInfo, TagInfo, RemoteGroup, FileChange, FileStatus, UnifiedDiff, DiffHunk, DiffLine, FileEntry, FileHistoryItem, PathChain } from '../common/models';
 
 export const FS = '\x1f';   // 字段分隔符
 export const RS = '\x1e';   // 记录分隔符
@@ -9,6 +10,80 @@ export const RS = '\x1e';   // 记录分隔符
 /** %H %h %P an ae ad cn ce cd D s b —— 13 字段 */
 export const LOG_FORMAT =
   `%H${FS}%h${FS}%P${FS}%an${FS}%ae${FS}%ad${FS}%cn${FS}%ce${FS}%cd${FS}%D${FS}%s${FS}%b${RS}`;
+
+/** Pull/Fetch 摘要格式：sha/短sha/作者/日期/主题 5 字段；记录后随 --name-status 文件行 */
+export const SUMMARY_FORMAT = `%H${FS}%h${FS}%an${FS}%ad${FS}%s${RS}`;
+
+export interface SummaryRecord {
+  sha: string;
+  shortSha: string;
+  author: string;
+  date: string;
+  subject: string;
+  files: string[];
+  filesTruncated: boolean;
+}
+
+/** 解析 `log --pretty=format:SUMMARY_FORMAT --name-status` 输出（每条记录后跟文件行直到记录分隔符） */
+const SUMMARY_HEAD_RE = /^([0-9a-f]{40})\x1f([^\x1f]*)\x1f([^\x1f]*)\x1f([^\x1f]*)\x1f(.*)$/;
+
+/**
+ * 解码 git C 风格引号路径（"…\357\274\210…" → UTF-8 文本）。
+ * core.quotepath=false 已消除常规中文转义，但含 `"`、`\` 或控制符的路径
+ * 仍被 git 强制引号转义（\ooo 八进制 / \n \t \\ \" 等），此处按字节还原后 UTF-8 解码。
+ * 引号内只会出现 ASCII 转义序列，逐字节收集安全；非引号包裹的输入原样返回。
+ */
+const C_ESCAPES: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
+
+export function unescapeGitPath(p: string): string {
+  if (p.length < 2 || !p.startsWith('"') || !p.endsWith('"')) return p;
+  const inner = p.slice(1, -1);
+  const bytes: number[] = [];
+  for (let i = 0; i < inner.length;) {
+    const c = inner[i];
+    if (c === '\\') {
+      const oct = inner.slice(i + 1, i + 4);
+      if (/^[0-7]{3}$/.test(oct)) { bytes.push(parseInt(oct, 8)); i += 4; continue; }
+      const simple = C_ESCAPES[inner[i + 1]];
+      if (simple !== undefined) { bytes.push(simple); i += 2; continue; }
+    }
+    // 防御：非转义字符（不应出现在合法引号路径中）按原字节透传
+    const buf = Buffer.from(c, 'utf8');
+    for (const b of buf) bytes.push(b);
+    i++;
+  }
+  return Buffer.from(bytes).toString('utf8');
+}
+
+/**
+ * 解析 `log --pretty=format:SUMMARY_FORMAT --name-status` 输出（逐行状态机）：
+ * pretty 行（sha\x1f…\x1e）开启新记录，其后形如 "M\tpath" / "R100\told\tnew" 的行即变更文件，
+ * 条目间的空行自然跳过。
+ */
+export function parseSummaryLog(out: string, maxFiles: number): SummaryRecord[] {
+  const records: SummaryRecord[] = [];
+  if (!out) return records;
+  let cur: SummaryRecord | null = null;
+  for (const line of out.split('\n')) {
+    const m = line.replace(/\x1e$/, '').match(SUMMARY_HEAD_RE);
+    if (m) {
+      cur = { sha: m[1], shortSha: m[2], author: m[3], date: m[4], subject: m[5], files: [], filesTruncated: false };
+      records.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    const t = line.split('\t');
+    if (t.length < 2) continue;
+    const status = t[0][0];
+    if (!'AMDRCT'.includes(status)) continue;
+    if (cur.files.length >= maxFiles) { cur.filesTruncated = true; continue; }
+    // 引号转义路径（quotepath 残留 / 特殊字符）解码；重命名两端各自解码
+    const oldP = unescapeGitPath(t[1]);
+    const newP = (status === 'R' || status === 'C') ? unescapeGitPath(t[2] ?? t[1]) : undefined;
+    cur.files.push(newP !== undefined ? oldP + RENAME_SEP + newP : oldP);
+  }
+  return records;
+}
 
 export interface LogParseCtx {
   localBranches?: Set<string>;
@@ -177,8 +252,8 @@ function parseEntryTokens(toks: string[], start: number): { entries: FileEntry[]
       if (orig) origPath = orig;
     }
     if (STATUS_CONFLICTS.has(x + y)) {
-      // 冲突条目不入暂存/未暂存矩阵：单独分组，由 ours/theirs 二选一解决
-      entries.push({ path, origPath, staged: null, unstaged: null, untracked: false, conflict: true });
+      // 冲突条目不入暂存/未暂存矩阵：单独分组；保留 XY 原码（UU/AA=双方都有内容；DU/UD=一方删除；AU/UA=一方新增）
+      entries.push({ path, origPath, staged: null, unstaged: null, untracked: false, conflict: true, conflictCode: x + y });
       continue;
     }
     const staged = x !== ' ' && x !== '.' ? ('MADRC'.includes(x) ? (x as FileEntry['staged']) : 'M') : null;
@@ -313,4 +388,144 @@ export function buildRefTree(refs: RawRef[], headBranch?: string): { branches: B
     remotes: [...remotes.entries()].map(([name, list]) => ({ name, branches: list.sort((a, b) => a.name.localeCompare(b.name)) })).sort((a, b) => a.name.localeCompare(b.name)),
     tags: tags.sort((a, b) => a.name.localeCompare(b.name)),
   };
+}
+
+// ---------- 文件历史页（v0.14） ----------
+
+/** 文件历史格式：sha/短sha/作者/日期/主题 5 字段；记录后随 --follow --name-status 状态行 */
+export const FILE_LOG_FORMAT = `%H${FS}%h${FS}%an${FS}%ad${FS}%s${RS}`;
+
+const FILE_HEAD_RE = /^([0-9a-f]{40})\x1f([^\x1f]*)\x1f([^\x1f]*)\x1f([^\x1f]*)\x1f(.*)\x1e$/;
+
+/**
+ * 解析 `log --follow --name-status --pretty=format:FILE_LOG_FORMAT -- path` 输出（逐行状态机，
+ * 模式同 parseSummaryLog）：每条提交自带"当时路径"——M/A 行取该路径、R100 行取双端路径，
+ * 跨移动/重命名的完整历史一次往返拿全（实测见方案 §3.3-A）。
+ */
+export function parseFileLog(out: string): FileHistoryItem[] {
+  const items: FileHistoryItem[] = [];
+  let cur: FileHistoryItem | null = null;
+  for (const raw of out.split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    if (!line.trim()) continue;
+    const m = line.match(FILE_HEAD_RE);
+    if (m) {
+      cur = { sha: m[1], shortSha: m[2], author: m[3], date: m[4], subject: m[5], path: '', status: 'M' };
+      items.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    const parts = line.split('\t');
+    if (parts.length < 2) continue;
+    const st = parts[0][0];
+    if (st === 'R' || st === 'C') {
+      cur.status = 'R';
+      cur.oldPath = unescapeGitPath(parts[1]);
+      cur.path = unescapeGitPath(parts[2] ?? parts[1]);
+      cur.milestone = true;
+    } else if (st === 'A') {
+      cur.status = 'A';
+      cur.path = unescapeGitPath(parts[1]);
+    } else if (st === 'M' || st === 'T') {
+      cur.status = 'M';
+      cur.path = unescapeGitPath(parts[1]);
+    }
+  }
+  return items;
+}
+
+/** 就地标注 eraPrefix（git follow 已给出每条提交的当时路径：与当前路径不同即历史时期）；返回移动/重命名次数 */
+export function assignFileEras(items: FileHistoryItem[], currentPath: string): number {
+  let changes = 0;
+  for (const it of items) {
+    it.eraPrefix = it.path === currentPath ? undefined : it.path;
+    if (it.status === 'R') changes++;
+  }
+  return changes;
+}
+
+/** 由 R 行序列构建路径链（segments 新→旧；endSha = 移出该段的移动提交） */
+export function chainFromFileLog(items: FileHistoryItem[], currentPath: string): PathChain {
+  const segments: PathChain['segments'] = [{ prefix: currentPath }];
+  for (const it of items) {   // items 为 log 输出序（新→旧）
+    if (it.status === 'R' && it.oldPath) {
+      segments[segments.length - 1].endSha = it.sha;
+      segments.push({ prefix: it.oldPath });
+    }
+  }
+  return { segments };
+}
+
+/** 目录链反查的旧前缀投票：新前缀 P 下 R 条目的旧路径，按祖先前缀从深到浅找覆盖率达标的最长候选 */
+export function dirOldPrefix(
+  renames: { oldPath: string; newPath: string }[],
+  newPrefix: string,
+  minRatio = 0.8,
+): { prefix: string | null; ratio: number; partial: boolean } {
+  const olds = renames.filter(r => r.newPath === newPrefix || r.newPath.startsWith(newPrefix + '/')).map(r => r.oldPath);
+  if (!olds.length) return { prefix: null, ratio: 0, partial: false };
+  const cands: string[] = [];
+  let p = parentDir(olds[0]);
+  cands.push(p);
+  while (p.includes('/')) { p = parentDir(p); cands.push(p); }
+  cands.push('');   // 仓库根
+  for (const cand of cands) {
+    const hit = olds.filter(o => o === cand || o.startsWith(cand ? cand + '/' : '/')).length;
+    const ratio = hit / olds.length;
+    if (ratio >= minRatio) return { prefix: cand, ratio, partial: ratio < 0.95 };
+  }
+  return { prefix: null, ratio: 0, partial: true };
+}
+
+export function parentDir(p: string): string {
+  const i = p.lastIndexOf('/');
+  return i < 0 ? '' : p.slice(0, i);
+}
+
+/**
+ * 手动移动检测（R7）：未暂存"同前缀批量删除 + 同名未跟踪"配对。
+ * 按父目录分组后找 basename 集合重合度最高的一对（≥1 即触发；已暂存的 R 状态 git 已识别，不在此列）。
+ */
+export function detectMove(entries: FileEntry[]): { from: string; to: string; count: number; paths: string[] } | undefined {
+  const dels = new Map<string, Set<string>>();     // 父目录 → basename 集（unstaged D，非 untracked）
+  const unts = new Map<string, Set<string>>();
+  const delPaths = new Map<string, string>();       // basename@dir → 完整路径
+  const untPaths = new Map<string, string>();
+  for (const e of entries) {
+    if (e.untracked) {
+      const d = parentDir(e.path);
+      const n = e.path.slice(e.path.lastIndexOf('/') + 1);
+      if (!unts.has(d)) unts.set(d, new Set());
+      unts.get(d)!.add(n);
+      untPaths.set(d + '/' + n, e.path);
+    } else if (e.unstaged === 'D') {
+      const p = e.origPath ?? e.path;
+      const d = parentDir(p);
+      const n = p.slice(p.lastIndexOf('/') + 1);
+      if (!dels.has(d)) dels.set(d, new Set());
+      dels.get(d)!.add(n);
+      delPaths.set(d + '/' + n, p);
+    }
+  }
+  let best: { from: string; to: string; count: number; paths: string[] } | undefined;
+  for (const [from, names] of dels) {
+    for (const [to, unames] of unts) {
+      if (from === to) continue;
+      let hit = 0;
+      for (const n of names) if (unames.has(n)) hit++;
+      if (!hit) continue;
+      if (best && hit <= best.count) continue;
+      const paths: string[] = [];
+      for (const n of names) {
+        const dp = delPaths.get(from + '/' + n);
+        if (dp) paths.push(dp);
+      }
+      for (const n of unames) {
+        const up = untPaths.get(to + '/' + n);
+        if (up) paths.push(up);
+      }
+      best = { from, to, count: hit, paths };
+    }
+  }
+  return best;
 }

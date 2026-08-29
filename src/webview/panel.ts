@@ -1,22 +1,29 @@
 /**
  * GraphPanel —— WebviewPanel 生命周期、消息路由、操作编排（设计方案 3/6/8 节）。
  */
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { exec, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import * as vscode from 'vscode';
 import { createT, resolveLang, type Lang, type Translate } from '../common/i18n';
-import type { Commit, FileEntry, LogFilter, RepoMeta, RepoState, WorkState } from '../common/models';
+import type { Commit, FileEntry, LogFilter, MergeSessionAny, ProjectInfo, PullFileStat, RepoMeta, RepoState, WorkState } from '../common/models';
+import { MERGE_MAX_BYTES, MERGE_MAX_LINES, RENAME_SEP } from '../common/models';
 import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, WVRequest } from '../common/protocol';
 import { GitError, GitExecutor, isGitError } from '../git/executor';
 import { discoverRepos, repoIdOf } from '../git/discovery';
-import { GitService, EMPTY_TREE } from '../git/service';
+import { GitService, EMPTY_TREE, safeAuthorName } from '../git/service';
+import { FilesService, safeRelPath } from '../git/files';
+import { PullSummaryService } from '../git/summary';
 import { RepoWatcher } from '../git/watcher';
+import { detectMove } from '../git/parse';
 import { OpRunner, type OpSpec, type PullStrategy } from '../ops/runner';
 import { DiffContentProvider, GITBOARD_SCHEME, EMPTY_REF, gitboardUri } from './diffProvider';
+import { revealableAncestor } from './revealPath';
 import { lmApi, userMessage, classifyLmError } from '../ai/lm';
 import { buildSystemPrompt, buildUserPrompt, type CommitPromptCtx } from '../ai/prompt';
+import { buildFileTree, diffContentUsable, formatEntryList } from '../ai/tree';
 
 function readConfig(): ConfigDto {
   const cfg = vscode.workspace.getConfiguration('gitboard');
@@ -33,6 +40,7 @@ function readConfig(): ConfigDto {
     commitPageSize: cfg.get('commitPageSize', 500),
     maxAutoLoad: cfg.get('maxAutoLoad', 20000),
     fetchOnOpen: cfg.get('fetchOnOpen', true),
+    autoFetchInterval: cfg.get('autoFetchInterval', 10),
     fetchPrune: cfg.get('fetchPrune', true),
     defaultPullStrategy: cfg.get('defaultPullStrategy', 'merge'),
     logOrder: cfg.get('logOrder', 'topo'),
@@ -43,6 +51,7 @@ function readConfig(): ConfigDto {
     commitClearMessage: cfg.get('commit.clearMessage', true),
     commitPushAfter: cfg.get('commit.pushAfter', false),
     startView: cfg.get('startView', 'graph'),
+    pullFetchSummary: cfg.get('pullFetchSummary', true),
   };
 }
 
@@ -59,15 +68,21 @@ export function builtinGitPath(): string | undefined {
 }
 
 /** 空筛选默认值 */
-const DEFAULT_FILTER: LogFilter = { ref: null, author: '', since: '', until: '' };
+const DEFAULT_FILTER: LogFilter = { ref: null, authors: [], since: '', until: '', noMerges: false };
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function sanitizeLogFilter(src: any): LogFilter {
   const ref = typeof src?.ref === 'string' && src.ref ? src.ref : null;
-  const author = typeof src?.author === 'string' ? src.author.trim().slice(0, 200) : '';
+  const raw: unknown[] = Array.isArray(src?.authors) ? src.authors : [];
+  const authors = [...new Set(
+    raw
+      .map(a => safeAuthorName(String(a)))
+      .filter((a): a is string => !!a),
+  )].slice(0, 50);
   const since = typeof src?.since === 'string' && DATE_RE.test(src.since) ? src.since : '';
   const until = typeof src?.until === 'string' && DATE_RE.test(src.until) ? src.until : '';
-  return { ref, author, since, until };
+  const noMerges = !!src?.noMerges;
+  return { ref, authors, since, until, noMerges };
 }
 
 export class GraphPanel {
@@ -82,6 +97,12 @@ export class GraphPanel {
   private executor?: GitExecutor;
   private service?: GitService;
   private runner?: OpRunner;
+  private pullSummary?: PullSummaryService;
+  private files?: FilesService;
+  /** explorer 右键「查看文件历史」待定位路径（webview 未就绪时排队） */
+  private pendingFilesReveal: string[] = [];
+  /** SourceTree 式后台自动获取定时器（面板存活期间；设置变更时重臂） */
+  private fetchTimer?: NodeJS.Timeout;
   private repos: RepoMeta[] = [];
   private currentRepoId?: string;
   private filters = new Map<string, LogFilter>();
@@ -156,6 +177,7 @@ export class GraphPanel {
       vscode.workspace.onDidChangeConfiguration(e => {
         if (!e.affectsConfiguration('gitboard')) return;
         this.config = readConfig();
+        this.armAutoFetch();   // 间隔调整 / 开关：重建定时器
         this.lang = resolveLang(this.config.language, vscode.env.language);
         this.t = createT(this.lang);
         this.panel.title = this.t('app');
@@ -170,6 +192,7 @@ export class GraphPanel {
 
   private dispose(): void {
     this.disposed = true;
+    if (this.fetchTimer) clearInterval(this.fetchTimer);
     this.aiCts?.cancel();
     this.aiCts?.dispose();
     for (const w of this.watchers.values()) w.dispose();
@@ -186,7 +209,8 @@ export class GraphPanel {
   // ---------- HTML ----------
 
   private buildHtml(): string {
-    const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    // CSP nonce 用加密随机（而非 Math.random）
+    const nonce = crypto.randomBytes(16).toString('hex');
     const outDir = path.join(this.context.extensionUri.fsPath, 'out');
     let js = '';
     let css = '';
@@ -233,9 +257,18 @@ export class GraphPanel {
       case 'selectRepo':
         await this.selectRepo(String(args.repoId));
         return null;
-      case 'refresh':
-        await this.refresh(true);   // 用户显式刷新：必推送（绕过指纹去重）
+      case 'refresh': {
+        // 纳入统一进度模型：进度行可见（refresh 秒级完成，不支持取消）
+        const opId = ++this.opSeq;
+        this.post({ t: 'opProgress', opId, kind: 'refresh', text: '' });
+        try {
+          await this.refresh(true);   // 用户显式刷新：必推送（绕过指纹去重）
+          this.post({ t: 'opResult', opId, kind: 'refresh', ok: true });
+        } catch (e) {
+          this.post({ t: 'opResult', opId, kind: 'refresh', ok: false, message: String((e as Error)?.message ?? e) });
+        }
         return null;
+      }
       case 'loadMore':
         return this.loadMore(Number(args.offset));
       case 'commitDetail':
@@ -244,10 +277,20 @@ export class GraphPanel {
         return this.service!.diffOf(this.currentRoot(), args.mode, String(args.sha), String(args.path), args.base ? String(args.base) : undefined);
       case 'setFilter': {
         const cur = this.filters.get(this.currentRepoId!) ?? DEFAULT_FILTER;
-        this.filters.set(this.currentRepoId!, sanitizeLogFilter({ ...cur, ref: args.ref, author: args.author ?? cur.author, since: args.since ?? cur.since, until: args.until ?? cur.until }));
+        // authors 显式传空数组表示清空（不能用 ?? 回退 cur）；noMerges 同理由纯视图切换驱动
+        this.filters.set(this.currentRepoId!, sanitizeLogFilter({
+          ...cur,
+          ref: args.ref === undefined ? cur.ref : args.ref,
+          authors: args.authors === undefined ? cur.authors : args.authors,
+          since: args.since ?? cur.since,
+          until: args.until ?? cur.until,
+          noMerges: args.noMerges === undefined ? cur.noMerges : !!args.noMerges,
+        }));
         await this.refresh(true);   // 用户显式切换筛选：必推送
         return null;
       }
+      case 'listAuthors':
+        return this.service!.authorsOf(this.currentRoot());
       case 'op:fetch':
         this.startOp({ kind: 'fetch', all: args.all !== false, remote: args.remote, prune: args.prune ?? this.config.fetchPrune });
         return null;
@@ -275,6 +318,19 @@ export class GraphPanel {
         }
         await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file), { preview: false });
         return null;
+      }
+      case 'ui:openFiles': {
+        // 详情面板多选批量打开：不存在的（历史提交中已删除/移动）跳过并回报
+        const rels = Array.isArray(args.paths) ? args.paths.map(String).slice(0, 50) : [];
+        const missing: string[] = [];
+        let opened = 0;
+        for (const rel of rels) {
+          const file = this.safeJoin(this.currentRoot(), rel);
+          if (!fs.existsSync(file)) { missing.push(rel); continue; }
+          await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file), { preview: false });
+          opened++;
+        }
+        return { opened, missing };
       }
       case 'ui:openFileAt': {
         const u = gitboardUri(this.currentRepoId!, path.basename(String(args.path)), String(args.sha), String(args.path));
@@ -315,9 +371,146 @@ export class GraphPanel {
       case 'ui:saveColWidths':
         await this.context.globalState.update('gitboard.colWidths', this.sanitizeColWidths(args.widths));
         return null;
+      case 'ui:saveDetailPct': {
+        // 高度百分比持久化：不同尺寸屏幕按相对高度恢复
+        if (typeof args.pct === 'number' && Number.isFinite(args.pct)) {
+          await this.context.globalState.update('gitboard.detailPct', Math.max(8, Math.min(85, Math.round(args.pct * 10) / 10)));
+        }
+        return null;
+      }
+      // ---------- 文件历史页（v0.14） ----------
+      case 'files.ls': {
+        if (!this.files) return { items: [], kind: 'dir' as const };
+        return this.files.lsOf(this.currentRoot(), String(args.dir ?? ''));
+      }
+      case 'files.log': {
+        if (!this.files) throw new Error('not ready');
+        return this.files.fileLogOf(this.currentRoot(), String(args.path ?? ''));
+      }
+      case 'files.dirLog': {
+        if (!this.files) throw new Error('not ready');
+        return this.files.dirLogOf(this.currentRoot(), String(args.dir ?? ''), args.follow !== false);
+      }
+      case 'files.commitDiff': {
+        // 详情展开：该文件此提交的变化（path = 当时路径；diffOf 复用 commit 模式）
+        if (!this.service) throw new Error('not ready');
+        const sha = String(args.sha ?? '');
+        if (!/^[0-9a-f]{4,40}$/.test(sha)) throw new Error('bad sha');
+        return this.service.diffOf(this.currentRoot(), 'commit', sha, String(args.path ?? ''));
+      }
+      case 'files.versionDiff': {
+        if (!this.files) throw new Error('not ready');
+        return this.files.blobDiffOf(this.currentRoot(), args.a, args.b);
+      }
+      case 'folder.move': {
+        // 目标目录由 webview 内置目录选择对话框给出（原生 showOpenDialog 在部分环境下静默取消，已弃用）
+        const rawSrcs = Array.isArray(args.srcs) ? args.srcs : [];
+        const srcs = rawSrcs.map((x: any) => String(x)).filter((s: string) => !!s && safeRelPath(s) === s.trim().replace(/\\/g, '/'));
+        if (rawSrcs.length && !srcs.length) {
+          this.channel.appendLine('[folder.move] rejected paths: ' + rawSrcs.join(', '));
+          return { ok: false, reason: 'invalid', error: 'unsupported path' };
+        }
+        if (!srcs.length) return { ok: false, reason: 'invalid', error: 'no selection' };
+        if (typeof args.dst !== 'string') return { ok: false, reason: 'invalid', error: 'missing dst' };   // 目标必须显式给出（防旧客户端缺省误移到根）
+        const dstRaw = args.dst.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+        if (dstRaw !== '' && !safeRelPath(dstRaw)) return { ok: false, reason: 'invalid', error: 'unsupported target' };
+        const root = this.currentRoot();
+        const dstAbs = dstRaw ? path.resolve(root, dstRaw) : root;
+        if (!(dstAbs === root || dstAbs.startsWith(root + path.sep))) return { ok: false, reason: 'invalid', error: 'destination out of repo' };
+        const st = await fs.promises.stat(dstAbs).catch(() => null);
+        if (!st || !st.isDirectory()) return { ok: false, reason: 'invalid', error: 'target not a directory' };
+        for (const s of srcs) {
+          if (dstRaw === s || dstRaw.startsWith(s + '/')) return { ok: false, reason: 'invalid', error: 'nested move' };
+        }
+        const outcome = await this.runFileOp({ kind: 'moveFolder', srcs, dst: dstRaw || '.' });
+        return { ok: outcome.ok, dst: outcome.ok ? dstRaw : undefined, reason: outcome.ok ? undefined : 'failed', error: outcome.ok ? undefined : outcome.outputTail };
+      }
+      case 'folder.rename': {
+        const p = safeRelPath(String(args.path ?? ''));
+        const name = safeRelPath(String(args.newName ?? ''));
+        if (!p || !name || name.includes('/')) throw new Error('bad args');
+        const outcome = await this.runFileOp({ kind: 'renamePath', path: p, name });
+        return { ok: outcome.ok, error: outcome.ok ? undefined : outcome.outputTail };
+      }
+      case 'folder.delete': {
+        const paths = (Array.isArray(args.paths) ? args.paths : []).map((x: any) => String(x)).filter((s: string) => !!s && safeRelPath(s) === s.trim().replace(/\\/g, '/'));
+        if (!paths.length) return { ok: false };
+        const root = this.currentRoot();
+        const tracked: string[] = [];
+        for (const p of paths) {
+          const isTracked = await this.isTracked(p);
+          if (isTracked) tracked.push(p);
+          else {
+            const abs = path.resolve(root, p);
+            if (abs === root || abs.startsWith(root + path.sep)) {
+              await fs.promises.rm(abs, { recursive: true, force: true }).catch(() => undefined);
+            }
+          }
+        }
+        let ok = true;
+        let error: string | undefined;
+        if (tracked.length) {
+          const outcome = await this.runFileOp({ kind: 'deletePaths', paths: tracked });
+          ok = outcome.ok;
+          error = outcome.outputTail;
+        }
+        if (ok) this.files?.invalidateTree(root);
+        return { ok, error };
+      }
+      case 'ui:saveFilesLayout': {
+        const w = Math.max(280, Math.min(640, Math.round(Number(args.paneW)) || 388));
+        const cols = Array.isArray(args.cols)
+          ? args.cols.map((n: any) => Math.max(40, Math.min(600, Math.round(Number(n)) || 80))).slice(0, 4)
+          : undefined;
+        await this.context.globalState.update('gitboard.filesLayout', { paneW: w, cols });
+        return null;
+      }
+      case 'ui:saveSideCollapsed': {
+        await this.context.globalState.update('gitboard.sideCollapsed', !!args.collapsed);
+        return null;
+      }
       case 'ui:openSettings':
         await vscode.commands.executeCommand('workbench.action.openSettings', 'gitboard');
         return null;
+
+      // ---------- 工程切换（v0.11） ----------
+      case 'projects.add': {
+        const raw = String(args.path ?? '').trim();
+        if (!raw) throw new Error('empty project path');
+        const dir = path.resolve(raw);
+        if (!fs.existsSync(dir)) throw new Error(this.t('projectNotFound', { path: dir }));
+        const name = String(args.name ?? '').trim().slice(0, 80) || path.basename(dir) || dir;
+        const list = this.readProjects();
+        const exist = list.find(p => this.samePath(p.path, dir));
+        if (exist) exist.name = name;   // 同路径重复添加 = 重命名
+        else list.push({ id: repoIdOf(dir), name, path: dir });
+        await this.saveProjects(list);
+        return null;
+      }
+      case 'projects.rename': {
+        const list = this.readProjects();
+        const p = list.find(x => x.id === String(args.id ?? ''));
+        const name = String(args.name ?? '').trim().slice(0, 80);
+        if (p && name) {
+          p.name = name;
+          await this.saveProjects(list);
+        }
+        return null;
+      }
+      case 'projects.remove':
+        await this.saveProjects(this.readProjects().filter(p => p.id !== String(args.id ?? '')));
+        return null;
+      case 'projects.pickFolder': {
+        const picks = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false });
+        return picks && picks[0] ? { path: picks[0].fsPath } : null;
+      }
+      case 'projects.open': {
+        const p = this.readProjects().find(x => x.id === String(args.id ?? ''));
+        if (!p) throw new Error(this.t('projectNotFound', { path: String(args.id ?? '') }));
+        if (!fs.existsSync(p.path)) throw new Error(this.t('projectNotFound', { path: p.path }));
+        await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(p.path), { forceNewWindow: !!args.newWindow });
+        return null;
+      }
 
       // ---------- 工作副本（Commit 功能） ----------
       case 'work.state':
@@ -331,6 +524,23 @@ export class GraphPanel {
       case 'work.resolveConflict':
         this.workResolveConflict(Array.isArray(args.paths) ? args.paths.map(String) : [], args.ours !== false);
         return null;
+      // ---------- 合并解决器（v0.10，设计方案 v1.3） ----------
+      case 'merge.session':
+        return this.mergeSessionOf(String(args.path ?? ''));
+      case 'merge.resolve':
+        this.mergeResolveSide(String(args.path ?? ''), args.side === 'theirs');
+        return null;
+      case 'merge.save':
+        return this.mergeSaveFile(String(args.path ?? ''), String(args.content ?? ''));
+      case 'merge.deleteAccept':
+        this.mergeDeleteAccept(String(args.path ?? ''), args.side === 'theirs');
+        return null;
+      case 'merge.finish':
+        return this.mergeFinish();
+      case 'merge.abort':
+        return this.mergeAbort();
+      case 'merge.previewBinary':
+        return this.mergePreviewBinary(String(args.path ?? ''), args.side === 'theirs');
       // ---------- 标签 ----------
       case 'tag.create':
         this.startOp({ kind: 'tagCreate', name: String(args.name ?? ''), sha: args.sha ? String(args.sha) : undefined, message: args.message ? String(args.message) : undefined });
@@ -422,17 +632,20 @@ export class GraphPanel {
         this.executor = await GitExecutor.detect(configured, builtinGitPath());
       } catch (e) {
         this.ready = true;
-        this.post({ t: 'ready', config: this.config, repos: [], language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha });
+        this.post({ t: 'ready', config: this.config, repos: [], language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha, ...this.readyExtras() });
         this.post({ t: 'notify', level: 'error', message: `${this.t('gitNotFound')} — ${this.t('gitNotFoundHint')}` });
         return;
       }
       this.service = new GitService(this.executor);
       this.runner = new OpRunner(this.executor);
+      this.pullSummary = new PullSummaryService(this.executor);
+      this.files = new FilesService(this.executor);
+      this.armAutoFetch();
     }
     this.repos = await discoverRepos(this.executor, vscode.workspace.workspaceFolders ?? []);
     for (const r of this.repos) this.roots.set(r.id, r.root);
     const version = String((this.context.extension.packageJSON as any).version ?? '');
-    this.post({ t: 'ready', config: this.config, repos: this.repos, language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha, version });
+    this.post({ t: 'ready', config: this.config, repos: this.repos, language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha, version, ...this.readyExtras() });
     this.ready = true;
     if (this.pendingRepoId && this.repos.some(r => r.id === this.pendingRepoId)) {
       const id = this.pendingRepoId;
@@ -450,6 +663,7 @@ export class GraphPanel {
     if (this.config.startView === 'work') showWork = true;
     else if (this.config.startView === 'last' && this.context.globalState.get<string>('gitboard.lastView') === 'work') showWork = true;
     if (showWork) this.post({ t: 'showWork' });
+    this.flushFilesReveal();   // explorer 右键在 bootstrap 期间排队的定位
   }
 
   private currentRoot(): string {
@@ -543,6 +757,7 @@ export class GraphPanel {
     if (!this.service || !this.currentRepoId) return;
     const repoId = this.currentRepoId;
     const root = this.roots.get(repoId)!;
+    this.files?.invalidateTree(root);   // HEAD 可能已变：文件页快照失效重建
     const t0 = Date.now();
     const version = (this.stateVersions.get(repoId) ?? 0) + 1;
     this.stateVersions.set(repoId, version);
@@ -696,6 +911,150 @@ export class GraphPanel {
     return m;
   }
 
+  /**
+   * Pull/Fetch 摘要（v0.13）：对比前后 refs 圈出拉到的新提交（排除 merge），推 webview 弹窗。
+   * fetch：变化的远端跟踪 ref 新 sha 为起点；pull：新 HEAD 为起点——可达于新起点、
+   * 不可达于任何旧引用即为"拉到的提交"。尽力而为：失败不影响操作结果。
+   */
+  private async collectPullSummary(
+    root: string,
+    kind: 'fetch' | 'pull',
+    before: Map<string, string>,
+    headBefore?: string,
+  ): Promise<void> {
+    if (!this.service || !this.pullSummary || !this.config.pullFetchSummary || !this.currentRepoId) return;
+    const after = await this.service.refsOf(root);
+    const include: string[] = [];
+    if (kind === 'fetch') {
+      for (const r of after) {
+        if (r.prefix !== 'refs/remotes/') continue;
+        if (before.get(r.fullName) !== r.sha) include.push(r.sha);   // 新分支（旧值缺失）与前进均计
+      }
+    } else {
+      const head = await this.service.headShaOf(root);
+      if (head && head !== headBefore) include.push(head);
+    }
+    if (!include.length) return;
+    // pull 的排除集只取本地侧（本地分支 + 旧 HEAD）：远端跟踪引用天然包含"新到本地"的上游提交
+    // （fetch/后台自动获取先行更新 refs 时尤甚），全量排除会使摘要漏弹（v0.13 修复）
+    const exclude = kind === 'pull'
+      ? [...new Set([
+        ...[...before.entries()].filter(([k]) => k.startsWith('refs/heads/')).map(([, v]) => v),
+        ...(headBefore ? [headBefore] : []),
+      ])]
+      : [...new Set([...before.values(), ...(headBefore ? [headBefore] : [])])];
+    const { entries, truncated } = await this.pullSummary.of(root, include, exclude);
+    if (entries.length) {
+      const stat = await this.statPullFiles(root, entries);
+      this.post({ t: 'pullSummary', repoId: this.currentRepoId, kind, entries, truncated, stat });
+    }
+    this.channel.appendLine(`[summary] kind=${kind} new=${entries.length} include=${include.length} exclude=${exclude.length}`);
+  }
+
+  /**
+   * 摘要文件的工作区现状（大小/修改时间）：rename 取新路径，唯一去重后并发 stat。
+   * 只读尽力而为——不存在（历史删除/移动）、越界、超上限的文件不产生条目，UI 端按缺失显示 "—"。
+   */
+  private async statPullFiles(root: string, entries: { files: string[] }[]): Promise<Record<string, PullFileStat>> {
+    const paths = new Set<string>();
+    const MAX_STAT = 1000;   // 防御上限：500 提交 × 500 文件的理论极值不逐个 stat
+    for (const e of entries) {
+      for (const f of e.files) {
+        if (paths.size >= MAX_STAT) break;
+        paths.add(f.includes(RENAME_SEP) ? f.split(RENAME_SEP)[1] : f);
+      }
+      if (paths.size >= MAX_STAT) break;
+    }
+    const out: Record<string, PullFileStat> = {};
+    await Promise.all([...paths].map(async p => {
+      try {
+        const st = await fs.promises.stat(this.safeJoin(root, p));
+        if (st.isFile()) out[p] = { size: st.size, mtime: st.mtime.toISOString() };
+      } catch { /* 不在工作区 / 路径异常：跳过 */ }
+    }));
+    return out;
+  }
+
+  // ---------- SourceTree 式后台自动获取（v0.13） ----------
+
+  /** 按配置臂定时器：间隔分钟（1–1440 钳制），0/无效=关闭；每次调用先清旧定时器（设置变更即重臂） */
+  private armAutoFetch(): void {
+    if (this.fetchTimer) { clearInterval(this.fetchTimer); this.fetchTimer = undefined; }
+    const mins = this.config.autoFetchInterval;
+    if (typeof mins !== 'number' || !Number.isFinite(mins) || mins <= 0) return;
+    const ms = Math.min(1440, Math.max(1, Math.round(mins))) * 60_000;
+    this.fetchTimer = setInterval(() => this.autoFetchTick(), ms);
+  }
+
+  /**
+   * 静默获取当前仓库全部远程：不打扰进度条/toast（与用户显式 Fetch 区分），失败仅记输出通道。
+   * 拉到新提交后 refs 变化经指纹去重自然推送，分支 ↓n 徽标与提交图随之自动更新。
+   */
+  private autoFetchTick(): void {
+    if (this.disposed || !this.runner || !this.currentRepoId) return;
+    if (!this.lastState?.remotes.length) return;   // 无远程：本轮跳过
+    const root = this.roots.get(this.currentRepoId)!;
+    const opId = ++this.opSeq;
+    void this.runner.run(
+      root, { kind: 'fetch', all: true, prune: this.config.fetchPrune }, opId,
+      () => undefined,   // 不转发进度：后台行为保持安静
+      () => '',
+    ).then(outcome => {
+      if (outcome.ok) {
+        void this.refresh();   // 非强制：refs 有变指纹必变必推送，无新提交则去重免扰
+      } else if (outcome.message !== 'cancelled') {
+        this.channel.appendLine(`[autofetch] failed: ${(outcome.outputTail ?? outcome.message ?? '').slice(0, 200)}`);
+      }
+    });
+  }
+
+  /** 文件页操作（v0.14）：移动/重命名/删除——同 startOp 的进度与结果转发，但等待完成并返回 outcome */
+  private async runFileOp(spec: OpSpec): Promise<{ ok: boolean; outputTail?: string }> {
+    if (!this.runner || !this.currentRepoId) return { ok: false };
+    const root = this.roots.get(this.currentRepoId)!;
+    const opId = ++this.opSeq;
+    const kind = spec.kind;
+    this.post({ t: 'opProgress', opId, kind, text: '' });
+    const outcome = await this.runner.run(
+      root, spec, opId,
+      (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
+      ok => ok ? this.t(`${kind}Done`) : this.t('opFailed', { op: this.t(kind) }),
+    );
+    this.post({ t: 'opResult', opId, kind, ok: outcome.ok, message: outcome.message, outputTail: outcome.outputTail });
+    if (outcome.ok) {
+      this.files?.invalidateTree(root);
+      void this.refresh(true);
+      void this.workStateNow().catch(() => undefined);
+    }
+    return outcome;
+  }
+
+  /** ls-files 判定跟踪状态（未跟踪项删除走磁盘而非 git rm） */
+  private async isTracked(relPath: string): Promise<boolean> {
+    if (!this.files) return true;
+    return this.files.trackedOf(this.currentRoot(), relPath);
+  }
+
+  /** explorer 右键「查看文件历史」：定位到所属仓库并通知 webview 选中该路径 */
+  revealInFiles(absPath: string): void {
+    for (const r of this.repos) {
+      const root = this.roots.get(r.id);
+      if (!root || !(absPath === root || absPath.startsWith(root + path.sep))) continue;
+      const rel = path.relative(root, absPath).replace(/\\/g, '/');
+      this.pendingFilesReveal.push(rel);
+      if (!this.ready) return;   // bootstrap 完成后统一 flush
+      if (r.id === this.currentRepoId) this.flushFilesReveal();
+      else void this.selectRepo(r.id).then(() => this.flushFilesReveal());
+      return;
+    }
+  }
+
+  private flushFilesReveal(): void {
+    while (this.pendingFilesReveal.length) {
+      this.post({ t: 'filesReveal', path: this.pendingFilesReveal.shift()! });
+    }
+  }
+
   private startOp(spec: OpSpec): void {
     if (!this.runner || !this.currentRepoId) return;
     const root = this.roots.get(this.currentRepoId)!;
@@ -704,7 +1063,8 @@ export class GraphPanel {
     const label = this.t(kind);
     // 立即播报"进行中"（不等首条 --progress 输出），按钮随即进入繁忙态
     this.post({ t: 'opProgress', opId, kind, text: '' });
-    const refsBefore = kind === 'fetch' ? this.snapshotRefs() : undefined;
+    const refsBefore = kind === 'fetch' || kind === 'pull' ? this.snapshotRefs() : undefined;
+    const headBefore = kind === 'pull' ? this.lastState?.head.sha : undefined;   // 摘要范围：pull 前后 HEAD 差
     void this.runner.run(
       root, spec, opId,
       (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
@@ -738,6 +1098,12 @@ export class GraphPanel {
       });
       if (outcome.ok) {
         void this.refresh(true);   // 操作成功：强制重推（fetch/pull/push/checkout/reset 后表格必刷新）
+        void this.workStateNow().catch(() => undefined);
+        if (refsBefore && (kind === 'fetch' || kind === 'pull')) {
+          void this.collectPullSummary(root, kind, refsBefore, headBefore).catch(() => undefined);
+        }
+      } else if (kind === 'pull') {
+        // pull 失败（含冲突：git 以非零退出）也刷工作副本——前端据此弹冲突横幅引导（R3）
         void this.workStateNow().catch(() => undefined);
       }
     });
@@ -826,15 +1192,19 @@ export class GraphPanel {
       dirtyCount: wc.dirtyCount,
       merging: wc.merging,
       mergeKind: wc.mergeKind,
+      mergeActive: wc.mergeActive,
       headShortSha: head?.shortSha ?? '',
       headSubject: head?.subject ?? '',
       headDate: head?.date ?? '',
+      moveDetect: detectMove(wc.unstaged),
     };
     this.lastWorkEntries = wc;
     const json = JSON.stringify(state);
     if (json !== this.lastWorkJson) {
       this.lastWorkJson = json;
       this.post({ t: 'workState', state });
+      // 联动侧栏树：脏计数变化 → 活动栏图标角标随 tree.refresh() 更新
+      GraphPanel.onDidStateChange.fire();
     }
     return state;
   }
@@ -868,8 +1238,8 @@ export class GraphPanel {
   }
 
   /**
-   * 冲突二选一：checkout --ours/--theirs + add；全部解决且处于普通合并中 → 自动完成合并提交
-   * （完成提交走 startOp：有「合并完成」toast + 强制整图刷新 + 工作副本刷新）。
+   * 冲突二选一（git 级 ours/theirs）：checkout 侧 + add。
+   * v0.10（决议 #2）：全部解决后不再自动完成合并提交——前端弹「完成合并」确认，经 merge.finish 走 commitNoEdit / rebase --continue。
    */
   private workResolveConflict(paths: string[], ours: boolean): void {
     if (!paths.length || !this.runner || !this.currentRepoId) return;
@@ -881,15 +1251,140 @@ export class GraphPanel {
     ).then(async outcome => {
       // 成功静默（列表即时刷新即反馈），失败弹 toast
       this.post({ t: 'opResult', opId, kind: 'resolveConflict', ok: outcome.ok, message: outcome.ok ? undefined : outcome.message });
-      const st = await this.workStateNow().catch(() => undefined);
-      if (st && !st.conflicts.length && st.merging) {
-        try {
-          if (fs.statSync(path.join(root, '.git', 'MERGE_HEAD')).isFile()) {
-            this.startOp({ kind: 'commitNoEdit' });   // 自动完成合并提交
-          }
-        } catch { /* 非 merge（rebase 等）：不自动提交，由用户继续操作 */ }
-      }
+      await this.workStateNow().catch(() => undefined);
     });
+  }
+
+  // ---------- 合并解决器（v0.10） ----------
+
+  /** 语义侧 → git ours 映射：merge 我=:2/--ours；rebase 我=:3/--theirs（语义反转，设计方案 §4.6） */
+  private sideToOurs(sideTheirs: boolean, root: string): boolean {
+    const kind = this.service?.mergeKindOf(root) ?? 'merge';
+    return kind === 'rebase' ? !sideTheirs : sideTheirs;
+  }
+
+  /** 合并会话：三栏数据 / 二进制 / 超限三态（XY 码判删除侧，contentAt 取 stage 内容） */
+  private async mergeSessionOf(relPath: string): Promise<MergeSessionAny> {
+    if (!this.service || !this.currentRepoId) throw new Error('not ready');
+    const root = this.currentRoot();
+    const kind = this.service.mergeKindOf(root);
+    const labels = this.service.mergeLabelsOf(root, kind);
+    const code = (this.lastWorkEntries?.conflicts ?? []).find(c => c.path === relPath)?.conflictCode ?? 'UU';
+    // XY 码的 us/them 语义与 --ours 一致：rebase 时随 stage 一并反转
+    const usDeleted = code === 'DU' || code === 'DD';
+    const themDeleted = code === 'UD' || code === 'DD';
+    const rebase = kind === 'rebase';
+    const mineStage = rebase ? 3 : 2;
+    const theirsStage = rebase ? 2 : 3;
+    const mineGone = code === 'DD' ? true : (rebase ? themDeleted : usDeleted);
+    const theirsGone = code === 'DD' ? true : (rebase ? usDeleted : themDeleted);
+    const [mineRaw, theirsRaw, baseRaw] = await Promise.all([
+      mineGone ? Promise.resolve(null) : this.service.contentAt(root, ':' + mineStage, relPath),
+      theirsGone ? Promise.resolve(null) : this.service.contentAt(root, ':' + theirsStage, relPath),
+      this.service.contentAt(root, ':1', relPath),
+    ]);
+    const mine = mineRaw ?? '';
+    const theirs = theirsRaw ?? '';
+    const mineBytes = Buffer.byteLength(mine, 'utf8');
+    const theirsBytes = Buffer.byteLength(theirs, 'utf8');
+    const mineLines = mine ? mine.split('\n').length : 0;
+    const theirsLines = theirs ? theirs.split('\n').length : 0;
+    // 超限（决议 #5）：显式警告由前端渲染，此处带数据
+    if (Math.max(mineBytes, theirsBytes) > MERGE_MAX_BYTES || Math.max(mineLines, theirsLines) > MERGE_MAX_LINES) {
+      return { path: relPath, binary: false, tooLarge: true, lines: Math.max(mineLines, theirsLines), bytes: Math.max(mineBytes, theirsBytes) };
+    }
+    // 二进制：现存侧内容含 NUL → 只二选一 + 系统预览
+    const NUL = String.fromCharCode(0);
+    if ((!mineGone && mine.includes(NUL)) || (!theirsGone && theirs.includes(NUL))) {
+      return {
+        path: relPath, kind, labels, binary: true,
+        deletedSide: code === 'DD' ? 'theirs' : (mineGone ? 'mine' : theirsGone ? 'theirs' : undefined),
+        mineSize: mineGone ? undefined : mineBytes,
+        theirsSize: theirsGone ? undefined : theirsBytes,
+      };
+    }
+    let result = '';
+    try { result = fs.readFileSync(this.safeJoin(root, relPath), 'utf8'); } catch { /* DD：工作副本可能已被删 */ }
+    const deletedSide = code === 'DD' ? undefined : (mineGone ? 'mine' : theirsGone ? 'theirs' : undefined);
+    return {
+      path: relPath, kind, labels, binary: false,
+      base: baseRaw || undefined,
+      mine, theirs, result,
+      deletedSide,
+      mergeMsg: kind === 'merge' ? this.service.mergeMsgOf(root) : undefined,
+    };
+  }
+
+  /** 语义侧二选一（我的/他人）：映射 --ours/--theirs 后走既有 resolveConflict 队列 */
+  private mergeResolveSide(relPath: string, sideTheirs: boolean): void {
+    const root = this.currentRoot();
+    this.workResolveConflict([relPath], this.sideToOurs(sideTheirs, root));
+  }
+
+  /** 以合并后的代码为准：原子写回工作副本 + add（决议 #2：写回即暂存，完成合并在 merge.finish 确认后） */
+  private async mergeSaveFile(relPath: string, content: string): Promise<{ ok: true }> {
+    const abs = this.safeJoin(this.currentRoot(), relPath);
+    const tmp = abs + '.gitboard-merge';
+    fs.writeFileSync(tmp, content, 'utf8');
+    fs.renameSync(tmp, abs);
+    this.startWorkOp({ kind: 'stage', paths: [relPath] });
+    return { ok: true };
+  }
+
+  /** 一方删除场景：选中的语义侧若被删 = 采纳删除（git rm）；仍存在 = 取该侧内容（checkout+add）。DD 双删只剩采纳删除 */
+  private mergeDeleteAccept(relPath: string, sideTheirs: boolean): void {
+    const root = this.currentRoot();
+    const code = (this.lastWorkEntries?.conflicts ?? []).find(c => c.path === relPath)?.conflictCode ?? 'UU';
+    const rebase = (this.service?.mergeKindOf(root) ?? 'merge') === 'rebase';
+    const usDeleted = code === 'DU' || code === 'DD';
+    const themDeleted = code === 'UD' || code === 'DD';
+    const mineGone = code === 'DD' ? true : (rebase ? themDeleted : usDeleted);
+    const theirsGone = code === 'DD' ? true : (rebase ? usDeleted : themDeleted);
+    const sideGone = sideTheirs ? theirsGone : mineGone;
+    if (sideGone) this.startWorkOp({ kind: 'resolveDelete', paths: [relPath] });
+    else this.workResolveConflict([relPath], this.sideToOurs(sideTheirs, root));
+  }
+
+  /** 完成合并（决议 #2 确认后）：merge→commit --no-edit；rebase→rebase --continue */
+  private async mergeFinish(): Promise<{ ok: true }> {
+    const root = this.currentRoot();
+    const kind = this.service?.mergeKindOf(root) ?? 'other';
+    if (kind === 'other') throw new Error(this.t('mergeFinishUnsupported'));
+    this.startOp({ kind: kind === 'rebase' ? 'mergeContinue' : 'commitNoEdit', rebase: kind === 'rebase' });
+    return { ok: true };
+  }
+
+  /** 中止合并/变基：还原到操作前（带前端二次确认） */
+  private async mergeAbort(): Promise<{ ok: true }> {
+    const root = this.currentRoot();
+    const kind = this.service?.mergeKindOf(root) ?? 'other';
+    if (kind === 'other') throw new Error(this.t('mergeFinishUnsupported'));
+    this.startOp({ kind: 'mergeAbort', rebase: kind === 'rebase' });
+    return { ok: true };
+  }
+
+  /** 二进制预览：stage 内容写临时文件后用系统默认程序打开（文件名不带用户输入，扩展名白名单化） */
+  private async mergePreviewBinary(relPath: string, sideTheirs: boolean): Promise<null> {
+    if (!this.service || !this.currentRepoId) return null;
+    const root = this.currentRoot();
+    const kind = this.service.mergeKindOf(root);
+    const stage = (kind === 'rebase') !== sideTheirs ? 2 : 3;   // sideTheirs→语义侧映射
+    const content = await this.service.contentAt(root, ':' + stage, relPath);
+    if (content == null) { void vscode.window.showWarningMessage(this.t('mergePreviewMissing')); return null; }
+    const rawExt = path.extname(relPath).slice(1);
+    const safeExt = /^[a-zA-Z0-9]{1,8}$/.test(rawExt) ? '.' + rawExt.toLowerCase() : '';
+    const tmp = path.join(os.tmpdir(), `gitboard-preview-${Date.now()}${safeExt}`);
+    fs.writeFileSync(tmp, content, 'utf8');
+    const plat = process.platform;
+    try {
+      // 直接以 explorer 打开（系统默认程序）：不经 cmd/start —— cmd 中转是企业 EDR 的常见告警模式
+      if (plat === 'win32') spawn('explorer', [tmp], { detached: true, stdio: 'ignore' }).unref();
+      else if (plat === 'darwin') spawn('open', [tmp], { detached: true, stdio: 'ignore' }).unref();
+      else spawn('xdg-open', [tmp], { detached: true, stdio: 'ignore' }).unref();
+    } catch (e) {
+      this.channel.appendLine(`[merge-preview] failed: ${String((e as Error)?.message ?? e).slice(0, 200)}`);
+    }
+    return null;
   }
 
   /** 丢弃：已跟踪 restore 回 HEAD（含已暂存），未跟踪 clean -fd */
@@ -936,8 +1431,8 @@ export class GraphPanel {
     return { ok: true, deleted };
   }
 
-  /** 提交（可 all=/amend=/push= 链式推送）；成功后清草稿并整图刷新 */
-  private async workCommit(args: any): Promise<{ ok: true; shortSha?: string }> {
+  /** 提交（可 all=/amend=/push= 链式推送）；成功后清草稿并整图刷新；dirty=提交后脏文件数（前端决定是否显示推送询问条） */
+  private async workCommit(args: any): Promise<{ ok: true; shortSha?: string; dirty?: number }> {
     const message = String(args.message ?? '');
     if (!message.split('\n')[0].trim()) throw new Error(this.t('needMessage'));
     const amend = !!args.amend;
@@ -970,10 +1465,20 @@ export class GraphPanel {
 
     await this.context.globalState.update(`gitboard.commitDraft:${this.currentRepoId}`, undefined);
     void this.refresh(true);   // 提交成功：强制重推
-    void this.workStateNow();
+    // 提交后的即时状态：dirty 随响应返回，前端据此决定是否显示推送询问条
+    // （工作区已干净时干净空态自带「推送」按钮，绿色询问条不再叠加）
+    const wst = await this.workStateNow().catch(() => undefined);
     if (push) this.quickOp('push');
     const head = await this.service!.headCommitOf(root);
-    return { ok: true, shortSha: head?.shortSha };
+    return { ok: true, shortSha: head?.shortSha, dirty: wst?.dirtyCount };
+  }
+
+  /** 路径级变更清单（AI 降级上下文）：与 buildCommitContext 同口径——暂存非空取暂存，否则全部更改；untracked 归一为 A */
+  private changedEntriesFromWork(): { status: string; path: string }[] {
+    const w = this.lastWorkEntries;
+    if (!w) return [];
+    const src = w.staged.length ? w.staged : [...w.staged, ...w.unstaged];
+    return src.map(e => ({ status: e.untracked ? 'A' : (e.staged ?? e.unstaged ?? 'M'), path: e.path }));
   }
 
   /** 可用 Copilot 模型列表（未安装/未登录返回空数组 → 前端隐藏 AI 入口） */
@@ -1033,21 +1538,44 @@ export class GraphPanel {
     try {
       const root = this.currentRoot();
       const useInstructions = this.config.aiUseWorkspaceInstructions;
-      const ctx = await this.service!.buildCommitContext(root, { learnFromHistory: this.config.aiLearnFromHistory, useInstructions });
+      // 路径级变更清单（与 buildCommitContext 同口径：暂存非空取暂存，否则全部更改）——零 git 调用
+      const entries = this.changedEntriesFromWork();
+      let pathFallback = false;
+      let ctx: Awaited<ReturnType<GitService['buildCommitContext']>>;
+      try {
+        ctx = await this.service!.buildCommitContext(root, { learnFromHistory: this.config.aiLearnFromHistory, useInstructions });
+        if (!diffContentUsable(ctx.stagedDiff, entries.length)) pathFallback = true;   // 内容全是省略标记（二进制/锁文件/超长行）
+      } catch (e) {
+        // 差异过大/超时（暂存大文件为主因）：降级为"文件名 + 目录结构"推断
+        if (!entries.length) throw e;   // 连清单都没有（面板未刷新过）：维持原失败提示
+        this.channel.appendLine(`[ai] context build failed → path fallback (${entries.length} files): ${String((e as Error)?.message ?? e).slice(0, 120)}`);
+        const recent = this.config.aiLearnFromHistory ? await this.service!.recentMessages(root, 10) : [];
+        const instructions = useInstructions ? await this.service!.collectInstructions(root) : [];
+        ctx = {
+          stagedSummary: formatEntryList(entries),
+          stagedDiff: '',
+          recentSubjects: recent.map(m => m.subject),
+          instructions,
+          diffTruncated: false,
+        };
+        pathFallback = true;
+      }
       const pctx: CommitPromptCtx & { useInstructions?: boolean } = {
         ...ctx,
+        fileTree: buildFileTree(entries) || undefined,
+        diffUsable: !pathFallback,
         instructions: useInstructions ? ctx.instructions : [],
         language: this.config.aiLanguage,
       };
       const prompt = `${buildSystemPrompt(pctx)}\n\n${buildUserPrompt(pctx)}`;
-      this.channel.appendLine(`[ai] model=${model.name} instructions=${pctx.instructions.length} diffChars=${ctx.stagedDiff.length} summaryChars=${ctx.stagedSummary.length}`);
+      this.channel.appendLine(`[ai] model=${model.name} instructions=${pctx.instructions.length} diffChars=${ctx.stagedDiff.length} summaryChars=${ctx.stagedSummary.length} usable=${!pathFallback} files=${entries.length}`);
       armWatchdog();
       const res = await model.sendRequest([userMessage(vscode, prompt)], {}, cts.token);
       for await (const chunk of res.text) {
         armWatchdog();
         this.post({ t: 'aiChunk', text: chunk });
       }
-      this.post({ t: 'aiDone', model: model.name, instructions: pctx.instructions.length });
+      this.post({ t: 'aiDone', model: model.name, instructions: pctx.instructions.length, fallback: pathFallback });
     } catch (e) {
       // 上下文构建（git diff 超时等）与 LM 调用统一兜底：必须发 aiError，否则前端永久 busy
       if (timedOut) {
@@ -1069,6 +1597,57 @@ export class GraphPanel {
 
   // ---------- 杂项 ----------
 
+  // ---------- 工程切换（v0.11：globalState 持久化的跨工作区切换目标） ----------
+
+  private readProjects(): ProjectInfo[] {
+    const raw = this.context.globalState.get<any[]>('gitboard.projects') ?? [];
+    const out: ProjectInfo[] = [];
+    const seen = new Set<string>();
+    for (const r of raw) {
+      if (!r || typeof r.path !== 'string' || !r.path.trim()) continue;
+      const dir = path.resolve(r.path);
+      const key = process.platform === 'win32' ? dir.toLowerCase() : dir;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        id: typeof r.id === 'string' && r.id ? r.id : repoIdOf(dir),
+        name: String(r.name ?? '').trim().slice(0, 80) || path.basename(dir) || dir,
+        path: dir,
+      });
+    }
+    return out.slice(0, 50);
+  }
+
+  private samePath(a: string, b: string): boolean {
+    const na = path.resolve(a);
+    const nb = path.resolve(b);
+    return process.platform === 'win32' ? na.toLowerCase() === nb.toLowerCase() : na === nb;
+  }
+
+  /** ready 事件的附加字段：面板高度百分比 + 工程列表/命中标记 + 工作区根路径 */
+  private readyExtras(): { detailPct?: number; projects: ProjectInfo[]; activeProjectIds: string[]; workspaceFolders: string[]; filesLayout?: { paneW: number; cols: number[] }; sideCollapsed?: boolean } {
+    const projects = this.readProjects();
+    const folders = (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath);
+    const activeProjectIds = projects.filter(p => folders.some(f => this.samePath(f, p.path))).map(p => p.id);
+    const detailPct = this.context.globalState.get<number>('gitboard.detailPct');
+    const filesLayout = this.context.globalState.get<{ paneW: number; cols: number[] }>('gitboard.filesLayout');
+    const sideCollapsed = this.context.globalState.get<boolean>('gitboard.sideCollapsed');
+    return {
+      detailPct: typeof detailPct === 'number' && Number.isFinite(detailPct) ? detailPct : undefined,
+      projects,
+      activeProjectIds,
+      workspaceFolders: folders,
+      filesLayout: filesLayout && typeof filesLayout.paneW === 'number' ? filesLayout : undefined,
+      sideCollapsed: sideCollapsed === true ? true : undefined,
+    };
+  }
+
+  private async saveProjects(list: ProjectInfo[]): Promise<void> {
+    await this.context.globalState.update('gitboard.projects', list.slice(0, 50));
+    const { projects, activeProjectIds } = this.readyExtras();
+    this.post({ t: 'projectsChanged', projects, activeProjectIds });
+  }
+
   private safeJoin(root: string, rel: string): string {
     // 两侧都过 path.resolve 规范化（git 根可能带正斜杠，resolve 后为系统分隔符）
     const normRoot = path.resolve(root);
@@ -1081,9 +1660,11 @@ export class GraphPanel {
 
   /**
    * 在系统文件管理器中定位文件（选中该文件）。
-   * Windows 实测（窗口标题级验证）：直接 spawn explorer（含 verbatim/detached 变体）不创建窗口，
-   * 唯一稳定创建窗口的形态是经 cmd 执行 `explorer /select,"路径"`（exec 默认走 cmd /c）。
-   * explorer 正常情况退出码为 1，仅 ENOENT 等字符串错误码才回退 revealFileInOS。
+   * Windows 实测（窗口级验证，2026-08-27）：spawn explorer + 单参数 "/select,路径"（非 verbatim，
+   * libuv 对含空格参数自动整体加引号）可稳定打开窗口并选中文件；不经过 cmd.exe——
+   * cmd 中转是企业 EDR 的常见告警模式，直接 explorer 与各应用"在资源管理器中显示"同形态。
+   * explorer 正常情况退出码为 1，仅 error 事件（ENOENT 等）才回退 revealFileInOS。
+   * 长路径（>259）降级见 revealPath.ts。
    */
   private async revealInFileManager(target: string): Promise<void> {
     const fallback = (): void => {
@@ -1092,10 +1673,14 @@ export class GraphPanel {
     };
     try {
       if (process.platform === 'win32') {
-        const q = target.replace(/"/g, '');
-        exec(`explorer /select,"${q}"`, err => {
-          if (err && typeof err.code === 'string') fallback();   // 启动失败（如 ENOENT）；退出码 1 为正常
-        });
+        // 无 shell 参与，天然无元字符解释问题；仅剥离文件名中的引号防 explorer 参数解析错乱。
+        // 长路径（>259 字符）时 explorer 命令行解析失败并退化为打开默认位置，
+        // 降级选中最深可用祖先目录（实测依据见 revealPath.ts 头注释）。
+        const p = revealableAncestor(target.replace(/"/g, ''));
+        if (!p) { fallback(); return; }
+        const child = spawn('explorer', ['/select,' + p], { detached: true, stdio: 'ignore' });
+        child.once('error', () => fallback());
+        child.unref();
       } else if (process.platform === 'darwin') {
         const child = spawn('open', ['-R', target], { detached: true, stdio: 'ignore' });
         child.once('error', () => fallback());

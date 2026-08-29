@@ -11,10 +11,12 @@ export interface CommitBar {
   el: HTMLElement;
   update(): void;
   onAiChunk(text: string): void;
-  onAiDone(model: string, instructions: number): void;
+  onAiDone(model: string, instructions: number, fallback?: boolean): void;
   onAiError(code: string, message?: string): void;
   focusInput(): void;
-  afterCommitOk(shortSha?: string, pushed?: boolean): void;
+  afterCommitOk(shortSha?: string, pushed?: boolean, dirty?: number): void;
+  /** 状态刷新联动：工作区已干净或已无待推送（上游存在且领先 0）→ 隐藏推送询问条 */
+  autoHidePushq(): void;
   /** 恢复持久化草稿（视图首次打开 / 仓库切换） */
   applyDraft(d: { message: string; pushAfter: boolean; amend: boolean } | null): void;
 }
@@ -155,8 +157,10 @@ export function createCommitBar(app: App): CommitBar {
   async function doCommit(opts: { push?: boolean; amend?: boolean; all?: boolean }): Promise<void> {
     const message = input.value;
     if ((S.work.state?.conflicts.length ?? 0) > 0) {
-      // 未解决冲突阻塞提交：引导到冲突分组选择保留版本
+      // R3：冲突阻塞提交 → 引导而非报错——切工作副本并弹出合并器（场景 C）
+      app.setView('work');
       toastWarn(S.t('conflictBlock'));
+      app.openMerge();
       return;
     }
     if (!message.split('\n')[0].trim()) {
@@ -174,7 +178,7 @@ export function createCommitBar(app: App): CommitBar {
     const pushed = opts.push ?? S.work.pushAfter;   // 勾选「提交后推送」/下拉「提交并推送」= 直接推不询问
     try {
       const r = await app.workCommit({ message, push: pushed, amend: opts.amend, all: opts.all });
-      if (r?.ok) afterCommitOk(r.shortSha, pushed);
+      if (r?.ok) afterCommitOk(r.shortSha, pushed, r.dirty);
     } catch {
       /* 失败信息经 opResult 事件展示 */
     } finally {
@@ -210,8 +214,12 @@ export function createCommitBar(app: App): CommitBar {
     update();
   }
 
-  /** 提交成功：清场回初始状态；未直接推送时显示推送询问条 */
-  function afterCommitOk(shortSha?: string, pushed = false): void {
+  /**
+   * 提交成功：清场回初始状态；未直接推送时显示推送询问条。
+   * dirty=提交后脏文件数（宿主随响应返回）：工作区已干净时不再显示——
+   * 干净空态自带「拉取/推送」按钮，绿色询问条与之叠加即冗余双入口。
+   */
+  function afterCommitOk(shortSha?: string, pushed = false, dirty?: number): void {
     if (S.config.commitClearMessage) {
       S.work.message = '';
       input.value = '';
@@ -222,9 +230,18 @@ export function createCommitBar(app: App): CommitBar {
     }
     S.work.aiMeta = undefined;
     hidePushq();
-    if (!pushed && shortSha) showPushq(shortSha);
+    if (!pushed && shortSha && dirty !== 0) showPushq(shortSha);
     saveDraft();
     update();
+  }
+
+  /** 状态刷新联动：工作区干净或已无待推送（有上游且领先 0，如已从其他入口推送）→ 询问条让位 */
+  function autoHidePushq(): void {
+    if (pushq.classList.contains('hidden')) return;
+    const dirty = S.work.state?.dirtyCount ?? S.state?.status.dirtyCount ?? 0;
+    const head = S.state?.branches.find(b => b.isHead);
+    const nothingToPush = !!head?.upstream && head.ahead === 0;
+    if (dirty === 0 || nothingToPush) hidePushq();
   }
 
   // ---------- 刷新 ----------
@@ -291,12 +308,13 @@ export function createCommitBar(app: App): CommitBar {
     refreshCount();
   }
 
-  function onAiDone(model: string, instructions: number): void {
+  function onAiDone(model: string, instructions: number, fallback?: boolean): void {
     S.work.aiBusy = false;
     S.work.message = input.value = S.work.aiText.trim();
     S.work.aiMeta = instructions > 0
       ? S.t('aiDoneWithInstructions', { n: instructions, model })
       : S.t('aiDone', { model });
+    if (fallback) S.work.aiMeta += ` · ${S.t('aiFallbackNote')}`;   // 如实标注：差异过大，走的是路径级推断
     count.title = S.work.aiMeta;
     update();
     input.focus();
@@ -330,5 +348,5 @@ export function createCommitBar(app: App): CommitBar {
 
   // 初始草稿恢复（由 main.ts 在 work.loadDraft 后调用 applyDraft）
   update();
-  return { el: root, update, onAiChunk, onAiDone, onAiError, focusInput, afterCommitOk, applyDraft };
+  return { el: root, update, onAiChunk, onAiDone, onAiError, focusInput, afterCommitOk, autoHidePushq, applyDraft };
 }

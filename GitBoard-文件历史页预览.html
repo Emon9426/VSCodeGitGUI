@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitBoard · 文件历史页 UI 预览（v0.14.0 需求 · 四审稿）</title>
+<style>
+  /* ============ 基础 ============ */
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font:13px/1.5 "Segoe UI","Microsoft YaHei",sans-serif;background:#141414;color:#cccccc;overflow:hidden}
+  button{font:inherit}
+
+  /* ============ VS Code 窗口框架 ============ */
+  .win{display:flex;flex-direction:column;height:100vh}
+  .titlebar{display:flex;align-items:center;gap:14px;height:34px;background:#181818;border-bottom:1px solid #2b2b2b;padding:0 12px;font-size:11.5px;color:#9a9a9a;flex:none}
+  .titlebar .app{display:flex;align-items:center;gap:7px;font-weight:600;color:#cccccc}
+  .titlebar .app .logo{width:15px;height:15px;border-radius:3px;background:linear-gradient(135deg,#f97316,#0078d4);display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:#fff}
+  .titlebar .crumb{color:#6e7681}
+  .titlebar .crumb b{color:#9a9a9a;font-weight:400}
+
+  .toolbar{display:flex;align-items:center;gap:10px;height:38px;background:#181818;border-bottom:1px solid #2b2b2b;padding:0 10px;flex:none}
+  .seg{display:flex;border:1px solid #3c3c3c;border-radius:6px;overflow:hidden}
+  .seg button{border:none;background:#2a2a2a;color:#bbb;font-size:11.5px;padding:4px 13px;display:flex;gap:6px;align-items:center;cursor:pointer;white-space:nowrap}
+  .seg button.on{background:#094771;color:#fff;font-weight:600}
+  .toolbar .repo{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#bbb;background:#2a2a2a;border:1px solid #3c3c3c;border-radius:5px;padding:3px 10px;cursor:pointer}
+  .toolbar .repo b{color:#e6edf3}
+  .toolbar .sp{flex:1}
+  .tbtn{background:#2a2a2a;border:1px solid #3c3c3c;border-radius:5px;padding:3px 10px;color:#ccc;font-size:11.5px;cursor:pointer}
+  .tbtn:hover{border-color:#0078d4;color:#fff}
+
+  /* ============ 主体两区 + 分隔条 ============ */
+  .body{flex:1;display:flex;min-height:0}
+  .side{width:388px;flex:none;min-width:280px;max-width:640px;background:#181818;display:flex;flex-direction:column;min-height:0}
+  .splitter{width:5px;flex:none;cursor:col-resize;background:#1f1f1f;position:relative;transition:background .12s}
+  .splitter:hover,.splitter.on{background:#0078d4}
+  .splitter .tip{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:9px;color:#6e7681;writing-mode:vertical-rl;letter-spacing:-1px}
+  .main{flex:1;min-width:0;background:#1f1f1f;display:flex;flex-direction:column;min-height:0}
+
+  /* ---- 左区头部 + 视图切换 ---- */
+  .side-h{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;flex:none}
+  .side-h .t{font-size:11.5px;font-weight:700;color:#e6edf3;letter-spacing:.5px}
+  .side-h .sp{flex:1}
+  .vsw{display:flex;border:1px solid #3c3c3c;border-radius:5px;overflow:hidden}
+  .vsw button{width:26px;height:20px;border:none;background:#252526;color:#9a9a9a;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .vsw button.on{background:#094771;color:#fff}
+
+  /* ---- 地址栏（Win11 式：面包屑 ↔ 编辑态） ---- */
+  .addr{display:flex;align-items:center;gap:4px;height:30px;margin:6px 10px 0;background:#2a2a2a;border:1px solid #3c3c3c;border-radius:5px;padding:0 4px 0 8px;flex:none;font-size:11.5px}
+  .addr .ico{color:#9a9a9a;font-size:12px;flex:none}
+  .addr .c{padding:2px 7px;border-radius:4px;cursor:pointer;color:#bbbbbb;white-space:nowrap}
+  .addr .c:hover{background:#37373d}
+  .addr .c.cur{color:#fff;background:#094771}
+  .addr .sep{color:#484f58;font-size:10px}
+  .addr .sp{flex:1;min-width:20px;height:100%;cursor:text}
+  .addr .abtn{width:24px;height:22px;border:none;border-radius:4px;background:transparent;color:#9a9a9a;font-size:11.5px;cursor:pointer;flex:none}
+  .addr .abtn:hover{background:#37373d;color:#fff}
+  .addr.edit{padding:0}
+  .addr.edit .c,.addr.edit .sep,.addr.edit .sp,.addr.edit .ico{display:none}
+  .addr input{flex:1;background:transparent;border:none;outline:none;color:#e6edf3;font:11.5px Consolas,monospace;padding:0 8px;min-width:0}
+  .addr.err{border-color:#b3444d}
+
+  /* ---- 命令条（删除/移动/重命名独立按钮 + 过滤） ---- */
+  .cmdbar{display:flex;align-items:center;gap:5px;margin:6px 10px 4px;flex:none}
+  .cbtn{display:inline-flex;align-items:center;gap:6px;background:#252526;border:1px solid #3c3c3c;border-radius:5px;padding:3px 10px;color:#ccc;font-size:11.3px;cursor:pointer;white-space:nowrap}
+  .cbtn:hover:not(.dis){border-color:#0078d4;color:#fff}
+  .cbtn.dis{opacity:.38;cursor:default}
+  .cbtn.danger:hover:not(.dis){border-color:#b3444d;color:#ffb9b3}
+  .cmdbar .sp{flex:1}
+  .cmdbar .flt{display:flex;align-items:center;gap:5px;background:#2a2a2a;border:1px solid #3c3c3c;border-radius:5px;height:24px;padding:0 8px;min-width:110px}
+  .cmdbar .flt input{background:none;border:none;outline:none;color:#e6edf3;font:11px "Segoe UI";width:90px}
+
+  .side-list{flex:1;overflow:auto;min-height:0;padding:0 0 10px}
+
+  /* ---- 详细信息视图 ---- */
+  table.det{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+  table.det th{position:sticky;top:0;background:#181818;text-align:left;font-size:11px;font-weight:600;color:#8b949e;padding:5px 8px;border-bottom:1px solid #2b2b2b;cursor:pointer;user-select:none;white-space:nowrap}
+  table.det th:hover{color:#e6edf3}
+  table.det th .arr{font-size:9px;margin-left:3px;color:#0078d4}
+  table.det th:last-child{text-align:right}
+  .colrs{position:absolute;right:-4px;top:4px;bottom:4px;width:9px;cursor:col-resize;z-index:6;display:flex;justify-content:center}
+  .colrs::after{content:"";width:2px;height:100%;background:transparent;border-radius:1px;transition:background .1s}
+  .colrs:hover::after,.colrs.on::after{background:#0078d4}
+  table.det td{padding:4px 8px;border-bottom:1px solid #222;color:#cccccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  table.det tr.row{cursor:default}
+  table.det tr.row:hover td{background:#2a2d2e}
+  table.det tr.row.sel td{background:#094771;color:#fff}
+  .nm{display:flex;align-items:center;gap:7px;max-width:200px}
+  .nm .ic{flex:none;width:16px;text-align:center;font-size:13px}
+  .nm .n{overflow:hidden;text-overflow:ellipsis}
+  td.dt,td.tp,td.sz{color:#9a9a9a;font-size:11.5px}
+  tr.sel td.dt,tr.sel td.tp,tr.sel td.sz{color:#cfe3f5}
+  .chaincol{font-size:10px;color:#d2baff;background:rgba(130,80,223,.18);border:1px solid #533480;border-radius:4px;padding:0 5px;line-height:15px;display:inline-block}
+  tr.sel .chaincol{color:#fff;border-color:#7c66c9}
+  .detsum{padding:7px 12px;font-size:10.5px;color:#6e7681}
+
+  /* ---- 文件夹（平铺）视图 ---- */
+  .grid{display:flex;flex-wrap:wrap;gap:2px;padding:6px 8px}
+  .card{width:92px;padding:9px 4px 7px;border-radius:6px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:default;position:relative}
+  .card:hover{background:#2a2d2e}
+  .card.sel{background:#094771}
+  .card .big{font-size:32px;line-height:1}
+  .card .cn{font-size:11px;color:#cccccc;max-width:86px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+  .card.sel .cn{color:#fff}
+  .card .cm{position:absolute;top:4px;right:8px;font-size:9px;color:#d2baff}
+  .card .cc{position:absolute;top:4px;left:8px;font-size:9px;color:#8b949e;background:#2a2d2eaa;border-radius:4px;padding:0 4px}
+
+  /* ---- 右区：文件头 ---- */
+  .fh{display:flex;align-items:center;gap:9px;padding:10px 16px;border-bottom:1px solid #2b2b2b;flex:none;flex-wrap:wrap}
+  .fh .fic{font-size:20px}
+  .fh .fnm{font-weight:600;color:#e6edf3;font-size:13.5px}
+  .fh .crumb{color:#8b949e;font-size:11.5px}
+  .chain{display:inline-flex;gap:4px;align-items:center;font-size:10.5px;color:#d2baff;background:rgba(130,80,223,.14);border:1px solid #533480;border-radius:5px;padding:1px 8px;max-width:100%;overflow:hidden;white-space:nowrap}
+  .chain .ar{color:#8b949e}
+  .chain b{color:#d2baff;font-weight:600}
+  .chain .cur{color:#7ee787}
+  .chain.off{opacity:.45}
+  .fh .sp{flex:1}
+  .fol{display:inline-flex;gap:6px;align-items:center;font-size:11px;color:#c9d1d9;cursor:pointer;background:#2a2a2a;border:1px solid #3c3c3c;border-radius:5px;padding:2px 9px}
+  .fol .sw{width:24px;height:13px;border-radius:7px;background:#0078d4;position:relative;display:inline-block;transition:.15s}
+  .fol .sw::after{content:"";position:absolute;right:2px;top:2px;width:9px;height:9px;border-radius:50%;background:#fff}
+  .fol.off .sw{background:#484f58}
+  .fol.off .sw::after{right:auto;left:2px}
+
+  /* ---- 移动横幅 ---- */
+  .mvbanner{display:flex;align-items:center;gap:10px;margin:10px 16px 0;padding:7px 12px;border:1px solid #8250df;background:#1d1626;border-radius:6px;font-size:12px;color:#d2baff;flex:none}
+  .mvbanner b{color:#e2d5ff}
+  .mvbanner .bbtn{background:#2a1e3d;border:1px solid #8250df;border-radius:4px;padding:2px 10px;font-size:11.5px;color:#d2baff;cursor:pointer;white-space:nowrap}
+  .mvbanner .bbtn.hero{background:#0078d4;border-color:#0078d4;color:#fff}
+  .mvbanner .bsp{flex:1}
+
+  /* ---- 多选摘要面板 ---- */
+  .mspanel{flex:1;min-height:0;display:none;flex-direction:column;padding:12px 16px;overflow:auto}
+  .mspanel.show{display:flex}
+  .mspanel h3{margin:2px 0 4px;font-size:14px;color:#e6edf3}
+  .mspanel .sub{font-size:11.5px;color:#8b949e;margin-bottom:10px}
+  .mspanel .ops{display:flex;gap:8px;margin:0 0 12px}
+  .mspanel .ops .cbtn{padding:5px 14px}
+  .mslist{background:#181818;border:1px solid #2b2b2b;border-radius:6px;font-size:12px}
+  .mslist .i{display:flex;align-items:center;gap:8px;padding:5px 12px;border-bottom:1px solid #222;color:#cccccc}
+  .mslist .i:last-child{border-bottom:none}
+  .mslist .i .p{margin-left:auto;color:#6e7681;font-size:10.5px;font-family:Consolas,monospace}
+
+  /* ---- 历史列表 ---- */
+  .hist-h{display:flex;align-items:center;gap:8px;padding:9px 16px 5px;color:#9a9a9a;font-size:11.5px;flex:none}
+  .hist-h .cnt{color:#e6edf3;font-weight:700}
+  .hist-h .folnote{font-size:10.5px;color:#d2baff}
+  .hist-h .sp{flex:1}
+  .hist-h .ops{font-size:11px;color:#6e7681}
+  .histwrap{flex:1;min-height:0;display:none;flex-direction:column}
+  .histwrap.show{display:flex}
+  .hist{flex:1;overflow:auto;min-height:0;padding-bottom:6px}
+  .hrow{display:flex;align-items:center;gap:9px;height:32px;padding:0 16px 0 12px;border-left:2px solid transparent;cursor:pointer}
+  .hrow:hover{background:#24282b}
+  .hrow.mile{background:rgba(130,80,223,.07);border-left-color:#8250df}
+  .hrow.mile:hover{background:rgba(130,80,223,.13)}
+  .ck{width:13px;height:13px;border:1px solid #55575c;border-radius:3px;flex:none;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;cursor:pointer;background:#1f1f1f}
+  .ck.on{background:#0078d4;border-color:#0078d4}
+  .tl{flex:none;width:26px;display:flex;justify-content:center;position:relative;align-items:center}
+  .tl::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1.5px;background:#1f6feb55;transform:translateX(-50%)}
+  .hrow.first .tl::before{top:16px}
+  .hrow.last .tl::before{bottom:16px}
+  .tl .dot{width:8px;height:8px;border-radius:50%;background:#0078d4;box-shadow:0 0 0 1.5px #1f1f1f;position:relative;z-index:1}
+  .hrow.mile .tl .dot{background:#8250df}
+  .hrow .msg{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e6edf3;font-size:12px}
+  .hrow .msg .mb{display:inline-flex;align-items:center;gap:4px;border-radius:4px;padding:0 6px;font-size:10px;font-weight:600;line-height:16px;background:rgba(130,80,223,.16);color:#d2baff;border:1px solid #533480;margin-right:7px;vertical-align:1px}
+  .era{flex:none;border-radius:4px;padding:0 6px;font-size:10px;font-weight:600;line-height:17px;background:#122033;color:#79b8ff;border:1px solid #1f4a75;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hrow .aut{flex:none;color:#8b949e;font-size:11px;width:72px;overflow:hidden;text-overflow:ellipsis}
+  .hrow .tim{flex:none;color:#8b949e;font-size:11px;width:58px;text-align:right}
+  .acts{flex:none;display:flex;gap:3px;margin-left:2px}
+  .acts .a{width:21px;height:20px;border:1px solid #3c3c3c;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:#bbb;background:#252526;cursor:pointer}
+  .acts .a:hover{border-color:#0078d4;color:#fff}
+  .detail-box{margin:0 16px 6px 49px;background:#181818;border:1px solid #2b2b2b;border-radius:6px;overflow:hidden}
+  .detail-box .dh{display:flex;align-items:center;gap:10px;padding:6px 12px;border-bottom:1px solid #232323;font-size:11px;color:#8b949e;flex-wrap:wrap}
+  .detail-box .dh b{color:#c9d1d9;font-weight:600}
+  .detail-box .dh .sha{font-family:Consolas,monospace;color:#79b8ff}
+  .detail-box .dh .sp{flex:1}
+  .detail-box .dl{padding:3px 0;font:11.5px/1.55 Consolas,"Courier New",monospace}
+  .detail-box .dl .r{display:flex;padding:0 12px;white-space:pre}
+  .detail-box .dl .r .no{width:26px;flex:none;color:#6e7681;text-align:right;padding-right:9px;user-select:none}
+  .detail-box .dl .add{background:rgba(26,127,55,.18);color:#b6f2c4}
+  .detail-box .dl .del{background:rgba(207,34,46,.14);color:#ffb1ab}
+  .detail-box .dl .ctx{color:#c9d1d9}
+  .detail-box .dl .hunk{color:#8b949e;padding:1px 12px}
+  .cmpbar{margin:4px 16px 12px;display:flex;align-items:center;gap:10px;background:#09477133;border:1px solid #2c6e9e;border-radius:6px;padding:6px 12px;font-size:11.5px;color:#b3d7ff;flex:none}
+  .cmpbar .btn{margin-left:auto;background:#0078d4;border:1px solid #0078d4;color:#fff;border-radius:5px;padding:3px 14px;font-size:11.5px;font-weight:600;cursor:pointer}
+  .cmpbar .btn:hover{background:#1064b8}
+  .cmpbar b{font-family:Consolas,monospace}
+
+  /* ---- 比对 diff 视图 ---- */
+  .diffwrap{flex:1;min-height:0;display:none;flex-direction:column}
+  .diffwrap.show{display:flex}
+  .dh2{display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid #2b2b2b;font-size:11.5px;color:#8b949e;flex:none;flex-wrap:wrap}
+  .dh2 .back{border:1px solid #3c3c3c;background:#252526;border-radius:5px;padding:3px 10px;color:#ccc;cursor:pointer}
+  .dh2 .back:hover{border-color:#0078d4;color:#fff}
+  .dh2 .pair{color:#c9d1d9}
+  .dh2 .pair b{color:#79b8ff;font-family:Consolas,monospace;font-weight:600}
+  .dh2 .pair .ar{color:#d2baff}
+  .dh2 .swap{border:1px solid #3c3c3c;background:#252526;border-radius:5px;padding:2px 8px;color:#9a9a9a;cursor:pointer;font-size:10.5px}
+  .dh2 .stat{margin-left:auto}
+  .dh2 .stat i{font-style:normal;color:#7ee787;font-weight:700}
+  .dh2 .stat em{font-style:normal;color:#ffb1ab;font-weight:700}
+  .diffbody{flex:1;overflow:auto;min-height:0;padding:4px 0;font:12px/1.6 Consolas,"Courier New",monospace}
+  .diffbody .r{display:flex;padding:0 16px;white-space:pre}
+  .diffbody .r .no{width:34px;flex:none;color:#6e7681;text-align:right;padding-right:11px;user-select:none}
+  .diffbody .add{background:rgba(26,127,55,.18);color:#b6f2c4}
+  .diffbody .del{background:rgba(207,34,46,.14);color:#ffb1ab}
+  .diffbody .ctx{color:#c9d1d9}
+  .diffbody .hunk{color:#8b949e;background:#161b22;padding:1px 16px}
+  .diffbody .fold{color:#6e7681;background:#161b22aa;padding:0 16px;font-size:11px}
+
+  /* ---- 编辑器 tab 场景 ---- */
+  .edwrap{flex:1;min-height:0;display:none;flex-direction:column;background:#1f1f1f}
+  .edwrap.show{display:flex}
+  .tabs{display:flex;background:#181818;border-bottom:1px solid #2b2b2b;flex:none}
+  .tab{display:flex;align-items:center;gap:7px;padding:7px 13px;font-size:11.8px;color:#9a9a9a;border-right:1px solid #2b2b2b;background:#181818;cursor:default}
+  .tab.on{color:#fff;background:#1f1f1f;border-top:1px solid #0078d4}
+  .tab .ro{font-size:9.5px;color:#e3b341;border:1px solid #9e6a03;border-radius:3px;padding:0 4px}
+  .tab .x{color:#6e7681;font-size:11px}
+  .robar{display:flex;align-items:center;gap:10px;margin:10px 14px 0;padding:7px 12px;background:#1d2a3d;border:1px solid #2c5c8a;border-radius:6px;font-size:11.5px;color:#a5cae8;flex:none;flex-wrap:wrap}
+  .robar b{font-family:Consolas,monospace;color:#79b8ff}
+  .robar .btn{margin-left:auto;background:#0078d4;border:1px solid #0078d4;color:#fff;border-radius:4px;padding:2px 11px;font-size:11px;cursor:pointer}
+  .robar .back2{border:1px solid #3c3c3c;background:#252526;border-radius:4px;padding:2px 10px;color:#ccc;cursor:pointer;font-size:11px}
+  .rodoc{padding:8px 16px;font:12.5px/1.7 Consolas,"Courier New",monospace;color:#c9d1d9;overflow:auto;flex:1;min-height:0}
+
+  /* ---- 右键菜单 ---- */
+  .menu{position:fixed;background:#252526;border:1px solid #454545;border-radius:6px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.5);min-width:210px;z-index:99;display:none}
+  .menu.show{display:block}
+  .menu .mi{display:flex;align-items:center;gap:9px;padding:5px 11px;border-radius:4px;font-size:11.8px;color:#cccccc;cursor:pointer}
+  .menu .mi:hover{background:#094771;color:#fff}
+  .menu .mi .k{margin-left:auto;color:#8b949e;font-size:10.5px}
+  .menu .sep{height:1px;background:#3c3c3c;margin:4px 6px}
+
+  /* ---- 确认对话框 / 重命名 / toast ---- */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:300}
+  .modal.show{display:flex}
+  .dlg{background:#252526;border:1px solid #454545;border-radius:8px;min-width:380px;max-width:460px;box-shadow:0 16px 40px rgba(0,0,0,.6);padding:16px 18px}
+  .dlg h4{margin:0 0 8px;font-size:13px;color:#e6edf3;display:flex;gap:8px;align-items:center}
+  .dlg .body{font-size:12px;color:#bbbbbb;line-height:1.6}
+  .dlg .body b{color:#ffb9b3}
+  .dlg .body code{font:11.5px Consolas,monospace;color:#79b8ff}
+  .dlg input{width:100%;margin-top:8px;background:#3c3c3c;border:1px solid #0078d4;border-radius:4px;color:#e6edf3;font:12px Consolas,monospace;padding:6px 9px;outline:none}
+  .dlg .ft{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+  .dlg .ft button{border-radius:5px;padding:4px 16px;font-size:11.8px;cursor:pointer;border:1px solid #3c3c3c;background:#2a2a2a;color:#ccc}
+  .dlg .ft button.hero{background:#0078d4;border-color:#0078d4;color:#fff}
+  .dlg .ft button.danger{background:#6e2226;border-color:#b3444d;color:#ffd9d5}
+  .toasts{position:fixed;right:16px;bottom:64px;display:flex;flex-direction:column;gap:8px;z-index:400}
+  .toast{background:#252526;border:1px solid #454545;border-left:3px solid #0078d4;border-radius:6px;padding:8px 14px;font-size:12px;color:#dddddd;box-shadow:0 8px 20px rgba(0,0,0,.4);max-width:380px;animation:tin .18s ease}
+  .toast.err{border-left-color:#b3444d}
+  .toast.ok{border-left-color:#238636}
+  @keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  /* ============ 底部预览控制条 ============ */
+  .ctrl{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:#252526ee;border:1px solid #454545;border-radius:10px;padding:8px 12px;display:flex;gap:6px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.5);z-index:200;max-width:96vw;flex-wrap:wrap;justify-content:center}
+  .ctrl .lb{font-size:10.5px;color:#8b949e;margin-right:2px}
+  .ctrl button{background:#2a2a2a;border:1px solid #3c3c3c;border-radius:6px;color:#ccc;font-size:11px;padding:4px 11px;cursor:pointer;white-space:nowrap}
+  .ctrl button:hover{border-color:#0078d4}
+  .ctrl button.on{background:#094771;border-color:#094771;color:#fff;font-weight:600}
+  .ctrl .hint{font-size:10.5px;color:#6e7681;margin-left:6px;max-width:340px}
+</style>
+</head>
+<body>
+<div class="win">
+  <div class="titlebar">
+    <span class="app"><span class="logo">G</span>GitBoard</span>
+    <span class="crumb">产品研发仓 — <b>main</b></span>
+    <span style="margin-left:auto;color:#484f58">─ &nbsp; □ &nbsp; ✕</span>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg">
+      <button>⎔ 提交图</button><button>☰ 纯提交</button><button>▣ 工作副本</button><button class="on">🗂 文件</button>
+    </div>
+    <span class="repo">🗂 <b>产品研发仓</b> ▾</span>
+    <span class="sp"></span>
+    <button class="tbtn">↓ 拉取</button><button class="tbtn">↑ 推送</button><button class="tbtn">⟳ 刷新</button>
+  </div>
+
+  <div class="body">
+    <!-- ================= 左区：资源管理器 ================= -->
+    <div class="side" id="sidePane">
+      <div class="side-h">
+        <span class="t">文件</span>
+        <span class="sp"></span>
+        <span class="vsw">
+          <button id="vTile" title="文件夹视图" onclick="setView('tile')">▦</button>
+          <button id="vDet" class="on" title="详细信息视图" onclick="setView('det')">☰</button>
+        </span>
+      </div>
+
+      <!-- 地址栏（面包屑 ⇄ 编辑态） -->
+      <div class="addr" id="addr" title="点击空白或按 Ctrl+L 编辑路径；粘贴路径回车可直接导航 / 打开文件">
+        <span class="ico">🗂</span>
+        <span id="crumbs"></span>
+        <span class="sp" onclick="addrEdit()"></span>
+        <button class="abtn" title="编辑地址（Ctrl+L）" onclick="addrEdit()">✎</button>
+        <button class="abtn" title="复制当前路径" onclick="toast('已复制：'+state.cwd, 'ok')">⧉</button>
+        <input id="addrInput" placeholder="输入仓库相对路径，如 B/A 或 B/A/需求说明.md" style="display:none"
+               onkeydown="if(event.key==='Enter')addrGo(this.value);if(event.key==='Escape')addrCancel()" onblur="setTimeout(()=>{if(document.activeElement!==this)addrCancel()},120)">
+      </div>
+
+      <!-- 命令条：删除 / 移动 / 重命名（独立按钮）+ 过滤 -->
+      <div class="cmdbar">
+        <button class="cbtn danger" id="btnDel" onclick="askDelete()">🗑 删除</button>
+        <button class="cbtn" id="btnMove" onclick="askMove()">✂ 移动到…</button>
+        <button class="cbtn" id="btnRen" onclick="askRename()">🗎 重命名 <span style="color:#6e7681">F2</span></button>
+        <button class="cbtn" onclick="toast('已复制 '+state.sel.size+' 个路径','ok')">⧉ 复制路径</button>
+        <span class="sp"></span>
+        <span class="flt">🔍 <input id="flt" placeholder="过滤当前目录…" oninput="renderDir()"></span>
+      </div>
+
+      <div class="side-list" id="sideList"></div>
+    </div>
+
+    <!-- 分隔条：拖拽调宽 + 记忆 -->
+    <div class="splitter" id="splitter" title="拖拽调整宽度（自动记忆）"><span class="tip">⟺</span></div>
+
+    <!-- ================= 右区：文件历史面板 ================= -->
+    <div class="main">
+      <!-- 文件头 -->
+      <div class="fh">
+        <span class="fic" id="fhIco">📝</span>
+        <span class="fnm" id="fhName">需求说明.md</span>
+        <span class="crumb" id="fhCrumb">B › A</span>
+        <span class="chain" id="chainBadge" title="该文件经历过 1 次重命名与 1 次移动，历史完整跟随">⛓ <b>需求草稿.md</b><span class="ar">→</span><b>A/需求说明.md</b><span class="ar">→</span><span class="cur">B/A/需求说明.md</span></span>
+        <span class="sp"></span>
+        <span class="fol" id="folBtn" onclick="toggleFollow()"><span class="sw"></span>跟随移动/重命名</span>
+      </div>
+
+      <!-- 移动引导横幅（场景④） -->
+      <div class="mvbanner" id="mvBanner" style="display:none">
+        <span>🗂</span>
+        <span>已完成移动：<b>A → B/A</b>（3 个文件）。建议<b>立即以纯移动内容提交</b>，保证历史可追溯。</span>
+        <span class="bsp"></span>
+        <span class="bbtn hero">按移动提交</span>
+        <span class="bbtn">忽略</span>
+      </div>
+
+      <!-- 多选摘要面板 -->
+      <div class="mspanel" id="msPanel"></div>
+
+      <!-- ===== 历史态 ===== -->
+      <div class="histwrap show" id="histWrap">
+        <div class="hist-h">
+          <span>提交记录</span><span class="cnt" id="histCount">6</span>
+          <span class="folnote" id="folNote">· 跟随 1 次重命名 + 1 次移动</span>
+          <span class="sp"></span>
+          <span class="ops">ⓘ 详情 · 📄 打开此版本 · ☑ 勾选两条比对</span>
+        </div>
+        <div class="hist" id="histList">
+          <div class="hrow first" data-era="cur">
+            <span class="ck" onclick="pick(this,event)"></span>
+            <span class="tl"><span class="dot"></span></span>
+            <span class="msg">补充分工表与排期</span>
+            <span class="aut">Emon</span><span class="tim">今天</span>
+            <span class="acts"><span class="a" title="查看详情" onclick="toggleDetail(event)">ⓘ</span><span class="a" title="打开此版本" onclick="goScene('ver');event.stopPropagation()">📄</span></span>
+          </div>
+          <div class="hrow mile" data-era="cur">
+            <span class="ck" onclick="pick(this,event)"></span>
+            <span class="tl"><span class="dot"></span></span>
+            <span class="msg"><span class="mb">⇢ A → B/A</span>归档：移动到 B</span>
+            <span class="aut">Emon</span><span class="tim">2 天前</span>
+            <span class="acts"><span class="a" title="查看详情" onclick="toggleDetail(event)">ⓘ</span><span class="a" title="打开此版本" onclick="goScene('ver');event.stopPropagation()">📄</span></span>
+          </div>
+          <div class="hrow open" data-era="a">
+            <span class="ck on" onclick="pick(this,event)"></span>
+            <span class="tl"><span class="dot"></span></span>
+            <span class="msg">补充验收标准</span>
+            <span class="era" title="当时路径：A/需求说明.md">A/</span>
+            <span class="aut">Emon</span><span class="tim">5 天前</span>
+            <span class="acts"><span class="a" title="查看详情" onclick="toggleDetail(event)">ⓘ</span><span class="a" title="打开此版本" onclick="goScene('ver');event.stopPropagation()">📄</span></span>
+          </div>
+          <!-- 详情展开块 -->
+          <div class="detail-box" id="detailBox">
+            <div class="dh">
+              <span>提交 <span class="sha">ab1340a</span> · <b>Emon</b> · 2026-08-24 16:20</span>
+              <span class="sp"></span>
+              <span>该文件此提交的变化 · 当时路径 <b style="font-family:Consolas">A/需求说明.md</b></span>
+            </div>
+            <div class="dl">
+              <div class="r hunk">@@ -12,3 +12,6 @@</div>
+              <div class="r ctx"><span class="no">12</span>## 验收方式</div>
+              <div class="r add"><span class="no">13</span>- 演示环境通过全部主流程用例</div>
+              <div class="r add"><span class="no">14</span>- 性能：列表滚动 60fps，首屏 &lt; 500ms</div>
+              <div class="r add"><span class="no">15</span>- 文档：结项报告归档至 B/A</div>
+            </div>
+          </div>
+          <div class="hrow mile" data-era="ren">
+            <span class="ck" onclick="pick(this,event)"></span>
+            <span class="tl"><span class="dot"></span></span>
+            <span class="msg"><span class="mb">⇢ 需求草稿.md → 需求说明.md</span>定稿重命名</span>
+            <span class="era" title="重命名前路径：A/需求草稿.md">需求草稿.md</span>
+            <span class="aut">Emon</span><span class="tim">6 天前</span>
+            <span class="acts"><span class="a" title="查看详情" onclick="toggleDetail(event)">ⓘ</span><span class="a" title="打开此版本" onclick="goScene('ver');event.stopPropagation()">📄</span></span>
+          </div>
+          <div class="hrow" data-era="ren">
+            <span class="ck on" onclick="pick(this,event)"></span>
+            <span class="tl"><span class="dot"></span></span>
+            <span class="msg">修改草稿：补充背景与目标</span>
+            <span class="era" title="当时路径：A/需求草稿.md">需求草稿.md</span>
+            <span class="aut">李四</span><span class="tim">8 天前</span>
+            <span class="acts"><span class="a" title="查看详情" onclick="toggleDetail(event)">ⓘ</span><span class="a" title="打开此版本" onclick="goScene('ver');event.stopPropagation()">📄</span></span>
+          </div>
+          <div class="hrow last" data-era="ren">
+            <span class="ck" onclick="pick(this,event)"></span>
+            <span class="tl"><span class="dot"></span></span>
+            <span class="msg">创建需求草稿</span>
+            <span class="era" title="当时路径：A/需求草稿.md">需求草稿.md</span>
+            <span class="aut">Emon</span><span class="tim">9 天前</span>
+            <span class="acts"><span class="a" title="查看详情" onclick="toggleDetail(event)">ⓘ</span><span class="a" title="打开此版本" onclick="goScene('ver');event.stopPropagation()">📄</span></span>
+          </div>
+        </div>
+        <div class="cmpbar" id="cmpBar">
+          <span>☑ 已选 2 个版本：<b>bfd8a96</b> ↔ <b>ab1340a</b>（跨重命名与移动时期）</span>
+          <button class="btn" onclick="goScene('diff')">比对差异</button>
+        </div>
+      </div>
+
+      <!-- ===== 比对态 ===== -->
+      <div class="diffwrap" id="diffWrap">
+        <div class="dh2">
+          <span class="back" onclick="goScene('hist')">⟵ 返回提交记录</span>
+          <span class="pair" id="diffPair"><b>bfd8a96</b> · A/需求草稿.md <span class="ar">⇢</span> <b>ab1340a</b> · A/需求说明.md</span>
+          <button class="swap" title="交换比对方向" onclick="toast('已交换比对方向（演示）')">⇄</button>
+          <span class="stat">1 file <em>−2</em> <i>+5</i></span>
+        </div>
+        <div class="diffbody">
+          <div class="r hunk">@@ -1,3 +1,6 @@ <span style="color:#6e7681">{需求草稿.md =&gt; 需求说明.md}</span></div>
+          <div class="r ctx"><span class="no">1</span># 需求草稿（v1）</div>
+          <div class="r del"><span class="no">2</span>## 背景</div>
+          <div class="r del"><span class="no">3</span>描述原始背景……</div>
+          <div class="r add"><span class="no">1</span># 需求说明</div>
+          <div class="r add"><span class="no">2</span>## 验收方式</div>
+          <div class="r add"><span class="no">3</span>- 演示环境通过全部主流程用例</div>
+          <div class="r add"><span class="no">4</span>## 里程碑</div>
+          <div class="r add"><span class="no">5</span>| 阶段 | 日期 | 状态 |</div>
+          <div class="r fold">⋯ 展开剩余 22 行 ⋯</div>
+        </div>
+      </div>
+
+      <!-- ===== 打开历史版本（模拟编辑器标签页） ===== -->
+      <div class="edwrap" id="edWrap">
+        <div class="tabs">
+          <span class="tab on">📝 需求说明.md <span style="font-family:Consolas">(bfd8a96)</span> <span class="ro">只读</span> <span class="x">✕</span></span>
+          <span class="tab">📝 需求说明.md</span>
+        </div>
+        <div class="robar">
+          <span class="back2" onclick="goScene('hist')">⟵ 返回文件历史</span>
+          <span>🕐 来自提交 <b>bfd8a96</b>（2026-08-21 · 李四）· 当时文件名 <b>A/需求草稿.md</b>（重命名前）</span>
+          <button class="btn">与当前版本比对</button>
+        </div>
+        <div class="rodoc"># 需求草稿（v1）<br>## 背景<br>描述原始背景……</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 右键菜单 -->
+<div class="menu" id="ctxMenu">
+  <div class="mi"><span>📄</span>打开<span class="k">双击</span></div>
+  <div class="mi"><span>🕐</span>查看历史<span class="k">单击选中</span></div>
+  <div class="mi" onclick="askRename()"><span>🗎</span>重命名<span class="k">F2</span></div>
+  <div class="mi" onclick="askMove()"><span>✂️</span>移动到…<span class="k">git mv</span></div>
+  <div class="mi" onclick="askDelete()"><span>🗑</span>删除<span class="k">Del</span></div>
+  <div class="menu sep"></div>
+  <div class="mi" onclick="toast('已复制路径（演示）','ok')"><span>📋</span>复制路径</div>
+  <div class="mi"><span>📂</span>在文件管理器中显示</div>
+</div>
+
+<!-- 确认/输入对话框 -->
+<div class="modal" id="modal">
+  <div class="dlg">
+    <h4 id="dlgTitle"></h4>
+    <div class="body" id="dlgBody"></div>
+    <input id="dlgInput" style="display:none" onkeydown="if(event.key==='Enter')dlgOk();if(event.key==='Escape')dlgClose()">
+    <div class="ft" id="dlgFt"></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<!-- 预览控制条 -->
+<div class="ctrl">
+  <span class="lb">场景</span>
+  <button id="sc-hist" class="on" onclick="goScene('hist')">① 浏览 · 历史</button>
+  <button id="sc-det" onclick="goScene('diff')">② 比对差异</button>
+  <button id="sc-ver" onclick="goScene('ver')">③ 打开历史版本</button>
+  <button id="sc-mv" onclick="goScene('mv')">④ 移动操作</button>
+  <span class="hint" id="hint"></span>
+</div>
+
+<script>
+/* ============ 数据（HEAD 快照演示） ============ */
+const FILES = {
+  'B/A':[
+    {n:'草稿',d:1,dt:'2026/8/27 16:40',tp:'文件夹',sz:'—',cnt:7},
+    {n:'需求说明.md',d:0,ic:'📝',dt:'2026/8/29 09:12',tp:'Markdown',sz:'12.4 KB',chain:1},
+    {n:'会议纪要.md',d:0,ic:'📝',dt:'2026/8/28 11:03',tp:'Markdown',sz:'6.1 KB'},
+    {n:'数据表.xlsx',d:0,ic:'📊',dt:'2026/8/28 15:47',tp:'Excel 工作表',sz:'48.2 KB'},
+    {n:'架构图.png',d:0,ic:'🖼',dt:'2026/8/26 10:21',tp:'PNG 图像',sz:'231 KB'},
+    {n:'结项报告.pdf',d:0,ic:'📕',dt:'2026/8/29 08:55',tp:'PDF 文档',sz:'1.2 MB'}],
+  'B':[
+    {n:'A',d:1,dt:'2026/8/29 09:12',tp:'文件夹',sz:'—',cnt:6,chain:1},
+    {n:'C',d:1,dt:'2026/8/29 10:02',tp:'文件夹',sz:'—',cnt:3}],
+  'docs':[
+    {n:'设计文档.md',d:0,ic:'📘',dt:'2026/8/20 14:31',tp:'Markdown',sz:'88 KB'}],
+  '':[
+    {n:'B',d:1,dt:'2026/8/29 10:02',tp:'文件夹',sz:'—',cnt:2},
+    {n:'docs',d:1,dt:'2026/8/20 14:31',tp:'文件夹',sz:'—',cnt:1},
+    {n:'README.md',d:0,ic:'📝',dt:'2026/8/18 09:00',tp:'Markdown',sz:'3.2 KB'}]
+};
+const FILE_PATHS = new Set(['B/A/需求说明.md','B/A/会议纪要.md','B/A/数据表.xlsx','B/A/架构图.png','B/A/结项报告.pdf','docs/设计文档.md','README.md']);
+const state = {cwd:'B/A', sel:new Set(), anchor:null, view:'det', follow:true, cols:null};
+
+/* ============ 列宽拖拽（详细信息视图，每列边界手柄）+ 记忆 ============ */
+(function(){
+  const KEY='gbFilesColsW';
+  try{ const s=localStorage.getItem(KEY); if(s) state.cols=JSON.parse(s); }catch{}
+  const MINS=[110,70,60,52];
+  document.getElementById('sideList').addEventListener('mousedown', e=>{
+    const h = e.target.closest('.colrs'); if(!h) return;
+    e.preventDefault(); e.stopPropagation();
+    const th = h.parentElement, i = +h.dataset.i;
+    const startX = e.clientX, startW = th.offsetWidth;
+    h.classList.add('on');
+    let noted=false;
+    const move = ev=>{
+      const w = Math.max(MINS[i], startW + (ev.clientX - startX));
+      th.style.width = w+'px';
+      if(state.cols) state.cols[i]=w;
+      if(!noted){ toast('松开后自动记忆列宽（演示 localStorage，实装为 globalState）'); noted=true; }
+    };
+    const up = ()=>{
+      window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up);
+      h.classList.remove('on');
+      if(!state.cols) state.cols = [...document.querySelectorAll('table.det th')].map(t=>t.offsetWidth);
+      localStorage.setItem(KEY, JSON.stringify(state.cols));
+    };
+    window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  });
+})();
+
+/* ============ 渲染左区 ============ */
+function renderDir(){
+  const list = (FILES[state.cwd]||[]).filter(x=>!state.fltv || x.n.toLowerCase().includes(state.fltv));
+  const el = document.getElementById('sideList');
+  if(state.view==='det'){
+    const heads = ['名称 <span class="arr">▲</span>','修改日期','类型','大小'];
+    el.innerHTML = `<table class="det"><thead><tr>` +
+      heads.map((t,i)=>`<th style="${state.cols?'width:'+state.cols[i]+'px':''}">${t}<span class="colrs" data-i="${i}" title="拖拽调整列宽（自动记忆）"></span></th>`).join('') +
+      `</tr></thead><tbody>` +
+      list.map(x=>`<tr class="row${state.sel.has(x.n)?' sel':''}${state.anchor===x.n?' anchor':''}" data-n="${x.n}">
+        <td><span class="nm"><span class="ic">${x.d?'📁':(x.ic||'📄')}</span><span class="n">${x.n}</span>${x.chain?'<span class="chaincol" style="margin-left:6px">⛓</span>':''}${x.cnt?`<span class="cnt2">${x.cnt} 项</span>`:''}</span></td>
+        <td class="dt">${x.dt}</td><td class="tp">${x.tp}</td><td class="sz" style="text-align:right">${x.sz}</td></tr>`).join('') +
+      `</tbody></table><div class="detsum">${list.length} 个项目${state.sel.size?` · 已选 ${state.sel.size} 项（Ctrl/Shift 多选）`:''}</div>`;
+  } else {
+    el.innerHTML = `<div class="grid">` +
+      list.map(x=>`<div class="card${state.sel.has(x.n)?' sel':''}${state.anchor===x.n?' anchor':''}" data-n="${x.n}">
+        <span class="big">${x.d?'📁':(x.ic||'📄')}</span><span class="cn">${x.n}</span>
+        ${x.cnt?`<span class="cc">${x.cnt}</span>`:''}${x.chain?'<span class="cm">⛓</span>':''}</div>`).join('') +
+      `</div><div class="detsum">双击进入文件夹 · 单击选中 · Ctrl/Shift 多选</div>`;
+  }
+  renderCrumbs(); syncCmd(); syncRight();
+}
+function renderCrumbs(){
+  const parts = state.cwd? state.cwd.split('/') : [];
+  let html = `<span class="c" data-p="" onclick="nav('')">🏠 仓库根</span>`;
+  let acc='';
+  parts.forEach(p=>{ acc = acc? acc+'/'+p : p;
+    html += `<span class="sep">›</span><span class="c${acc===state.cwd?' cur':''}" data-p="${acc}" onclick="nav('${acc}')">${p}</span>`; });
+  document.getElementById('crumbs').innerHTML = html;
+}
+
+/* ============ 导航与选择 ============ */
+function nav(p){ state.cwd=p; state.sel.clear(); state.anchor=null; renderDir(); }
+document.getElementById('sideList').addEventListener('click', e=>{
+  const t = e.target.closest('[data-n]'); if(!t) return;
+  const n = t.dataset.n, it = FILES[state.cwd].find(x=>x.n===n);
+  if(e.ctrlKey||e.metaKey){ state.sel.has(n)?state.sel.delete(n):state.sel.add(n); state.anchor=n; }
+  else if(e.shiftKey && state.anchor){
+    const arr = FILES[state.cwd].map(x=>x.n);
+    const a = arr.indexOf(state.anchor), b = arr.indexOf(n);
+    state.sel = new Set(arr.slice(Math.min(a,b), Math.max(a,b)+1));
+  } else { state.sel = new Set([n]); state.anchor=n; }
+  renderDir();
+});
+document.getElementById('sideList').addEventListener('dblclick', e=>{
+  const t = e.target.closest('[data-n]'); if(!t) return;
+  const it = FILES[state.cwd].find(x=>x.n===t.dataset.n);
+  if(it && it.d){ nav(state.cwd? state.cwd+'/'+it.n : it.n); }
+  else if(it){ toast('已在编辑器打开：'+it.n+'（演示）','ok'); }
+});
+document.addEventListener('keydown', e=>{
+  if(e.target.tagName==='INPUT') return;
+  if(e.key==='F2'){ e.preventDefault(); askRename(); }
+  if(e.key==='Delete'){ e.preventDefault(); askDelete(); }
+  if(e.ctrlKey && e.key.toLowerCase()==='l'){ e.preventDefault(); addrEdit(); }
+});
+
+/* ============ 地址栏 ============ */
+function addrEdit(){
+  const addr=document.getElementById('addr'), inp=document.getElementById('addrInput');
+  addr.classList.add('edit'); inp.style.display='block';
+  inp.value = state.cwd; setTimeout(()=>{inp.focus();inp.select();},0);
+}
+function addrCancel(){ const addr=document.getElementById('addr'),inp=document.getElementById('addrInput'); addr.classList.remove('edit','err'); inp.style.display='none'; }
+function addrGo(v){
+  const p = v.trim().replace(/^\/+|\/+$/g,'');
+  const addr=document.getElementById('addr');
+  if(!p || FILES[p]!==undefined){ nav(p||''); addrCancel(); toast('已导航到：'+(p||'仓库根'),'ok'); return; }
+  if(FILE_PATHS.has(p)){
+    const dir = p.includes('/')? p.slice(0,p.lastIndexOf('/')) : '';
+    const name = p.slice(p.lastIndexOf('/')+1);
+    nav(dir); state.sel=new Set([name]); state.anchor=name; renderDir(); addrCancel();
+    toast('已定位并选中：'+name+'（同时在编辑器打开）','ok'); return;
+  }
+  addr.classList.add('err'); toast('路径不存在：'+p,'err'); setTimeout(()=>addr.classList.remove('err'),900);
+}
+
+/* ============ 命令条 ============ */
+function syncCmd(){
+  const n = state.sel.size, one = n===1;
+  document.getElementById('btnDel').classList.toggle('dis', !n);
+  document.getElementById('btnMove').classList.toggle('dis', !n);
+  document.getElementById('btnRen').classList.toggle('dis', !one);
+}
+function selItems(){ return (FILES[state.cwd]||[]).filter(x=>state.sel.has(x.n)); }
+function askDelete(){
+  if(!state.sel.size) return;
+  const its = selItems(), n = its.length;
+  dlg('🗑 删除确认', `将删除 <b>${n} 个项目</b>：${its.map(x=>'<code>'+x.n+'</code>').join('、')}<br>
+    已跟踪文件执行 <code>git rm</code>（进入待提交状态，可随时在提交前恢复）；未跟踪文件从磁盘删除。`,
+    [{t:'取消'},{t:'删除',cls:'danger',cb:()=>{ toast(`已删除 ${n} 项（git rm，待提交）`,'ok'); state.sel.clear(); renderDir(); }}]);
+}
+function askMove(){
+  if(!state.sel.size) return;
+  toast(`选择目标目录 → git mv ${state.sel.size} 个项目（演示，完成后引导纯移动提交）`);
+}
+function askRename(){
+  if(state.sel.size!==1) { toast('请先选中一个文件或文件夹','err'); return; }
+  const name = [...state.sel][0];
+  dlg('🗎 重命名', `将 <code>${name}</code> 重命名为（同目录 <code>git mv</code>，历史自动跟随）：`, 
+    [{t:'取消'},{t:'重命名',cls:'hero',input:name,cb:v=>{
+      if(!v||v===name){ toast('名称未变化'); return; }
+      toast(`已重命名：${name} → ${v}（引导纯重命名提交，保证 R100 识别）`,'ok');
+      state.sel = new Set([v]); renderDir();
+    }}]);
+}
+/* 对话框 */
+function dlg(title, body, btns){
+  document.getElementById('dlgTitle').innerHTML = title;
+  document.getElementById('dlgBody').innerHTML = body;
+  const ft = document.getElementById('dlgFt'); ft.innerHTML='';
+  const inp = document.getElementById('dlgInput'); inp.style.display='none'; inp.value='';
+  btns.forEach(b=>{
+    if(b.input!==undefined){ inp.style.display='block'; inp.value=b.input; }
+    const el=document.createElement('button'); el.textContent=b.t; if(b.cls) el.className=b.cls;
+    el.onclick=()=>{ dlgClose(); if(b.cb) b.cb(inp.style.display!=='none'?inp.value:undefined); };
+    ft.appendChild(el);
+  });
+  document.getElementById('modal').classList.add('show');
+  if(inp.style.display!=='none') setTimeout(()=>inp.select(),50);
+}
+function dlgClose(){ document.getElementById('modal').classList.remove('show'); }
+document.getElementById('modal').addEventListener('click',e=>{ if(e.target.id==='modal') dlgClose(); });
+/* toast */
+function toast(msg, cls){
+  const t=document.createElement('div'); t.className='toast'+(cls?' '+cls:''); t.innerHTML=msg;
+  document.getElementById('toasts').appendChild(t); setTimeout(()=>t.remove(), 2600);
+}
+
+/* ============ 右区联动 ============ */
+function syncRight(){
+  const n = state.sel.size;
+  const single = n===1 ? selItems()[0] : null;
+  document.getElementById('histWrap').classList.toggle('show', !!single && scene==='hist' || !!single && scene==='mv');
+  const ms = document.getElementById('msPanel');
+  if(n>1){
+    ms.classList.add('show');
+    ms.innerHTML = `<h3>已选择 ${n} 个项目</h3><div class="sub">多选模式：可批量删除、移动；单击任意项恢复单选（查看历史）</div>
+      <div class="ops"><button class="cbtn danger" onclick="askDelete()">🗑 删除（${n}）</button><button class="cbtn" onclick="askMove()">✂ 移动到…（${n}）</button></div>
+      <div class="mslist">` + selItems().map(x=>`<div class="i"><span>${x.d?'📁':(x.ic||'📄')}</span>${x.n}<span class="p">${state.cwd?state.cwd+'/':''}${x.n}</span></div>`).join('') + `</div>`;
+  } else { ms.classList.remove('show'); }
+  if(single){
+    document.getElementById('fhIco').textContent = single.d?'📁':(single.ic||'📄');
+    document.getElementById('fhName').textContent = single.n;
+    document.getElementById('fhCrumb').textContent = state.cwd.replace(/\//g,' › ')||'仓库根';
+  }
+}
+
+/* ============ 视图 / 场景 / 历史交互 ============ */
+function setView(v){
+  state.view=v; renderDir();
+  document.getElementById('vDet').classList.toggle('on',v==='det');
+  document.getElementById('vTile').classList.toggle('on',v==='tile');
+}
+let scene='hist';
+function goScene(s){
+  scene=s;
+  const single = state.sel.size===1;
+  document.getElementById('histWrap').classList.toggle('show', (s==='hist'||s==='mv') && single);
+  document.getElementById('diffWrap').classList.toggle('show', s==='diff');
+  document.getElementById('edWrap').classList.toggle('show', s==='ver');
+  document.getElementById('mvBanner').style.display = (s==='mv') ? 'flex' : 'none';
+  document.getElementById('hint').innerHTML = {
+    hist:'左区 ▦/☰ 双视图；<b style="color:#bbb">Ctrl/Shift 多选</b>（右区变批量面板）；地址栏可<b style="color:#bbb">输入/粘贴路径</b>回车导航或打开文件；分隔条可拖宽并记忆',
+    diff:'两版比对（blob 级）：勾选的两版本分属「重命名前/后」时期，各自取当时文件名与路径——跨改名、跨移动均有效',
+    ver:'打开指定提交的版本：只读标签页。示例为<b style="color:#bbb">重命名前</b>的最早版本（当时名 A/需求草稿.md）——重命名前的历史同样完整可见',
+    mv:'移动操作：文件/文件夹多选 →「移动到…」批量 git mv → 横幅引导<b style="color:#d2baff">纯移动单独成提交</b>；重命名走 F2（同为 git mv）'
+  }[s];
+  ['hist','diff','ver','mv'].forEach(k=>{ const b=document.getElementById('sc-'+k); if(b) b.classList.remove('on'); });
+  const map={diff:'det',mv:'mv'}; const b=document.getElementById('sc-'+(map[s]||s)); if(b) b.classList.add('on');
+}
+/* 勾选比对 */
+function pick(el,ev){
+  ev.stopPropagation();
+  const on = el.classList.contains('on');
+  const picked = document.querySelectorAll('.ck.on');
+  if(!on && picked.length>=2){ picked[0].classList.remove('on'); }
+  el.classList.toggle('on');
+  const now = document.querySelectorAll('.ck.on');
+  const bar = document.getElementById('cmpBar');
+  if(now.length===2){
+    bar.style.visibility='visible';
+    const shas=['1ac9fa5','7f8077f','ab1340a','79590f1','bfd8a96','59a45dd'];
+    const paths=['B/A/需求说明.md','B/A/需求说明.md','A/需求说明.md','A/需求说明.md','A/需求草稿.md','A/需求草稿.md'];
+    const rows=[...document.querySelectorAll('.hrow')];
+    const i1=rows.indexOf(now[0].closest('.hrow')), i2=rows.indexOf(now[1].closest('.hrow'));
+    bar.firstElementChild.innerHTML=`☑ 已选 2 个版本：<b>${shas[i1]}</b> ↔ <b>${shas[i2]}</b>${(paths[i1]!==paths[i2])?'（跨重命名/移动时期）':''}`;
+    document.getElementById('diffPair').innerHTML=`<b>${shas[i1]}</b> · ${paths[i1]} <span class="ar">⇢</span> <b>${shas[i2]}</b> · ${paths[i2]}`;
+  } else { bar.style.visibility='hidden'; }
+}
+/* 详情展开 */
+const detailBox=document.getElementById('detailBox'); detailBox.style.display='none';
+function toggleDetail(ev){ ev.stopPropagation(); detailBox.style.display = detailBox.style.display==='none'?'block':'none'; }
+/* 跟随开关 */
+function toggleFollow(){
+  state.follow=!state.follow;
+  document.getElementById('folBtn').classList.toggle('off',!state.follow);
+  document.getElementById('chainBadge').classList.toggle('off',!state.follow);
+  document.querySelectorAll('.hrow').forEach(r=>{ if(r.dataset.era!=='cur') r.style.display = state.follow?'':'none'; });
+  document.getElementById('folNote').textContent = state.follow ? '· 跟随 1 次重命名 + 1 次移动' : '· 已关闭跟随（仅当前路径时期）';
+  document.getElementById('histCount').textContent = state.follow ? 6 : 2;
+  const rows=[...document.querySelectorAll('.hrow')];
+  rows.forEach((r,idx)=>{ r.classList.toggle('first',idx===0); r.classList.toggle('last',idx===rows.length-1); });
+}
+/* 右键菜单 */
+const menu=document.getElementById('ctxMenu');
+document.addEventListener('contextmenu',e=>{
+  const inSide = e.target.closest('.side');
+  if(inSide){ e.preventDefault(); menu.style.left=(e.clientX+2)+'px'; menu.style.top=(e.clientY+2)+'px'; menu.classList.add('show'); }
+});
+document.addEventListener('click',e=>{ if(!e.target.closest('.menu')) menu.classList.remove('show'); });
+
+/* ============ 分隔条：拖拽调宽 + 记忆 ============ */
+(function(){
+  const sp=document.getElementById('splitter'), side=document.getElementById('sidePane');
+  const KEY='gbFilesPaneW';
+  const saved=localStorage.getItem(KEY);
+  if(saved){ side.style.width=Math.min(640,Math.max(280,parseInt(saved)))+'px'; }
+  let drag=false, noted=false;
+  sp.addEventListener('mousedown',e=>{ drag=true; sp.classList.add('on'); e.preventDefault(); document.body.style.userSelect='none'; });
+  window.addEventListener('mousemove',e=>{ if(!drag) return;
+    const w=Math.min(640,Math.max(280,e.clientX));
+    side.style.width=w+'px';
+    if(!noted){ toast('松开后自动记忆宽度（演示用 localStorage，实装为 globalState）'); noted=true; }
+  });
+  window.addEventListener('mouseup',()=>{ if(!drag) return; drag=false; sp.classList.remove('on'); document.body.style.userSelect='';
+    localStorage.setItem(KEY, parseInt(side.style.width)||388);
+  });
+})();
+
+/* ============ 初始化 ============ */
+state.sel=new Set(['需求说明.md']); state.anchor='需求说明.md';
+renderDir(); goScene('hist');
+</script>
+</body>
+</html>

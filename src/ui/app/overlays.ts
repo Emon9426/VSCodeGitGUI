@@ -53,7 +53,8 @@ export function closeContextMenu(): void {
 
 // ---------------- 对话框 ----------------
 
-function openModal(title: string): { box: HTMLElement; body: HTMLElement; close: () => void } {
+/** 通用模态骨架（标题 + 可滚动 body；close 移除浮层）。提交摘要等自定义弹窗复用。 */
+export function openModal(title: string): { box: HTMLElement; body: HTMLElement; close: () => void } {
   const overlay = el('div', 'gg-modal-overlay');
   const box = el('div', 'gg-modal');
   const head = el('div', 'gg-modal-title', title);

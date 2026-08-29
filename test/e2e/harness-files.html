@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>files-e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<!-- mock VS Code API：必须先于 webview.js 定义 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.__sentFind = (cmd) => window.__sent.filter(m => m && m.cmd === cmd);
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => {
+      window.__sent.push(m);
+      // 请求-响应：对 files.* 命令同步回放 mock 数据（window.__mock[cmd] 或函数）
+      if (m.id !== undefined && m.cmd && window.__mock && window.__mock[m.cmd] !== undefined) {
+        const data = typeof window.__mock[m.cmd] === 'function' ? window.__mock[m.cmd](m.args ?? {}) : window.__mock[m.cmd];
+        window.__send({ t: 'res', id: m.id, ok: true, data });
+      }
+    },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * harness-files（v0.14.1）：文件页 UI 交互链路。
+ * 场景：① 第四视图切换 + 自动拉目录 → ② 详细信息/文件夹双视图 → ③ 选中联动历史（链徽标/里程碑/时期徽标）
+ * → ④ 勾选两条 → 比对 diff 视图 → 返回 → ⑤ 多选批量面板 → ⑥ 详情就地展开 → ⑦ 地址栏导航 → ⑧ 侧栏折叠。
+ * mock 数据在 window.__mock（files.ls / files.log），rpc 即发即收。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const ok = [];
+  const bad = [];
+  const assert = (name, cond) => (cond ? ok : bad).push(name);
+
+  // ---- mock 数据 ----
+  const ITEMS = [
+    { name: '草稿', path: 'B/A/草稿', isDir: true, count: 3, mtime: '2026-08-27T08:40:00Z' },
+    { name: '需求说明.md', path: 'B/A/需求说明.md', isDir: false, size: 12698, mtime: '2026-08-29T01:12:00Z', gitSize: 12698 },
+    { name: '架构图.png', path: 'B/A/架构图.png', isDir: false, size: 236544, mtime: '2026-08-26T02:21:00Z' },
+  ];
+  const hist = (sha, subj, path, extra = {}) => ({
+    sha: sha + 'f'.repeat(39), shortSha: (sha + 'fffff').slice(0, 7), subject: subj, author: '李四',
+    date: '2026-08-2' + sha[1] + 'T10:00:00+08:00', path, status: 'M', ...extra,
+  });
+  const HIST = [
+    hist('a1', '终稿更新', 'B/A/需求说明.md'),
+    hist('a2', '归档：移动到 B', 'B/A/需求说明.md', { status: 'R', oldPath: 'A/需求说明.md', milestone: true }),
+    hist('a3', '补充验收', 'A/需求说明.md', { eraPrefix: 'A/需求说明.md' }),
+    hist('a4', '重命名定稿', 'A/需求说明.md', { status: 'R', oldPath: 'A/需求草稿.md', eraPrefix: 'A/需求说明.md', milestone: true }),
+    hist('a5', '创建草稿', 'A/需求草稿.md', { status: 'A', eraPrefix: 'A/需求草稿.md' }),
+  ];
+  const CHAIN = { segments: [
+    { prefix: 'B/A/需求说明.md', endSha: 'a2' + 'f'.repeat(39) },
+    { prefix: 'A/需求说明.md', endSha: 'a4' + 'f'.repeat(39) },
+    { prefix: 'A/需求草稿.md' },
+  ] };
+  window.__mock = {
+    'files.ls': () => ({ kind: 'dir', items: ITEMS }),
+    'files.log': () => ({ items: HIST, chain: CHAIN }),
+    'files.dirLog': () => ({ items: HIST, chain: CHAIN }),
+    'files.commitDiff': () => ({ kind: 'diff', diff: { hunks: [{ header: '@@ -1 +1,2 @@', oldStart: 1, newStart: 1, lines: [
+      { kind: 'ctx', oldNo: 1, newNo: 1, text: '第一行' },
+      { kind: 'add', newNo: 2, text: '新增行' },
+    ] }], truncated: false } }),
+    'files.versionDiff': () => ({ kind: 'diff', diff: { hunks: [{ header: '@@ -1 +1 @@', oldStart: 1, newStart: 1, lines: [
+      { kind: 'del', oldNo: 1, text: '旧内容' },
+      { kind: 'add', newNo: 1, text: '新内容' },
+    ] }], truncated: false } }),
+  };
+
+  // 1. bootstrap → ready
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+  window.__send({
+    t: 'ready',
+    config: { language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved', graphColumnWidth: 180,
+      maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom', commitPageSize: 500, maxAutoLoad: 20000,
+      fetchOnOpen: false, fetchPrune: true, defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false,
+      aiLanguage: 'auto', aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph' },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', version: 'e2e',
+  });
+  window.__send({ t: 'repoState', state: {
+    repoId: 'r1', head: { sha: 'a'.repeat(40), branch: 'main', detached: false },
+    branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'a'.repeat(40), isHead: true }],
+    remotes: [], tags: [], status: { dirtyCount: 0 }, filterRef: null,
+    logFilter: { authors: [], since: '', until: '', noMerges: false },
+    commits: [], commitsLoaded: 0, hasMore: false, stateVersion: 1,
+  } });
+  await twoFrames();
+
+  // 2. 切到文件视图 → 自动拉根目录 → 面包屑导航到 B/A
+  const segBtns = () => [...document.querySelectorAll('.gg-viewseg-btn')];
+  const filesBtn = segBtns().find(b => b.textContent.includes('文件'));
+  assert('第四视图按钮存在', !!filesBtn);
+  filesBtn.click();
+  await sleep(300);
+  assert('文件视图激活', !document.querySelector('.gg-files-wrap').classList.contains('hidden'));
+  assert('地址栏渲染', !!document.querySelector('.gg-files-addr'));
+  assert('命令条渲染（删除/移动/重命名）', /删除/.test(document.querySelector('.gg-files-cmdbar').textContent) && /移动/.test(document.querySelector('.gg-files-cmdbar').textContent));
+  await sleep(300);   // files.ls mock 响应后列表渲染
+  assert('详细信息表格行数=3', document.querySelectorAll('.gg-files-table .gg-files-row').length === 3);
+  assert('目录优先排前', document.querySelector('.gg-files-table .gg-files-row .gg-files-nm-t').textContent === '草稿');
+  assert('大小列人类可读（231.0 KB）', /231\.0 KB/.test(document.querySelector('.gg-files-table').textContent));
+
+  // 3. 双视图切换
+  document.querySelector('.gg-files-vsw button:nth-child(1)').click();   // ▦ 平铺
+  await twoFrames();
+  assert('平铺视图卡片=3', document.querySelectorAll('.gg-files-card').length === 3);
+  document.querySelector('.gg-files-vsw button:nth-child(2)').click();   // ☰ 详细
+  await twoFrames();
+  assert('切回详细信息', document.querySelectorAll('.gg-files-table .gg-files-row').length === 3);
+
+  // 4. 选中文件 → 历史面板（链徽标 / 里程碑 / 时期徽标 / 计数 5）
+  const rowFile = [...document.querySelectorAll('.gg-files-row')].find(r => r.textContent.includes('需求说明.md'));
+  rowFile.click();
+  await sleep(400);
+  assert('右区文件头显示文件名', document.querySelector('.gg-fp-name').textContent === '需求说明.md');
+  const chainText = document.querySelector('.gg-fp-chain').textContent;
+  assert('链徽标三段（草稿→说明→B/A）', chainText.includes('需求草稿.md') && chainText.includes('需求说明.md'));
+  assert('历史行数=5', document.querySelectorAll('.gg-fp-row').length === 5);
+  assert('里程碑行=2', document.querySelectorAll('.gg-fp-row.mile').length === 2);
+  assert('时期徽标存在（A/）', document.querySelector('.gg-fp-era') !== null);
+  assert('计数=5', document.querySelector('.gg-fp-cnt').textContent === '5');
+  // 跟随开关关闭 → 仅当前段 2 条
+  document.querySelector('.gg-fp-fol').click();
+  await sleep(400);
+  assert('关闭跟随后行数=2', document.querySelectorAll('.gg-fp-row').length === 2);
+  document.querySelector('.gg-fp-fol').click();
+  await sleep(400);
+  assert('重开跟随行数=5', document.querySelectorAll('.gg-fp-row').length === 5);
+
+  // 5. 勾选两条 → 比对条 → diff 视图 → 返回
+  const cks = [...document.querySelectorAll('.gg-fp-ck')];
+  cks[4].click(); cks[0].click();   // 最早 ↔ 最新
+  await twoFrames();
+  assert('比对条出现（两个短sha）', /已选 2 个版本/.test(document.querySelector('.gg-fp-cmpbar').textContent));
+  document.querySelector('.gg-fp-cmpbtn').click();
+  await sleep(300);
+  assert('diff 视图激活', !document.querySelector('.gg-fp-diff').classList.contains('hidden'));
+  assert('diff 头含两版路径', document.querySelector('.gg-fp-pair').textContent.includes('A/需求草稿.md') && document.querySelector('.gg-fp-pair').textContent.includes('B/A/需求说明.md'));
+  assert('diff 正文渲染增删行', document.querySelector('.gg-fp-diff .gg-dl.add, .gg-fp-diffbody .add') !== null || document.querySelector('.gg-fp-diffbody').textContent.includes('新内容'));
+  document.querySelector('.gg-fp-back').click();
+  await twoFrames();
+  assert('返回历史列表', document.querySelectorAll('.gg-fp-row').length === 5);
+
+  // 6. 详情就地展开（ⓘ → commitDiff mock）
+  const infoBtns = [...document.querySelectorAll('.gg-fp-act')].filter(b => b.textContent === 'ⓘ');
+  infoBtns[0].click();
+  await sleep(300);
+  assert('详情块展开', document.querySelector('.gg-fp-detail') !== null);
+  assert('详情含当时路径', document.querySelector('.gg-fp-detail').textContent.includes('当时路径'));
+  infoBtns[0].click();
+  await twoFrames();
+  assert('详情收起', document.querySelector('.gg-fp-detail') === null);
+
+  // 7. 多选批量面板（renderList 每次点击后重建 DOM——必须每次重取行；先重置第 4 步残留的单选）
+  const q = (sel) => [...document.querySelectorAll(sel)];
+  q('.gg-files-row')[1].click();
+  await sleep(300);
+  q('.gg-files-row')[0].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));   // 已选1 + ctrl 1 = 2
+  await twoFrames();
+  assert('多选面板出现', !document.querySelector('.gg-fp-multi').classList.contains('hidden'));
+  assert('批量按钮（删除2/移动2）', /删除（2）/.test(document.querySelector('.gg-fp-multi').textContent) && /移动到…（2）/.test(document.querySelector('.gg-fp-multi').textContent));
+  q('.gg-files-row')[2].click();   // 单选恢复（重取；ctrl 再点已选行是取消语义，故用普通点击换行）
+  await sleep(300);
+  assert('单选恢复历史面板', !document.querySelector('.gg-fp-hist').classList.contains('hidden'));
+
+  // 8. 地址栏编辑态：导航到 B/A（面包屑）
+  document.querySelector('.gg-files-addr-space').click();
+  await sleep(50);
+  const addrInput = document.querySelector('.gg-files-addr-input');
+  assert('地址栏进入编辑态', document.querySelector('.gg-files-addr').classList.contains('edit') && addrInput.style.display !== 'none');
+  addrInput.value = 'B/A';
+  addrInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await sleep(300);
+  assert('地址栏导航后面包屑=B/A', document.querySelector('.gg-files-crumbs').textContent.includes('B') && document.querySelector('.gg-files-crumbs').textContent.includes('A'));
+
+  // 8b. 面包屑布局回归（v0.14.4 根因修复）：导航进子目录后所有 crumb 项必须同一水平线
+  // （容器 gg-files-crumbs 此前无 flex 规则，crumb 项命中 display:flex 变块级各占一行 → 🏠/›/名 垂直堆叠）
+  {
+    const crumbsBox = document.querySelector('.gg-files-crumbs');
+    const cs = getComputedStyle(crumbsBox);
+    const items = [...crumbsBox.querySelectorAll('.gg-files-crumb')];
+    const rects = items.map(c => c.getBoundingClientRect());
+    const ys = [...new Set(rects.map(r => Math.round(r.y)))];
+    const addrRect = document.querySelector('.gg-files-addr').getBoundingClientRect();
+    assert('面包屑容器为 flex 行', cs.display === 'flex' && cs.flexDirection === 'row');
+    assert('面包屑多项同行（≥3 项且 y 唯一）', items.length >= 3 && ys.length === 1,
+      `items=${items.length} ys=${JSON.stringify(ys)}`);
+    assert('面包屑全部落在地址栏行内', rects.every(r => r.y >= addrRect.y && r.y + r.height <= addrRect.y + addrRect.height + 1));
+    assert('文件夹名在房子右侧（x 递增）', rects.length >= 3 && rects[1].x > rects[0].x && rects[2].x > rects[1].x);
+  }
+
+  // 8c. 地址栏绝对路径（v0.14.5 根因修复）：资源管理器「复制文件地址」形态（带引号+反斜杠）→ 换算仓库相对后导航
+  {
+    const ai = document.querySelector('.gg-files-addr-input');
+    document.querySelector('.gg-files-addr-space').click();
+    await sleep(50);
+    ai.value = '"D:\\demo\\B"';
+    ai.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await sleep(300);
+    const lastLs = window.__sentFind('files.ls').pop();
+    assert('绝对路径换算为相对（files.ls dir=B）', !!lastLs && lastLs.args && lastLs.args.dir === 'B', JSON.stringify(lastLs && lastLs.args));
+    assert('绝对路径导航后面包屑=🏠›B', document.querySelector('.gg-files-crumbs').textContent === '🏠›B');
+  }
+  // 8d. 绝对路径=仓库根 → 回根目录
+  {
+    const ai = document.querySelector('.gg-files-addr-input');
+    document.querySelector('.gg-files-addr-space').click();
+    await sleep(50);
+    ai.value = 'D:\\demo';
+    ai.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await sleep(300);
+    assert('绝对路径=仓库根 → 回根（仅🏠）', document.querySelectorAll('.gg-files-crumbs .gg-files-crumb').length === 1);
+  }
+  // 8e. 越仓绝对路径 → 明确报错（红框 + toast 提示仓库根），不再是"无信息红框"
+  {
+    const ai = document.querySelector('.gg-files-addr-input');
+    document.querySelector('.gg-files-addr-space').click();
+    await sleep(50);
+    ai.value = 'E:\\elsewhere\\x';
+    ai.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await sleep(300);
+    const addrEl = document.querySelector('.gg-files-addr');
+    const toastEl = document.querySelector('.gg-toast');
+    assert('越仓路径 → 地址栏红框', addrEl.classList.contains('err'));
+    assert('越仓路径 → toast 明确提示仓库根', !!toastEl && /仓库根|repo root/i.test(toastEl.textContent) && toastEl.textContent.includes('D:/demo'));
+    if (toastEl) toastEl.remove();   // 清场，避免影响后续断言
+  }
+
+  // 9. 侧栏折叠（v0.14.1）
+  const sideToggle = document.querySelector('.gg-side-toggle');
+  const side = document.querySelector('.gg-side');
+  const edge = document.querySelector('.gg-side-edge');
+  sideToggle.click();
+  await twoFrames();
+  const collapsed = getComputedStyle(side).display === 'none' && !edge.classList.contains('hidden');
+  edge.click();
+  await twoFrames();
+  assert('侧栏折叠→把手→展开', collapsed && getComputedStyle(side).display !== 'none');
+
+  finish(bad.length ? `FAIL: ${bad.join(' | ')}` : `PASS (${ok.length})`);
+
+  function finish(msg) {
+    window.__result = msg;
+    document.title = 'files-e2e:' + msg;
+  }
+})();
+</script>
+</body>
+</html>

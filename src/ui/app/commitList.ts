@@ -21,6 +21,8 @@ export interface CommitList {
   selectionChanged(): void;
   /** 行高/列宽/语言等配置变化（列头与空态文案随 S.t 重建） */
   configChanged(): void;
+  /** 视图切换（graph ⇄ pure：图形列在完整拓扑与窄时间线之间切换） */
+  viewChanged(): void;
 }
 
 type ColKey = 'graph' | 'msg' | 'author' | 'sha';
@@ -60,7 +62,12 @@ export function createCommitList(app: App): CommitList {
   const total = () => S.commits.length * rowHeight() + (S.commits.length ? FOOTER_H : 0);
 
   function applyWidths(): void {
+    canvas.setPure(S.view === 'pure');   // 纯提交：Canvas 切时间线模式（固定窄列）
     canvas.setUserGraphWidth(S.colWidths.graph);
+    const pure = S.view === 'pure';
+    wrap.classList.toggle('pure', pure);
+    // 表头首格保留占位（grid 五列固定）：pure 置空文案而非 display:none，防列错位
+    headCells[0].firstChild!.textContent = pure ? '' : S.t('colGraph');
     wrap.style.setProperty('--c-graph', `${canvas.graphWidth}px`);
     wrap.style.setProperty('--c-msg', `${S.colWidths.msg}px`);
     wrap.style.setProperty('--c-author', `${S.colWidths.author}px`);
@@ -108,7 +115,7 @@ export function createCommitList(app: App): CommitList {
     empty.classList.toggle('show', showEmpty);
     if (showEmpty) {
       // 区分"仓库无提交"与"筛选无结果"
-      const filtered = !!(S.state?.filterRef || S.logFilter.author || S.logFilter.since || S.logFilter.until);
+      const filtered = !!(S.state?.filterRef || S.logFilter.authors.length || S.logFilter.since || S.logFilter.until);
       const title = S.t(filtered ? 'noMatches' : 'noCommits');
       if (emptyTitle.textContent !== title) emptyTitle.textContent = title;
       emptyHint.classList.toggle('hidden', filtered);
@@ -295,6 +302,10 @@ export function createCommitList(app: App): CommitList {
         row.classList.toggle('selected', row.dataset.sha === S.selectedSha);
       }
       canvas.redraw();
+    },
+    viewChanged() {
+      lastGraph = undefined;
+      refreshCommon();
     },
     configChanged() {
       lastGraph = undefined;

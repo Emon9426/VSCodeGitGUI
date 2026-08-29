@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>lanes-e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * 图形列溢出 e2e：构造多并行分支（lane 多 → Canvas 需要宽 > 列宽），
+ * 断言 Canvas 绘制宽度与图形列实际列宽一致、不越过列边界压到提交说明列。
+ * ?w= 视口宽（默认 700，制造空间不足）。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchOnOpen: false, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  // 主线 10 条 + 15 条并行分支链（各 3 条，从 c0 分叉）→ laneCount ≈ 16
+  const mk = (name, sha, parents) => ({
+    sha, shortSha: sha.slice(0, 7), parents,
+    author: { name: 'e2e', email: 'e@e', date: '2026-08-22T10:00:00+08:00' },
+    committer: { name: 'e2e', email: 'e@e', date: '2026-08-22T10:00:00+08:00' },
+    subject: name, body: '', refs: [],
+  });
+  const commits = [];
+  for (let b = 15; b >= 1; b--) {
+    const s1 = `b${b}aa` + '0'.repeat(37), s2 = `b${b}bb` + '0'.repeat(37), s3 = `b${b}cc` + '0'.repeat(37);
+    commits.push(mk(`branch${b}-tip`, s3, [s2]));
+    commits.push(mk(`branch${b}`, s2, [s1]));
+    commits.push(mk(`branch${b}-base`, s1, ['c0' + '0'.repeat(38)]));
+  }
+  for (let i = 9; i >= 0; i--) {
+    commits.push(mk(`main-${i}`, `${i}`.replace(/^(\d)$/, 'c$1') + '0'.repeat(39), i > 0 ? [`${i - 1}`.replace(/^(\d)$/, 'c$1') + '0'.repeat(39)] : []));
+  }
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: 'c0' + '0'.repeat(38), branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'c0' + '0'.repeat(38), isHead: true }],
+      remotes: [], tags: [], status: { dirtyCount: 0 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits, commitsLoaded: commits.length, hasMore: false, stateVersion: 1,
+    },
+  });
+  await twoFrames(); await sleep(200);
+
+  const q = new URLSearchParams(location.search);
+  await new Promise(r => setTimeout(r, 100));
+  const geo = await (async () => {
+    const canvas = document.querySelector('.gg-graph-canvas');
+    const row = document.querySelector('.gg-row');
+    const cells = row ? [...row.children] : [];
+    const graphCell = cells[0]?.getBoundingClientRect();
+    const msgCell = cells[1]?.getBoundingClientRect();
+    const cr = canvas.getBoundingClientRect();
+    return {
+      laneCount: (window).S && (window).S.graph ? (window).S.graph.laneCount : undefined,
+      canvasW: Math.round(cr.width),
+      canvasRight: Math.round(cr.right),
+      graphColW: graphCell ? Math.round(graphCell.width) : null,
+      graphColRight: graphCell ? Math.round(graphCell.right) : null,
+      msgColLeft: msgCell ? Math.round(msgCell.left) : null,
+      overflowPx: graphCell ? Math.round(cr.right - graphCell.right) : null,
+    };
+  })();
+  const pass = geo.graphColW !== null && Math.abs(geo.canvasW - geo.graphColW) <= 2 && geo.overflowPx <= 2;
+  window.__result = pass ? 'PASS' : `FAIL ${JSON.stringify(geo)}`;
+  document.title = 'lanes-e2e:' + window.__result;
+})();
+</script>
+</body>
+</html>

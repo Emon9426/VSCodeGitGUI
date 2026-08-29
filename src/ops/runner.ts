@@ -12,7 +12,9 @@ export interface OpSpec {
   kind: 'fetch' | 'pull' | 'push' | 'reset' | 'checkout'
   | 'stage' | 'unstage' | 'discard' | 'discardClean' | 'commit'
   | 'resolveConflict' | 'commitNoEdit'
-  | 'tagCreate' | 'tagDelete' | 'tagDeleteRemote' | 'tagPush';
+  | 'mergeAbort' | 'mergeContinue' | 'resolveDelete'
+  | 'tagCreate' | 'tagDelete' | 'tagDeleteRemote' | 'tagPush'
+  | 'moveFolder' | 'renamePath' | 'deletePaths';   // 文件页操作（v0.14）
   /** 依 kind 不同 */
   all?: boolean;               // fetch
   remote?: string;
@@ -30,8 +32,12 @@ export interface OpSpec {
   messageFile?: string;        // commit：-F 临时文件（调用方负责创建与清理）
   amend?: boolean;             // commit：修订上次提交
   ours?: boolean;              // resolveConflict：true=保留本地版本
-  name?: string;               // tag*：标签名
+  rebase?: boolean;            // mergeAbort/mergeContinue：rebase 变体（否则按 merge）
+  name?: string;               // tag*：标签名 / renamePath：新文件名
   message?: string;            // tagCreate：附注信息（非空=附注标签）
+  srcs?: string[];             // moveFolder：多选源路径（批量 git mv）
+  dst?: string;                // moveFolder：目标目录
+  path?: string;               // renamePath：原路径
 }
 
 export interface OpOutcome {
@@ -92,9 +98,10 @@ export class OpRunner {
     let lastLine = '';
     // 网络/提交（hooks 可能耗时）不设超时；stage/discard 类秒级操作用默认 30s
     const noTimeout = spec.kind === 'fetch' || spec.kind === 'pull' || spec.kind === 'push'
-      || spec.kind === 'commit' || spec.kind === 'commitNoEdit' || spec.kind === 'tagPush' || spec.kind === 'tagDeleteRemote';
-    // commit 类可能触发 hooks：禁止交互式提示防挂死（提示失败改走终端）
-    const env = spec.kind === 'commit' || spec.kind === 'commitNoEdit'
+      || spec.kind === 'commit' || spec.kind === 'commitNoEdit' || spec.kind === 'mergeContinue'
+      || spec.kind === 'tagPush' || spec.kind === 'tagDeleteRemote';
+    // commit/continue 类可能触发 hooks 与编辑器：禁止交互式提示防挂死（提示失败改走终端）
+    const env = spec.kind === 'commit' || spec.kind === 'commitNoEdit' || spec.kind === 'mergeContinue'
       ? { GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true' } : undefined;
     try {
       let r;
@@ -191,6 +198,16 @@ function buildArgs(spec: OpSpec): string[][] {
     case 'commitNoEdit':
       // 冲突全部解决后完成合并（沿用 MERGE_MSG 默认信息）
       return [['commit', '--no-edit']];
+    // ---------- 合并解决器（v0.10） ----------
+    case 'mergeAbort':
+      // 中止并还原到合并/变基前（按会话类型分派）
+      return [spec.rebase ? ['rebase', '--abort'] : ['merge', '--abort']];
+    case 'mergeContinue':
+      // rebase/cherry-pick：继续重放（GIT_EDITOR=true 防编辑器挂起，见 execute 的 env）
+      return [spec.rebase ? ['rebase', '--continue'] : ['cherry-pick', '--continue']];
+    case 'resolveDelete':
+      // 一方删除场景的"采纳删除"：从 index 与工作副本移除
+      return [['rm', '--', ...(spec.paths ?? [])]];
     // ---------- 标签 ----------
     case 'tagCreate': {
       const name = spec.name ?? '';
@@ -205,5 +222,21 @@ function buildArgs(spec: OpSpec): string[][] {
       return [['push', '--progress', spec.remote ?? 'origin', `:refs/tags/${spec.name ?? ''}`]];
     case 'tagPush':
       return [['push', '--progress', spec.remote ?? 'origin', `refs/tags/${spec.name ?? ''}`]];
+    // ---------- 文件页操作（v0.14） ----------
+    case 'moveFolder': {
+      // 多选批量移动：逐对 git mv（命令序列由 execute 串行执行）
+      const dst = spec.dst ?? '.';
+      return (spec.srcs ?? []).map(src => ['mv', '--', src, dst]);
+    }
+    case 'renamePath': {
+      // 同目录重命名 = git mv（R100 识别确定性，历史自动跟随）
+      const p = spec.path ?? '';
+      const i = p.lastIndexOf('/');
+      const next = i < 0 ? (spec.name ?? p) : p.slice(0, i + 1) + (spec.name ?? p.slice(i + 1));
+      return [['mv', '--', p, next]];
+    }
+    case 'deletePaths':
+      // 已跟踪文件/目录：git rm（进入待提交状态）；未跟踪项由 panel 先行磁盘删除
+      return [['rm', '-r', '--', ...(spec.paths ?? [])]];
   }
 }

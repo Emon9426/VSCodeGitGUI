@@ -69,7 +69,7 @@
     branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'a' + '0'.repeat(39), isHead: true }],
     remotes: [], tags: [],
     status: { dirtyCount: 0 },
-    filterRef: null, logFilter: { author: '', since: '', until: '' },
+    filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
     commits: commits1, commitsLoaded: commits1.length, hasMore: false, stateVersion: 1,
   };
   window.__send({ t: 'repoState', state: state1 });

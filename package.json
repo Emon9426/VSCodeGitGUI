@@ -2,7 +2,7 @@
   "name": "gitboard",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.9.1",
+  "version": "0.14.5",
   "publisher": "EmonZhang3438",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -79,6 +79,10 @@
       {
         "command": "gitboard.setLanguage",
         "title": "%cmd.setLanguage%"
+      },
+      {
+        "command": "gitboard.showFileHistory",
+        "title": "%cmd.showFileHistory%"
       }
     ],
     "keybindings": [
@@ -102,6 +106,17 @@
         {
           "command": "gitboard.refreshTree",
           "when": "false"
+        },
+        {
+          "command": "gitboard.showFileHistory",
+          "when": "false"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "gitboard.showFileHistory",
+          "when": "resourceScheme == file && !listMultiSelection",
+          "group": "gitboard@1"
         }
       ],
       "view/title": [
@@ -162,10 +177,22 @@
           "default": true,
           "description": "%cfg.fetchOnOpen%"
         },
+        "gitboard.autoFetchInterval": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "maximum": 1440,
+          "description": "%cfg.autoFetchInterval%"
+        },
         "gitboard.fetchPrune": {
           "type": "boolean",
           "default": true,
           "description": "%cfg.fetchPrune%"
+        },
+        "gitboard.pullFetchSummary": {
+          "type": "boolean",
+          "default": true,
+          "description": "%cfg.pullFetchSummary%"
         },
         "gitboard.defaultPullStrategy": {
           "type": "string",

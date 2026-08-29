@@ -2,7 +2,7 @@
  * 真实 git 冒烟测试（需要系统 git；设置 GITGRAPH_SMOKE=1 启用）。
  * 在临时目录构造小型仓库，验证 LOG_FORMAT / EACH_REF_FORMAT 在真实输出的解析。
  */
-import { execSync, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -15,6 +15,14 @@ import { computeLanes } from '../../src/graph/lanes';
 
 const enabled = !!process.env.GITGRAPH_SMOKE && spawnSync('git', ['--version']).status === 0;
 
+/** 固定身份/时间，保证断言可复现 */
+const GENV = {
+  ...process.env,
+  GIT_AUTHOR_NAME: '张三', GIT_AUTHOR_EMAIL: 'z@x.y',
+  GIT_COMMITTER_NAME: '张三', GIT_COMMITTER_EMAIL: 'z@x.y',
+  GIT_AUTHOR_DATE: '2026-08-19T10:00:00+08:00', GIT_COMMITTER_DATE: '2026-08-19T10:00:00+08:00',
+};
+
 describe.skipIf(!enabled)('git 冒烟', () => {
   let root: string;
   let exec: GitExecutor;
@@ -22,23 +30,27 @@ describe.skipIf(!enabled)('git 冒烟', () => {
   it('构造仓库并验证全链路解析', async () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'gg-smoke-'));
     exec = new GitExecutor('git');
-    const g = (cmd: string) => execSync(cmd, { cwd: root, env: { ...process.env, GIT_AUTHOR_NAME: '张三', GIT_AUTHOR_EMAIL: 'z@x.y', GIT_COMMITTER_NAME: '张三', GIT_COMMITTER_EMAIL: 'z@x.y', GIT_AUTHOR_DATE: '2026-08-19T10:00:00+08:00', GIT_COMMITTER_DATE: '2026-08-19T10:00:00+08:00' } });
+    // 参数数组形式（无 shell 拼接）；非零退出即抛错，保持与原 execSync 一致的失败语义
+    const g = (...args: string[]) => {
+      const r = spawnSync('git', args, { cwd: root, env: GENV });
+      if (r.status !== 0) throw new Error(`git ${args.join(' ')} 失败: ${String(r.stderr)}`);
+    };
 
-    g('git init -b main');
+    g('init', '-b', 'main');
     fs.writeFileSync(path.join(root, '中文 文件.txt'), 'a\nb\nc\n');
-    g('git add -A');
-    g('git commit -m "首个提交: 初始化"');
-    execSync('git checkout -b feature', { cwd: root, stdio: 'ignore' });
+    g('add', '-A');
+    g('commit', '-m', '首个提交: 初始化');
+    g('checkout', '-b', 'feature');
     fs.writeFileSync(path.join(root, '中文 文件.txt'), 'a\nB\nc\nd\n');
-    g('git add -A');
-    g('git commit -m "feature 变更"');
-    execSync('git checkout main', { cwd: root, stdio: 'ignore' });
+    g('add', '-A');
+    g('commit', '-m', 'feature 变更');
+    g('checkout', 'main');
     fs.writeFileSync(path.join(root, 'readme.md'), '# hi\n');
-    g('git add -A');
-    g('git commit -m "main 变更"');
-    g('git merge --no-ff --no-edit feature');
-    g('git tag -a v1.0 -m "release"');
-    g('git tag light-weight');
+    g('add', '-A');
+    g('commit', '-m', 'main 变更');
+    g('merge', '--no-ff', '--no-edit', 'feature');
+    g('tag', '-a', 'v1.0', '-m', 'release');
+    g('tag', 'light-weight');
 
     // refs
     const refOut = (await exec.exec(root, ['for-each-ref', `--format=${EACH_REF_FORMAT}`, 'refs/heads', 'refs/remotes', 'refs/tags'])).stdout;

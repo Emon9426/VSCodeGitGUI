@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>v13-e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<!-- mock VS Code API：必须先于 webview.js 定义 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.addEventListener('error', (e) => {
+    if (window.__result === 'pending' || window.__result === 'DONE') {
+      window.__result = 'JSERR ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno;
+      document.title = 'v13-e2e:' + window.__result;
+    }
+  });
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * v0.13 新功能 e2e：
+ * ① 工作副本文件行不再显示 +N −N（文件名占满，未跟踪标签保留）
+ * ② 详情面板 diff 工具栏"在 VS Code 中打开"按钮（点击 → ui:openFile）
+ * ③ 工作副本一键移除 ~$ Office 临时文件（存在时显示，点击 → work.deleteFile；不存在隐藏）
+ * ④ HEAD 提交节点 SourceTree 式红色圆环（canvas 像素采样）
+ * ⑤ pullSummary 事件 → 摘要弹窗（条目/作者/文件/截断提示，可关闭）
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const fails = [];
+  const ok = (cond, msg) => { if (!cond) fails.push(msg); };
+  const lastSent = (cmd) => { const l = window.__sent.filter(m => m && m.cmd === cmd); return l[l.length - 1]; };
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchOnOpen: false, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph', pullFetchSummary: true,
+    },
+    repos: [{ id: 'r1', name: '09_GitGraph', root: 'D:/09_GitGraph' }],
+    language: 'zh-CN', version: 'e2e',
+  });
+  await twoFrames();
+
+  const mk = (i) => ({
+    sha: 'ee6f99a' + String(i) + 'f'.repeat(32),
+    shortSha: 'ee6f99' + String(i),
+    parents: i > 0 ? ['ee6f99a' + String(i - 1) + 'f'.repeat(32)] : [],
+    author: { name: 'Emon', email: 'emon@test', date: '2026-08-23T21:00:00+08:00' },
+    committer: { name: 'Emon', email: 'emon@test', date: '2026-08-23T21:00:00+08:00' },
+    subject: `v0.13 功能提交 ${i}`,
+    body: '',
+    refs: i === 0 ? [{ name: 'HEAD → main', kind: 'head', isHead: true }] : [],
+  });
+  const commits = Array.from({ length: 5 }, (_, i) => mk(i));
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: commits[0].sha, branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: commits[0].sha, isHead: true, upstream: 'origin/main' }],
+      remotes: [{ name: 'origin', branches: [{ name: 'origin/main', fullName: 'refs/remotes/origin/main', sha: commits[0].sha }] }],
+      tags: [],
+      status: { dirtyCount: 3 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits, commitsLoaded: commits.length, hasMore: false, stateVersion: 1,
+    },
+  });
+  await twoFrames(); await sleep(100);
+
+  // ---- ④ HEAD 圆环（canvas 像素：row0=HEAD 附近区域；红环半径≈6.3+2px 描边；旧实现红描边半径≈4.3） ----
+  // 自适应：先扫描红像素质心（容忍子像素/dpr 漂移导致的圆心半像素偏移），再按质心做径向带判定。
+  {
+    const canvas = document.querySelector('.gg-graph-canvas');
+    ok(canvas, 'no canvas');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      const isRed = (d) => d[0] > 170 && d[0] - d[1] > 60 && d[0] - d[2] > 60;   // #f85149=(248,81,73)，容忍抗锯齿
+      const reds = [];
+      for (let y = 0; y < 26; y++) for (let x = 0; x < 20; x++) {
+        if (isRed(ctx.getImageData(x, y, 1, 1).data)) reds.push([x + .5, y + .5]);
+      }
+      ok(reds.length >= 30, '④ HEAD 红环缺失（红像素过少：' + reds.length + '）');
+      if (reds.length >= 30) {
+        const cx = reds.reduce((s, p) => s + p[0], 0) / reds.length;
+        const cy = reds.reduce((s, p) => s + p[1], 0) / reds.length;
+        const dists = reds.map(p => Math.hypot(p[0] - cx, p[1] - cy));
+        const rMin = Math.min(...dists), rMax = Math.max(...dists);
+        ok(rMax > 5.8, '④ 红环外缘过小（rMax=' + rMax.toFixed(2) + '，应≈7.3）');
+        ok(rMin > 4.6, '④ 实心圆区域不应有红（旧描边样式残留，rMin=' + rMin.toFixed(2) + '，应≈5.3）');
+        ok(rMax < 9.5, '④ 红环过大（rMax=' + rMax.toFixed(2) + '）');
+      }
+    }
+  }
+
+  // ---- ② 详情面板 diff 工具栏：在 VS Code 中打开 ----
+  {
+    const row = document.querySelector('.gg-list .gg-row');
+    if (!row) { finish('FAIL: no row'); return; }
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await sleep(80);
+    const files = [
+      { path: 'README.md', status: 'M', additions: 8, deletions: 2 },
+      { path: 'src/panel.ts', status: 'M', additions: 4, deletions: 1 },
+    ];
+    for (const m of window.__sent) {
+      if (m && m.id && m.cmd === 'commitDetail') {
+        window.__send({ t: 'res', id: m.id, ok: true, data: { ...commits[0], files, filesTruncated: false } });
+      } else if (m && m.id && m.cmd === 'diff') {
+        window.__send({ t: 'res', id: m.id, ok: true, data: { kind: 'empty' } });
+      }
+    }
+    await twoFrames(); await sleep(120);
+    const btn = document.querySelector('.gg-diff-head .gg-icon-btn');
+    ok(btn, '② diff 工具栏无 icon 按钮');
+    if (btn) {
+      ok(btn.title.includes('VS Code') || btn.title.includes('工作区'), '② 按钮提示文案异常: ' + btn.title);
+      btn.click();
+      await sleep(60);
+      const m = lastSent('ui:openFile');
+      ok(m && m.args && m.args.path === 'README.md', '② 点击未发送 ui:openFile(README.md)');
+    }
+  }
+
+  // ---- ①③ 工作副本：行内无 ± 数字；~$ 一键移除 ----
+  window.__send({ t: 'showWork' });
+  await twoFrames();
+  const sendWork = (unstaged, staged) => window.__send({
+    t: 'workState',
+    state: {
+      repoId: 'r1', staged, unstaged, conflicts: [],
+      dirtyCount: unstaged.length + staged.length, merging: false,
+      mergeKind: 'other', mergeActive: false,
+      headShortSha: 'ee6f99a', headSubject: 'v0.13', headDate: '2026-08-23T21:00:00+08:00',
+    },
+  });
+  sendWork(
+    [
+      { path: '~$季度报告.docx', staged: null, unstaged: null, untracked: true },
+      { path: 'src/main.ts', staged: null, unstaged: 'M', untracked: false, additions: 33, deletions: 12 },
+      { path: '~$方案.pptx', staged: null, unstaged: null, untracked: true },
+    ],
+    [{ path: 'src/util.ts', staged: 'M', unstaged: null, untracked: false, additions: 5, deletions: 2 }],
+  );
+  await twoFrames(); await sleep(150);
+
+  ok(document.querySelectorAll('.gg-work-row .gg-work-fnum b').length === 0, '① 行内仍存在 +N −N 元素');
+  const untrackedLabels = [...document.querySelectorAll('.gg-work-row .gg-work-fnum i')].map(e => e.textContent);
+  ok(untrackedLabels.filter(t => t.includes('未跟踪')).length === 2, '① 未跟踪标签数量异常: ' + untrackedLabels.length);
+  const rowMain = [...document.querySelectorAll('.gg-work-row')].find(r => r.textContent.includes('main.ts'));
+  ok(rowMain, '① main.ts 行缺失');
+  if (rowMain) {
+    const fpath = rowMain.querySelector('.gg-work-fpath');
+    const acts = rowMain.querySelector('.gg-work-acts');
+    const acs = acts && getComputedStyle(acts);
+    ok(acs && acs.position === 'absolute' && acs.visibility === 'hidden',
+      '① 操作组应悬浮于行尾（absolute + 默认隐藏，不挤占文件名）');
+    ok(getComputedStyle(fpath).wordBreak === 'break-all', '① 文件名未启用换行（可能被截断）');
+    const fr = fpath.getBoundingClientRect(), rr = rowMain.getBoundingClientRect();
+    ok(rr.right - fr.right < 16, `① 文件名应占满整行（行右缘−名右缘=${(rr.right - fr.right).toFixed(1)}px）`);
+  }
+
+  const broom = document.querySelector('.gg-work-fbtns button:nth-child(2)');
+  ok(broom && !broom.classList.contains('hidden'), '③ 清理临时文件按钮不可见');
+  if (broom) {
+    ok((broom.title || '').includes('~$') && broom.title.includes('2'), '③ 按钮提示未含数量: ' + broom.title);
+    broom.click();
+    await sleep(60);
+    const m = lastSent('work.deleteFile');
+    ok(m && JSON.stringify(m.args.paths) === JSON.stringify(['~$季度报告.docx', '~$方案.pptx']), '③ 点击未发送正确的 work.deleteFile: ' + JSON.stringify(m && m.args));
+  }
+  // 无 ~$ 文件 → 按钮隐藏
+  sendWork([{ path: 'src/main.ts', staged: null, unstaged: 'M', untracked: false, additions: 1, deletions: 0 }], []);
+  await twoFrames(); await sleep(120);
+  const broom2 = document.querySelector('.gg-work-fbtns button:nth-child(2)');
+  ok(broom2 && broom2.classList.contains('hidden'), '③ 无临时文件时按钮应隐藏');
+
+  // ---- ⑤ pullSummary 弹窗（作者 → 目录 → 文件三层：文件名+大小+修改时间+打开/定位按钮）----
+  window.__send({
+    t: 'pullSummary', repoId: 'r1', kind: 'pull',
+    entries: [
+      { sha: 'a'.repeat(40), shortSha: 'aaa1111', author: '张三', date: '2026-08-26T10:00:00+08:00', subject: 'feat: 新功能 A', files: ['src/a.ts', 'old/x.ts → new/x.ts', 'package.json'], filesTruncated: false },
+      { sha: 'c'.repeat(40), shortSha: 'ccc3333', author: '张三', date: '2026-08-26T09:30:00+08:00', subject: 'chore: 再改 a', files: ['src/a.ts'], filesTruncated: false },
+      { sha: 'b'.repeat(40), shortSha: 'bbb2222', author: 'Li Si', date: '2026-08-25T09:00:00+08:00', subject: 'fix: 修复 B', files: ['docs/b.md', 'src/a.ts'], filesTruncated: true },
+    ],
+    truncated: true,
+    stat: {
+      'src/a.ts': { size: 1234, mtime: '2026-08-26T10:05:00+08:00' },
+      'package.json': { size: 2048, mtime: '2026-08-26T10:06:00+08:00' },
+      'docs/b.md': { size: 512, mtime: '2026-08-25T09:10:00+08:00' },
+      // new/x.ts 无条目：不在工作区 → 大小/时间显示 —、悬停提示
+    },
+  });
+  await twoFrames(); await sleep(120);
+  {
+    const modal = document.querySelector('.gg-modal');
+    ok(modal, '⑤ 摘要弹窗未出现');
+    if (modal) {
+      const txt = modal.textContent;
+      ok(txt.includes('拉取摘要'), '⑤ 标题异常');
+      ok(txt.includes('3 个提交 · 2 位作者 · 4 个文件'), '⑤ 汇总行异常: ' + (modal.querySelector('.gg-psum-sum')?.textContent || ''));
+      const authors = [...modal.querySelectorAll('.gg-psum-author-name')].map(e => e.textContent);
+      ok(authors.length === 2 && authors[0] === '张三' && authors[1] === 'Li Si', '⑤ 作者组数量/顺序（最新在前）异常: ' + authors.join('|'));
+      const subs = [...modal.querySelectorAll('.gg-psum-author-sub')].map(e => e.textContent);
+      ok(subs[0] === '2 个提交 · 3 个文件' && subs[1] === '1 个提交 · 2 个文件', '⑤ 作者统计异常: ' + subs.join('|'));
+      const dirs = [...modal.querySelectorAll('.gg-psum-dir')].map(e => e.textContent);
+      ok(dirs.length === 5, '⑤ 目录组数量异常（张三 3 + Li Si 2）: ' + dirs.length);
+      ok(dirs[0] === 'D:/09_GitGraph', '⑤ 张三根目录组头应为仓库绝对路径: ' + dirs[0]);
+      ok(dirs[1] === 'new/' && dirs[2] === 'src/', '⑤ 张三目录字母序异常: ' + dirs.join('|'));
+      ok(dirs[3] === 'docs/' && dirs[4] === 'src/', '⑤ Li Si 目录字母序异常: ' + dirs.join('|'));
+      const rows = [...modal.querySelectorAll('.gg-psum-row')];
+      ok(rows.length === 5, '⑤ 文件行数异常（张三 3 + Li Si 2）: ' + rows.length);
+      const aRows = rows.filter(r => r.querySelector('.gg-psum-name')?.textContent === 'a.ts');
+      ok(aRows.length === 2, '⑤ a.ts 应在两位作者组各出现一次: ' + aRows.length);
+      const zsA = aRows.find(r => r.textContent.includes('×2'));
+      ok(zsA, '⑤ 张三组 a.ts 同作者多提交 ×2 标记缺失');
+      if (zsA) {
+        ok(zsA.querySelector('.gg-psum-size')?.textContent === '1.2 KB', '⑤ 大小列异常: ' + zsA.querySelector('.gg-psum-size')?.textContent);
+        ok(zsA.querySelector('.gg-psum-time')?.textContent.length > 0, '⑤ 时间列缺失');
+        ok(zsA.title.includes('src/a.ts') && zsA.title.includes('feat: 新功能 A') && zsA.title.includes('chore: 再改 a'), '⑤ 悬停未列出该作者全部提交');
+        ok(getComputedStyle(zsA.querySelector('.gg-psum-name')).wordBreak === 'break-all', '⑤ 文件名未启用换行（可能被截断）');
+        const acts = zsA.querySelectorAll('.gg-psum-act');
+        ok(acts.length === 2, '⑤ 打开/定位按钮缺失: ' + acts.length);
+      }
+      const goneRow = rows.find(r => r.querySelector('.gg-psum-name')?.textContent === 'x.ts → x.ts');
+      ok(goneRow, '⑤ 重命名未显示 旧→新');
+      if (goneRow) {
+        ok(goneRow.querySelector('.gg-psum-size')?.textContent === '—' && goneRow.querySelector('.gg-psum-time')?.textContent === '—', '⑤ 工作区缺失文件应显示 —');
+        ok(goneRow.title.includes('不在当前工作区'), '⑤ 缺失文件悬停应提示不在工作区');
+      }
+      const bRow = rows.find(r => r.querySelector('.gg-psum-name')?.textContent === 'b.md' && !r.textContent.includes('×'));
+      ok(bRow && bRow.querySelector('.gg-psum-size')?.textContent === '512 B', '⑤ Li Si 组 b.md 大小异常');
+      ok(txt.includes('文件过多已截断'), '⑤ 单提交截断提示缺失');
+      ok(txt.includes('仅显示最近 3 条提交'), '⑤ 总截断提示缺失');
+      const closeBtn = modal.querySelector('.gg-modal-btns .gg-btn.primary');
+      ok(closeBtn, '⑤ 关闭按钮缺失');
+      if (closeBtn) {
+        closeBtn.click();
+        await twoFrames();
+        ok(!document.querySelector('.gg-modal'), '⑤ 关闭后弹窗仍在');
+      }
+    }
+  }
+
+  // ---- ⑥ 纯提交视图时间线（窄图形列：竖线 + 每提交圆点 + HEAD 红环）----
+  {
+    const pureBtn = [...document.querySelectorAll('button')].find(b => b.textContent.includes('纯提交'));
+    ok(pureBtn, '⑥ 纯提交按钮缺失');
+    if (pureBtn) {
+      pureBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await twoFrames(); await sleep(150);
+      const wrapEl = document.querySelector('.gg-list-wrap');
+      ok(wrapEl.classList.contains('pure'), '⑥ pure 类缺失');
+      const cg = wrapEl.style.getPropertyValue('--c-graph');
+      ok(cg === '28px', '⑥ 时间线列宽应 28px: ' + cg);
+      const cv = document.querySelector('.gg-graph-canvas');
+      ok(cv && cv.getBoundingClientRect().width > 24 && cv.getBoundingClientRect().width < 32, '⑥ Canvas 宽度异常: ' + (cv && Math.round(cv.getBoundingClientRect().width)));
+      // 表头首格占位（空文本但存在，grid 对齐）
+      const head0 = document.querySelector('.gg-list-header .gg-col-h');
+      ok(head0 && head0.textContent === '', '⑥ 表头首格应空文本占位');
+      if (cv) {
+        const ctx = cv.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        const px = (x, y) => ctx.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data;
+        const isBlue = d => d[2] > 150 && d[2] - d[0] > 60;      // #4fc1ff=(79,193,255)
+        const isRed = d => d[0] > 170 && d[0] - d[1] > 60;       // #f85149
+        // 首行圆点（列中央 x=14，首行圆心 y=12）+ HEAD 红环（r≈6.8）+ 行间竖线（y=26）
+        ok(isBlue(px(14, 12)), '⑥ 首行圆点缺失');
+        ok(isRed(px(14, 5.5)) || isRed(px(14, 6.5)) || isRed(px(14, 7.5)), '⑥ HEAD 红环缺失');
+        ok(isBlue(px(14, 26)), '⑥ 行间竖线缺失');
+        // 第二行圆心 y=36（5 行提交全可视）
+        ok(isBlue(px(14, 36)), '⑥ 第二行圆点缺失');
+        // 纯提交下竖线应延伸到视口底部边缘（列表只到 5 行，末行 y2=yc(4)=108；底部无线）
+        ok(!isBlue(px(14, Math.min(cv.getBoundingClientRect().height - 3, 200))), '⑥ 末行以下不应有竖线');
+      }
+      // 切回提交图：列宽恢复用户值（150）、表头文案恢复
+      const graphBtn = [...document.querySelectorAll('button')].find(b => b.textContent.includes('提交图'));
+      graphBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await twoFrames(); await sleep(150);
+      ok(wrapEl.style.getPropertyValue('--c-graph') === '150px', '⑥ 切回后列宽未恢复: ' + wrapEl.style.getPropertyValue('--c-graph'));
+      ok(document.querySelector('.gg-list-header .gg-col-h').textContent === '图形', '⑥ 切回后表头文案未恢复');
+    }
+  }
+
+  finish(fails.length ? 'FAIL ' + fails.join(' | ') : 'DONE');
+  function finish(result) {
+    if (window.__result === 'DONE' || String(window.__result).startsWith('JSERR')) return;
+    window.__result = result;
+    document.title = 'v13-e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>

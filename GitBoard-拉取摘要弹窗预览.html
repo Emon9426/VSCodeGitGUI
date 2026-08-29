@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GitBoard · 拉取摘要弹窗预览（v0.13.3）</title>
+<!--
+  自包含预览页：模拟 v0.13.3 修复后的「拉取摘要」弹窗最终效果。
+  · 样式从 src/ui/styles/main.css 忠实复刻（gg-modal*/gg-psum*/gg-ic）；
+  · 分组/合并/大小·时间格式化算法从 src/ui/app/pullSummary.ts 移植（同一套逻辑渲染演示数据）；
+  · 图标为 icons.ts 的 goToFile / folder 原始 SVG path。
+  双击直接打开即可，无需服务器。底部悬浮条切换场景与主题。
+-->
+<style>
+  /* ---------- VS Code 主题变量（dark+ 默认 / light+ 切换） ---------- */
+  :root, body[data-theme=dark] {
+    --vscode-font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+    --vscode-editor-font-family: Consolas, "Courier New", monospace;
+    --vscode-foreground: #cccccc;
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editorWidget-background: #252526;
+    --vscode-widget-border: #454545;
+    --vscode-panel-border: #3c3c3c;
+    --vscode-descriptionForeground: #9d9d9d;
+    --vscode-button-background: #0e639c;
+    --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-button-secondaryHoverBackground: #45494e;
+    --vscode-button-secondaryForeground: #ffffff;
+    --vscode-toolbar-hoverBackground: rgba(128,128,128,0.2);
+    --vscode-charts-red: #f14c4c;
+  }
+  body[data-theme=light] {
+    --vscode-foreground: #3b3b3b;
+    --vscode-editor-background: #ffffff;
+    --vscode-editorWidget-background: #f8f8f8;
+    --vscode-widget-border: #cecece;
+    --vscode-panel-border: #e5e5e5;
+    --vscode-descriptionForeground: #616161;
+    --vscode-button-background: #007acc;
+    --vscode-button-hoverBackground: #0062a3;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-secondaryBackground: #e4e4e4;
+    --vscode-button-secondaryHoverBackground: #d8d8d8;
+    --vscode-button-secondaryForeground: #3b3b3b;
+    --vscode-toolbar-hoverBackground: rgba(0,0,0,0.08);
+    --vscode-charts-red: #e51400;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100%; }
+  body {
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    color: var(--vscode-foreground);
+    background: var(--vscode-editor-background);
+  }
+  button {
+    font-family: inherit; font-size: 12px; cursor: pointer;
+    color: var(--vscode-button-secondaryForeground);
+    background: var(--vscode-button-secondaryBackground);
+    border: 1px solid transparent; border-radius: 4px; padding: 3px 10px;
+  }
+  button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+  button.primary:hover { background: var(--vscode-button-hoverBackground); }
+  button.on { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+
+  /* ---------- 页面骨架（预览页自身，非扩展样式） ---------- */
+  .pv-head { padding: 22px 28px 6px; max-width: 900px; }
+  .pv-head h1 { font-size: 17px; margin: 0 0 4px; }
+  .pv-head .sub { font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 12px; }
+  .pv-note {
+    font-size: 12px; line-height: 1.8;
+    border: 1px solid var(--vscode-panel-border); border-radius: 8px;
+    background: var(--vscode-editorWidget-background);
+    padding: 10px 14px; margin: 0 28px 18px; max-width: 900px;
+  }
+  .pv-note b { font-weight: 600; }
+  .pv-note .fix { color: var(--vscode-foreground); }
+  .pv-note code {
+    font-family: var(--vscode-editor-font-family); font-size: 11.5px;
+    background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+    padding: 0 4px; border-radius: 3px;
+  }
+  .pv-stage {
+    min-height: 62vh; display: flex; align-items: flex-start; justify-content: center;
+    padding: 12px 20px 130px;
+  }
+  .pv-closed {
+    margin-top: 10vh; text-align: center; color: var(--vscode-descriptionForeground); font-size: 12.5px;
+  }
+  .pv-closed button { margin-top: 10px; }
+
+  .pv-bar {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 2000;
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center;
+    padding: 8px 12px; border-radius: 10px;
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-widget-border);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    max-width: 94vw;
+  }
+  .pv-bar .sep { width: 1px; height: 18px; background: var(--vscode-panel-border); }
+  .pv-bar .lab { font-size: 11px; color: var(--vscode-descriptionForeground); padding: 0 2px; }
+  .pv-toast {
+    position: fixed; right: 14px; bottom: 76px; z-index: 2100;
+    display: flex; flex-direction: column; gap: 6px; max-width: 460px;
+  }
+  .pv-toast div {
+    font-size: 12px; padding: 7px 12px; border-radius: 6px;
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-widget-border);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    font-family: var(--vscode-editor-font-family); word-break: break-all;
+  }
+
+  /* ---------- 以下自 src/ui/styles/main.css 忠实复刻 ---------- */
+  .gg-ic { width: 13px; height: 13px; display: block; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .gg-modal-overlay {
+    position: fixed; inset: 0; z-index: 1100;
+    background: rgba(0,0,0,0.45);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .gg-modal {
+    min-width: 380px; max-width: 560px; max-height: 70vh; overflow: auto;
+    background: var(--vscode-editorWidget-background, #222);
+    border: 1px solid var(--vscode-widget-border, #444);
+    border-radius: 8px; padding: 14px 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .gg-modal-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+  .gg-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+  /* Pull/Fetch 摘要弹窗（v0.13）：作者 → 目录 → 文件三层分组；行内 打开/定位 按钮 */
+  .gg-psum-modal { max-width: 720px; }
+  .gg-psum-sum { font-size: 11.5px; color: var(--vscode-descriptionForeground); margin: 0 0 6px; }
+  .gg-psum-list { max-height: 56vh; overflow: auto; min-width: 520px; }
+  .gg-psum-author {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 8px 2px 3px; margin-top: 4px;
+    border-bottom: 1px solid var(--vscode-panel-border, #333);
+  }
+  .gg-psum-author:first-child { margin-top: 0; }
+  .gg-psum-author-name { font-size: 12.5px; font-weight: 600; }
+  .gg-psum-author-sub { font-size: 11px; color: var(--vscode-descriptionForeground); }
+  .gg-psum-dir {
+    font-family: var(--vscode-editor-font-family); font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    padding: 7px 2px 3px; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gg-psum-row { display: flex; align-items: baseline; gap: 10px; padding: 3px 2px; flex-wrap: wrap; }
+  .gg-psum-name {
+    flex: 1 1 auto; min-width: 40%;
+    font-family: var(--vscode-editor-font-family); font-size: 12px;
+    word-break: break-all;   /* 文件名完整优先：不省略号，过长换行 */
+  }
+  .gg-psum-meta { margin-left: auto; display: flex; gap: 10px; flex: none; font-size: 11px; align-items: baseline; }
+  .gg-psum-size { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .gg-psum-time { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .gg-psum-n { color: var(--vscode-descriptionForeground); }
+  .gg-psum-acts { display: flex; gap: 1px; flex: none; align-self: center; }
+  .gg-psum-act {
+    display: flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; padding: 0; border: none; background: none; cursor: pointer;
+    color: var(--vscode-descriptionForeground); border-radius: 4px; opacity: 0.7;
+  }
+  .gg-psum-act:hover, .gg-psum-act:focus-visible { opacity: 1; color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2)); }
+  .gg-psum-act .gg-ic { width: 12px; height: 12px; }
+  .gg-psum-more { font-size: 11px; color: var(--vscode-descriptionForeground); font-style: italic; padding-top: 4px; }
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="pv-head">
+  <h1>GitBoard · 拉取摘要弹窗预览（v0.13.3）</h1>
+  <div class="sub">下方弹窗为移植扩展真实渲染逻辑生成的模拟结果 —— 底部悬浮条可切换场景 / 主题；行悬停可看完整路径与涉及提交。</div>
+</div>
+
+<div class="pv-note">
+  <b>本次两项修改：</b><br>
+  <span class="fix">① <b>中文路径修复</b></span> —— git 默认把非 ASCII 路径转成八进制转义（<code>\357\274\210</code> = 全角左括号 <code>（</code>）。现已在 git 参数加 <code>core.quotepath=false</code> + 解析端兜底解码，中文路径正常显示。见 <b>场景 B</b> 的「修复前 / 修复后」对比。<br>
+  <span class="fix">② <b>作者 → 目录 → 文件 三层分组</b></span> —— 作者头（粗体，按最新提交在前）汇总其提交/文件数；目录头只显示一次路径（根目录为仓库绝对路径）；文件行 = <b>文件名 + 大小 + 修改时间</b>，行尾常驻两个按钮：<b>📄 打开文件</b>（编辑器打开）、<b>📁 在资源管理器中定位</b>（选中该文件，长路径自动降级祖先目录）。同作者同文件多次提交合并为一行标 <b>×N</b>；已不在工作区的文件大小/时间显示 <b>—</b>（悬停有提示）。按钮点击在本页中弹模拟提示（真实扩展走宿主执行）。
+</div>
+
+<div class="pv-stage" id="stage"></div>
+
+<div class="pv-bar" id="bar">
+  <span class="lab">场景</span>
+  <button id="scA" class="on">A 多作者</button>
+  <button id="scB">B 中文路径修复对比</button>
+  <button id="scC">C 截断提示</button>
+  <span class="sep"></span>
+  <span class="lab" id="fixLab" style="display:none">编码</span>
+  <button id="fxBefore" style="display:none">修复前</button>
+  <button id="fxAfter" class="on" style="display:none">修复后</button>
+  <span class="sep" id="fixSep" style="display:none"></span>
+  <span class="lab">主题</span>
+  <button id="thBtn">浅色</button>
+</div>
+<div class="pv-toast" id="toasts"></div>
+
+<script>
+'use strict';
+/* ================= 移植自 src/ui/app/pullSummary.ts 的渲染逻辑（同构） ================= */
+const RENAME_SEP = ' → ';
+const NS = 'http://www.w3.org/2000/svg';
+const ICON_PATHS = {
+  goToFile: ['M2.2 2h5.6', 'M2.2 2v12h7.6V9.4', 'M7.6 8.4L14 2', 'M9.8 2H14v4.2'],
+  folder: ['M1.6 13.6V2.8h4.4l1.6 2h6.8v8.8z'],
+};
+const iconSvg = name => {
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.classList.add('gg-ic');
+  for (const d of ICON_PATHS[name]) {
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', d);
+    svg.appendChild(p);
+  }
+  return svg;
+};
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+const base = p => p.slice(p.lastIndexOf('/') + 1);
+const dirOf = p => p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : '';
+const newPathOf = f => f.includes(RENAME_SEP) ? f.split(RENAME_SEP)[1] : f;
+const fmtSize = n => n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + ' MB'
+  : n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B';
+const pad = n => String(n).padStart(2, '0');
+const fmtTime = iso => {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso
+    : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
+/** 模拟 git core.quotepath=true 的 C 风格引号转义（演示「修复前」形态） */
+const gitEscape = p => {
+  const bytes = new TextEncoder().encode(p);
+  let s = '"';
+  for (const b of bytes) {
+    s += (b >= 0x20 && b < 0x7f && b !== 34 && b !== 92)
+      ? String.fromCharCode(b) : '\\' + b.toString(8).padStart(3, '0');
+  }
+  return s + '"';
+};
+const escFile = f => f.includes(RENAME_SEP)
+  ? f.split(RENAME_SEP).map(gitEscape).join(RENAME_SEP) : gitEscape(f);
+
+function toast(msg) {
+  const t = el('div', undefined, msg);
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() => t.remove(), 3200);
+}
+
+/** 与扩展 showPullSummary 同构：作者 → 目录 → 文件 三层渲染 */
+function render(stage, titleText, entries, truncated, stat, repoRoot, escaped) {
+  stage.textContent = '';
+  const overlay = el('div', 'gg-modal-overlay');
+  const box = el('div', 'gg-modal');
+  box.classList.add('gg-psum-modal');
+  const body = el('div', 'gg-modal-body');
+  box.append(el('div', 'gg-modal-title', titleText), body);
+  overlay.appendChild(box);
+  stage.appendChild(overlay);
+
+  // 作者 → (文件 → 涉及提交)；entries 日期倒序，作者首现即最新 → 作者块最新在前
+  const byAuthor = new Map();
+  for (const e of entries) {
+    let a = byAuthor.get(e.author);
+    if (!a) { a = { entries: [], files: new Map() }; byAuthor.set(e.author, a); }
+    a.entries.push(e);
+    for (const f of e.files) {
+      const cur = a.files.get(f);
+      if (cur) cur.all.push(e); else a.files.set(f, { latest: e, all: [e] });
+    }
+  }
+
+  const uniqFiles = new Set(entries.flatMap(e => e.files.map(newPathOf)));
+  body.appendChild(el('div', 'gg-psum-sum',
+    `${entries.length} 个提交 · ${byAuthor.size} 位作者 · ${uniqFiles.size} 个文件`));
+
+  const listBox = el('div', 'gg-psum-list');
+  for (const [author, a] of byAuthor) {
+    const head = el('div', 'gg-psum-author');
+    head.appendChild(el('span', 'gg-psum-author-name', author));
+    head.appendChild(el('span', 'gg-psum-author-sub',
+      `${a.entries.length} 个提交 · ${a.files.size} 个文件`));
+    listBox.appendChild(head);
+
+    const dirs = new Map();
+    for (const f of a.files.keys()) {
+      const d = dirOf(newPathOf(f));
+      dirs.set(d, [...(dirs.get(d) ?? []), f]);
+    }
+    const sortedDirs = [...dirs.keys()].sort((x, y) => (x === '' ? -1 : y === '' ? 1 : x.localeCompare(y)));
+    for (const d of sortedDirs) {
+      const headText = d === '' ? repoRoot : d;
+      const dirHead = el('div', 'gg-psum-dir', headText);
+      dirHead.title = headText;
+      listBox.appendChild(dirHead);
+      for (const f of (dirs.get(d) ?? []).sort((x, y) => newPathOf(x).localeCompare(newPathOf(y)))) {
+        listBox.appendChild(row(f, a.files.get(f), stat, escaped));
+      }
+    }
+  }
+  if (entries.some(e => e.filesTruncated)) {
+    listBox.appendChild(el('div', 'gg-psum-more', '…（文件过多已截断）'));
+  }
+  if (truncated) {
+    listBox.appendChild(el('div', 'gg-psum-more', `仅显示最近 ${entries.length} 条提交`));
+  }
+  body.appendChild(listBox);
+
+  const btns = el('div', 'gg-modal-btns');
+  const ok = el('button', 'primary', '关闭');
+  ok.addEventListener('click', () => closed(stage));
+  btns.appendChild(ok);
+  box.appendChild(btns);
+  ok.focus();
+}
+
+/** 单个文件行（与扩展 sumRow 同构；按钮点击改为模拟提示） */
+function row(f, info, stat, escaped) {
+  const dispF = escaped ? escFile(f) : f;
+  const [oldP, newP] = dispF.includes(RENAME_SEP) ? dispF.split(RENAME_SEP) : [undefined, dispF];
+  const nameText = oldP !== undefined ? `${base(oldP)} → ${base(newP)}` : base(newP);
+  const st = stat[newPathOf(f)];   // 大小/时间始终按真实（未转义）路径取
+
+  const r = el('div', 'gg-psum-row');
+  const tip = [`${oldP !== undefined ? `${oldP} → ${newP}` : newP}`];
+  if (!st) tip.push('文件不在当前工作区（可能已删除或移动）');
+  tip.push(...info.all.map(e => `${fmtTime(e.date)}  ${e.author}  ${e.subject} (${e.shortSha})`));
+  r.title = tip.join('\n');
+
+  r.appendChild(el('span', 'gg-psum-name', nameText));
+  const meta = el('span', 'gg-psum-meta');
+  meta.appendChild(el('span', 'gg-psum-size', st ? fmtSize(st.size) : '—'));
+  meta.appendChild(el('span', 'gg-psum-time', st ? fmtTime(st.mtime) : '—'));
+  if (info.all.length > 1) meta.appendChild(el('span', 'gg-psum-n', `×${info.all.length}`));
+  r.appendChild(meta);
+
+  const acts = el('span', 'gg-psum-acts');
+  const mkAct = (icon, title, run) => {
+    const b = el('button', 'gg-psum-act');
+    b.appendChild(iconSvg(icon));
+    b.title = title;
+    b.addEventListener('click', ev => { ev.stopPropagation(); run(); });
+    return b;
+  };
+  acts.append(
+    mkAct('goToFile', '打开工作区文件', () => toast(`模拟宿主 · vscode.open → ${newPathOf(f)}`)),
+    mkAct('folder', '在文件管理器中显示', () => toast(`模拟宿主 · explorer /select → ${newPathOf(f)}`)),
+  );
+  r.appendChild(acts);
+  return r;
+}
+
+function closed(stage) {
+  stage.textContent = '';
+  const box = el('div', 'pv-closed');
+  box.appendChild(el('div', undefined, '弹窗已关闭（真实扩展中拉取/获取完成后自动弹出）'));
+  const again = el('button', 'primary', '重新打开');
+  again.addEventListener('click', () => current());
+  box.appendChild(again);
+  stage.appendChild(box);
+}
+
+/* ================= 演示数据 ================= */
+const ROOT = 'D:/09_GitGraph';
+const mk = (sha, shortSha, author, date, subject, files, filesTruncated) =>
+  ({ sha, shortSha, author, date, subject, files, filesTruncated: !!filesTruncated });
+
+// 场景 A：多作者、中文文件 ×2 合并、重命名、缺失文件
+const DATA_A = {
+  title: '拉取摘要 — 3 个新提交',
+  entries: [
+    mk('a'.repeat(40), 'aaa1111', '张三', '2026-08-26T10:00:00+08:00', 'feat: 提交栏支持批量暂存',
+      ['src/ui/app/commitBar.ts', 'src/ui/app/workView.ts', 'src/中文（新建）.ts', 'package.json']),
+    mk('c'.repeat(40), 'ccc3333', '张三', '2026-08-26T09:30:00+08:00', 'chore: 调整中文（新建）.ts 注释',
+      ['src/中文（新建）.ts']),
+    mk('b'.repeat(40), 'bbb2222', 'Li Si', '2026-08-25T09:00:00+08:00', 'fix: 修复启动崩溃并重命名配置',
+      ['legacy/prefs.ts → src/config.ts', 'docs/old-spec.md', 'src/main.ts']),
+  ],
+  truncated: false,
+  stat: {
+    'src/ui/app/commitBar.ts': { size: 12345, mtime: '2026-08-26T10:05:00+08:00' },
+    'src/ui/app/workView.ts': { size: 9876, mtime: '2026-08-26T10:05:00+08:00' },
+    'src/中文（新建）.ts': { size: 4321, mtime: '2026-08-26T09:31:00+08:00' },
+    'package.json': { size: 2048, mtime: '2026-08-26T10:06:00+08:00' },
+    'src/config.ts': { size: 3170, mtime: '2026-08-25T09:12:00+08:00' },
+    'src/main.ts': { size: 5632, mtime: '2026-08-25T09:12:00+08:00' },
+    // docs/old-spec.md 无条目：不在工作区 → 大小/时间显示 —
+  },
+};
+
+// 场景 B：中文路径修复对比（同一份数据，「修复前」按 git quotepath=true 形态转义显示）
+const DATA_B = {
+  title: '拉取摘要 — 1 个新提交',
+  entries: [
+    mk('d'.repeat(40), 'ddd4444', 'Emon', '2026-08-27T15:20:00+08:00', 'feat: 新增功能（新建）模块与说明',
+      ['src/功能（新建）.ts', 'docs/说明（中文）.md', 'src/app/panel.ts']),
+  ],
+  truncated: false,
+  stat: {
+    'src/功能（新建）.ts': { size: 8654, mtime: '2026-08-27T15:21:00+08:00' },
+    'docs/说明（中文）.md': { size: 980, mtime: '2026-08-27T15:21:00+08:00' },
+    'src/app/panel.ts': { size: 15360, mtime: '2026-08-27T15:21:00+08:00' },
+  },
+};
+
+// 场景 C：单提交文件数截断 + 总提交数截断
+const DATA_C = {
+  title: '拉取摘要 — 100 个新提交',
+  entries: [
+    mk('e'.repeat(40), 'eee5555', '王五', '2026-08-27T18:00:00+08:00', 'chore: 同步生成产物',
+      ['dist/a.js', 'dist/b.js', 'dist/c.js', 'dist/d.js', 'dist/e.js'], true),
+    mk('f'.repeat(40), 'fff6666', '王五', '2026-08-27T17:40:00+08:00', 'chore: 依赖升级', ['package.json']),
+  ],
+  truncated: true,
+  stat: {
+    'dist/a.js': { size: 40960, mtime: '2026-08-27T18:01:00+08:00' },
+    'dist/b.js': { size: 12288, mtime: '2026-08-27T18:01:00+08:00' },
+    'dist/c.js': { size: 6144, mtime: '2026-08-27T18:01:00+08:00' },
+    'dist/d.js': { size: 7168, mtime: '2026-08-27T18:01:00+08:00' },
+    'dist/e.js': { size: 2048, mtime: '2026-08-27T18:01:00+08:00' },
+    'package.json': { size: 2048, mtime: '2026-08-27T17:41:00+08:00' },
+  },
+};
+
+/* ================= 场景切换 ================= */
+const stage = document.getElementById('stage');
+let scenario = 'A';
+let fixed = true;   // 场景 B：修复前(false) / 修复后(true)
+
+function current() {
+  if (scenario === 'A') render(stage, DATA_A.title, DATA_A.entries, DATA_A.truncated, DATA_A.stat, ROOT, false);
+  else if (scenario === 'B') render(stage, DATA_B.title, DATA_B.entries, DATA_B.truncated, DATA_B.stat, ROOT, !fixed);
+  else render(stage, DATA_C.title, DATA_C.entries, DATA_C.truncated, DATA_C.stat, ROOT, false);
+}
+function pick(next) {
+  scenario = next;
+  for (const [id, s] of [['scA', 'A'], ['scB', 'B'], ['scC', 'C']]) {
+    document.getElementById(id).classList.toggle('on', s === scenario);
+  }
+  const isB = scenario === 'B';
+  for (const id of ['fixLab', 'fxBefore', 'fxAfter', 'fixSep']) {
+    document.getElementById(id).style.display = isB ? '' : 'none';
+  }
+  document.getElementById('fxBefore').classList.toggle('on', isB && !fixed);
+  document.getElementById('fxAfter').classList.toggle('on', isB && fixed);
+  current();
+}
+document.getElementById('scA').addEventListener('click', () => pick('A'));
+document.getElementById('scB').addEventListener('click', () => pick('B'));
+document.getElementById('scC').addEventListener('click', () => pick('C'));
+document.getElementById('fxBefore').addEventListener('click', () => { fixed = false; pick('B'); });
+document.getElementById('fxAfter').addEventListener('click', () => { fixed = true; pick('B'); });
+document.getElementById('thBtn').addEventListener('click', () => {
+  const dark = document.body.dataset.theme === 'dark';
+  document.body.dataset.theme = dark ? 'light' : 'dark';
+  document.getElementById('thBtn').textContent = dark ? '深色' : '浅色';
+});
+
+pick('A');
+</script>
+</body>
+</html>

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>v11-e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<!-- mock VS Code API：必须先于 webview.js 定义 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.addEventListener('error', (e) => {
+    if (window.__result === 'pending' || window.__result === 'DONE') {
+      window.__result = 'JSERR ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno;
+      document.title = 'v11-e2e:' + window.__result;
+    }
+  });
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * v0.11 新功能 e2e：
+ * ① 详情面板高度按百分比记忆（ready 恢复 vh / 拖拽后保存百分比并切换 vh）
+ * ② 文件列表多选（Ctrl 累积 / Shift 范围 / 单击复位 / 换提交复位）+ 批量打开按钮/右键菜单
+ * ③ 侧栏工程区（渲染/命中高亮/双击当前窗口打开/右键新窗口+移除/＋添加流程）
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const fails = [];
+  const ok = (cond, msg) => { if (!cond) fails.push(msg); };
+  const sentCmds = (cmd) => window.__sent.filter(m => m && m.cmd === cmd);
+  const lastSent = (cmd) => sentCmds(cmd)[sentCmds(cmd).length - 1];
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  // ---- ready：带 detailPct=40 与两个工程（p1 命中当前工作区）----
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchOnOpen: false, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: '09_GitGraph', root: 'D:/09_GitGraph' }],
+    language: 'zh-CN', version: 'e2e', detailPct: 40,
+    projects: [
+      { id: 'p1', name: '项目A', path: 'D:/proj/a' },
+      { id: 'p2', name: '项目B', path: 'D:/proj/b' },
+    ],
+    activeProjectIds: ['p1'],
+    workspaceFolders: ['D:/proj/a'],
+  });
+  await twoFrames(); await sleep(100);
+
+  const mk = (i) => ({
+    sha: 'ee6f99a' + String(i) + 'f'.repeat(32),
+    shortSha: 'ee6f99' + String(i),
+    parents: i > 0 ? ['ee6f99a' + String(i - 1) + 'f'.repeat(32)] : [],
+    author: { name: 'Emon', email: 'emon@test', date: '2026-08-23T21:00:00+08:00' },
+    committer: { name: 'Emon', email: 'emon@test', date: '2026-08-23T21:00:00+08:00' },
+    subject: `v0.11 功能提交 ${i}`,
+    body: '',
+    refs: i === 0 ? [{ name: 'HEAD → main', kind: 'head', isHead: true }] : [],
+  });
+  const commits = Array.from({ length: 10 }, (_, i) => mk(i));
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: commits[0].sha, branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: commits[0].sha, isHead: true }],
+      remotes: [], tags: [], status: { dirtyCount: 0 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits, commitsLoaded: commits.length, hasMore: false, stateVersion: 1,
+    },
+  });
+  await twoFrames(); await sleep(100);
+
+  const FILES = ['a.txt', 'b.txt', 'c.txt', 'd.txt', 'e.txt'].map((n, i) => ({
+    path: n, status: 'M', additions: i + 1, deletions: 1,
+  }));
+  const smallDiff = { kind: 'diff', diff: { truncated: false, hunks: [{
+    header: '@@ -1,2 +1,2 @@', oldStart: 1, newStart: 1,
+    lines: [
+      { kind: 'ctx', oldNo: 1, newNo: 1, text: '  hello' },
+      { kind: 'del', oldNo: 2, text: '-old' },
+      { kind: 'add', newNo: 2, text: '+new' },
+    ],
+  }] } };
+
+  // mock：响应 commitDetail / diff
+  const respond = () => {
+    for (const m of window.__sent) {
+      if (m && m.id && m.cmd === 'commitDetail' && !m.__done) {
+        m.__done = true;
+        const shaIdx = Number(String(m.args.sha).slice(7, 8));
+        window.__send({ t: 'res', id: m.id, ok: true, data: { ...commits[shaIdx], files: FILES, filesTruncated: false } });
+      } else if (m && m.id && m.cmd === 'diff' && !m.__done) {
+        m.__done = true;
+        window.__send({ t: 'res', id: m.id, ok: true, data: smallDiff });
+      }
+    }
+  };
+
+  document.querySelector('.gg-list .gg-row').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sleep(80); respond(); await twoFrames(); await sleep(200);
+
+  const detail = document.querySelector('.gg-detail');
+  const rows = () => [...document.querySelectorAll('.gg-file')];
+  const selRows = () => rows().filter(r => r.classList.contains('selected'));
+  const clickRow = (r, mods = {}) => r.dispatchEvent(new MouseEvent('click', { bubbles: true, ...mods }));
+
+  // ================= ① 高度百分比 =================
+  const vh0 = detail.style.getPropertyValue('--gg-detail-h');
+  ok(vh0 === '40vh', `①初始 CSS 变量=${vh0} 应为 40vh`);
+  const h0 = detail.getBoundingClientRect().height;
+  const expect0 = window.innerHeight * 0.40;
+  ok(Math.abs(h0 - expect0) <= 2, `①初始高度=${h0.toFixed(1)} 应≈40%*${window.innerHeight}=${expect0.toFixed(1)}`);
+
+  // 拖拽：起点 500，上移 160（高度 +160）→ 保存百分比并切换 vh
+  const handle = document.querySelector('.gg-detail-handle');
+  const startH = h0;
+  handle.dispatchEvent(new PointerEvent('pointerdown', { clientY: 500, bubbles: true }));
+  window.dispatchEvent(new PointerEvent('pointermove', { clientY: 340 }));
+  window.dispatchEvent(new PointerEvent('pointerup'));
+  await twoFrames(); await sleep(50);
+  const saved = lastSent('ui:saveDetailPct');
+  const expectPct = Math.round(((startH + 160) / window.innerHeight) * 1000) / 10;
+  ok(!!saved, '①未发送 ui:saveDetailPct');
+  ok(saved && Math.abs(saved.args.pct - expectPct) <= 0.2, `①保存 pct=${saved && saved.args.pct} 应≈${expectPct}`);
+  ok(saved && saved.args.pct >= 8 && saved.args.pct <= 85, '①pct 未在 8–85 钳制范围');
+  const vh1 = detail.style.getPropertyValue('--gg-detail-h');
+  ok(vh1 === (saved ? saved.args.pct : 0) + 'vh', `①拖后 CSS 变量=${vh1} 应=${saved && saved.args.pct}vh`);
+
+  // ================= ② 多选 + 批量打开 =================
+  ok(selRows().length === 1 && selRows()[0]._path === 'a.txt', `②初始应单选 a.txt（实际 ${selRows().map(r => r._path)}）`);
+
+  // 批量按钮：无多选时回退打开锚点单个
+  document.querySelector('.gg-dfiles-head .gg-icon-btn').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sleep(50);
+  let openMsg = lastSent('ui:openFiles');
+  ok(openMsg && JSON.stringify(openMsg.args.paths) === JSON.stringify(['a.txt']), `②单选回退打开=${openMsg && JSON.stringify(openMsg.args.paths)}`);
+
+  // Ctrl 累积：单击 c → {c}；Ctrl+a → {c,a}
+  clickRow(rows()[2]);
+  clickRow(rows()[0], { ctrlKey: true });
+  ok(selRows().length === 2 && selRows().map(r => r._path).sort().join(',') === 'a.txt,c.txt', `②Ctrl 累积=${selRows().map(r => r._path)} 应 {a,c}`);
+
+  // Shift 范围：锚点 = 最后点击行（Windows 资源管理器语义）
+  //   ctrl+a 后锚点=a(0) → shift+d(3) = {a,b,c,d}；再 shift+a：锚点=d(3) → 范围 0..3 = 4 项
+  clickRow(rows()[3], { shiftKey: true });
+  ok(selRows().map(r => r._path).sort().join(',') === 'a.txt,b.txt,c.txt,d.txt', `②Shift 范围=${selRows().map(r => r._path)} 应 {a,b,c,d}`);
+  clickRow(rows()[0], { shiftKey: true });
+  ok(selRows().length === 4, `②Shift 反向范围=${selRows().map(r => r._path)} 应 4 项`);
+
+  // 批量按钮：打开全部选中（Set 插入序 = 范围序 a,b,c,d）
+  document.querySelector('.gg-dfiles-head .gg-icon-btn').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sleep(50);
+  openMsg = lastSent('ui:openFiles');
+  ok(openMsg && JSON.stringify(openMsg.args.paths) === JSON.stringify(['a.txt', 'b.txt', 'c.txt', 'd.txt']), `②批量打开=${openMsg && JSON.stringify(openMsg.args.paths)}`);
+
+  // 右键菜单：多选时首项「打开选中的 4 个文件」
+  rows()[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+  await sleep(50);
+  const menuItems = () => [...document.querySelectorAll('.gg-menu-item')];
+  ok(menuItems()[0]?.textContent === '打开选中的 4 个文件', `②菜单首项=${menuItems()[0] && menuItems()[0].textContent}`);
+  menuItems()[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sleep(50);
+  openMsg = lastSent('ui:openFiles');
+  ok(openMsg && openMsg.args.paths.length === 4, '②菜单批量打开未发送 4 个路径');
+
+  // 单击复位单选
+  clickRow(rows()[4]);
+  ok(selRows().length === 1 && selRows()[0]._path === 'e.txt', `②单击复位=${selRows().map(r => r._path)} 应 {e}`);
+
+  // 换提交复位多选：点第 2 行提交 → 新详情（同文件表）→ 仅锚点 a.txt
+  const commitRows = [...document.querySelectorAll('.gg-list .gg-row')];
+  commitRows[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sleep(80); respond(); await twoFrames(); await sleep(200);
+  ok(selRows().length === 1 && selRows()[0]._path === 'a.txt', `②换提交复位=${selRows().map(r => r._path)} 应 {a}`);
+
+  // ================= ③ 侧栏工程区 =================
+  const secs = [...document.querySelectorAll('.gg-side-sec')];
+  ok(secs.length === 5, `③分区数=${secs.length} 应 5（工程/仓库/分支/远程/标签）`);
+  ok(secs[0].querySelector('.gg-side-h').textContent.startsWith('工程'), `③首分区=${secs[0].querySelector('.gg-side-h').textContent} 应为工程`);
+  const projItems = () => [...document.querySelectorAll('.gg-side-item.project')];
+  ok(projItems().length === 2, `③工程行数=${projItems().length} 应 2`);
+  ok(projItems()[0].classList.contains('active') && !projItems()[1].classList.contains('active'), '③命中高亮错误（p1 应 active）');
+  ok(projItems()[0].textContent.includes('项目A') && projItems()[0].textContent.includes('D:/proj/a'), '③工程行缺名称或路径');
+
+  // 双击 = 当前窗口打开
+  projItems()[1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  await sleep(50);
+  let openProj = lastSent('projects.open');
+  ok(openProj && openProj.args.id === 'p2' && openProj.args.newWindow === false, `③双击打开=${openProj && JSON.stringify(openProj.args)} 应 {id:p2,newWindow:false}`);
+
+  // 右键菜单：新窗口打开 / 移除
+  const ctxMenu = async (el, label) => {
+    el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 30 }));
+    await sleep(50);
+    const item = menuItems().find(e => e.textContent === label);
+    ok(!!item, `③菜单缺项「${label}」（实际 ${menuItems().map(e => e.textContent)}）`);
+    item?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await sleep(50);
+  };
+  await ctxMenu(projItems()[0], '在新窗口打开');
+  openProj = lastSent('projects.open');
+  ok(openProj && openProj.args.id === 'p1' && openProj.args.newWindow === true, `③新窗口打开=${openProj && JSON.stringify(openProj.args)}`);
+
+  await ctxMenu(projItems()[0], '移除');
+  const confirmBtn = document.querySelector('.gg-modal-btns .gg-btn.danger');
+  ok(!!confirmBtn, '③移除确认框未出现');
+  confirmBtn?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sleep(50);
+  const rmMsg = lastSent('projects.remove');
+  ok(rmMsg && rmMsg.args.id === 'p1', `③移除=${rmMsg && JSON.stringify(rmMsg.args)} 应 {id:p1}`);
+
+  // ＋ 菜单：当前工作区已保存（禁用）+ 浏览文件夹…
+  document.querySelector('.gg-side-sec .gg-side-add').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sleep(50);
+  ok(menuItems()[0]?.classList.contains('disabled') && menuItems()[0]?.textContent.startsWith('保存当前工作区'), `③＋菜单首项=${menuItems()[0] && menuItems()[0].textContent}（应禁用）`);
+  const browseItem = menuItems().find(e => e.textContent === '浏览文件夹…');
+  browseItem?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  // 响应 pickFolder → 弹名称框（默认目录名 c）→ 改名工程C → 确定
+  for (let i = 0; i < 40 && !sentCmds('projects.pickFolder').length; i++) await sleep(25);
+  const pick = lastSent('projects.pickFolder');
+  ok(!!pick, '③未发送 projects.pickFolder');
+  if (pick) window.__send({ t: 'res', id: pick.id, ok: true, data: { path: 'D:/proj/c' } });
+  for (let i = 0; i < 40 && !document.querySelector('.gg-modal input.gg-input'); i++) await sleep(25);
+  const nameInput = document.querySelector('.gg-modal input.gg-input');
+  ok(!!nameInput, '③工程名称输入框未出现');
+  ok(nameInput?.value === 'c', `③默认名=${nameInput && nameInput.value} 应 c`);
+  if (nameInput) nameInput.value = '工程C';
+  document.querySelector('.gg-modal-btns .gg-btn.primary')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sleep(50);
+  const addMsg = lastSent('projects.add');
+  ok(addMsg && addMsg.args.path === 'D:/proj/c' && addMsg.args.name === '工程C', `③添加=${addMsg && JSON.stringify(addMsg.args)}`);
+
+  // projectsChanged → 列表重渲染为 3 项
+  window.__send({
+    t: 'projectsChanged',
+    projects: [
+      { id: 'p1', name: '项目A', path: 'D:/proj/a' },
+      { id: 'p2', name: '项目B', path: 'D:/proj/b' },
+      { id: 'p3', name: '工程C', path: 'D:/proj/c' },
+    ],
+    activeProjectIds: ['p1'],
+  });
+  await twoFrames(); await sleep(100);
+  ok(projItems().length === 3 && projItems()[2].textContent.includes('工程C'), `③projectsChanged 后=${projItems().length} 行应 3 行含工程C`);
+
+  finish(fails.length ? 'FAIL ' + fails.join(' | ') : 'PASS');
+
+  function finish(result) {
+    window.__result = result;
+    document.title = 'v11-e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>

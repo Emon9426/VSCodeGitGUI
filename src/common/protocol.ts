@@ -3,7 +3,7 @@
  * 请求-响应：Webview 生成自增 id，扩展侧回 res 携带同 id。
  * 事件：扩展侧主动推送。
  */
-import type { RepoMeta, RepoState, Commit, CommitDetail, DiffPayload, WorkState } from './models';
+import type { ProjectInfo, PullSummaryEntry, PullFileStat, RepoMeta, RepoState, Commit, CommitDetail, DiffPayload, WorkState, MoveDetect } from './models';
 
 export interface ConfigDto {
   language: 'auto' | 'zh-CN' | 'en';
@@ -17,6 +17,8 @@ export interface ConfigDto {
   commitPageSize: number;
   maxAutoLoad: number;
   fetchOnOpen: boolean;
+  /** 后台自动获取间隔（分钟，SourceTree 式；0=关闭）——仅面板存活期间执行 */
+  autoFetchInterval: number;
   fetchPrune: boolean;
   defaultPullStrategy: 'merge' | 'rebase' | 'ff-only';
   logOrder: 'topo' | 'date';      // topo=走线规整（默认）；date=大仓库 log 更快
@@ -28,12 +30,18 @@ export interface ConfigDto {
   commitClearMessage: boolean;
   commitPushAfter: boolean;
   startView: 'graph' | 'work' | 'last';
+  /** Pull/Fetch 后弹窗显示拉到的纯净提交摘要（v0.13） */
+  pullFetchSummary: boolean;
 }
 
 export type OpKind = 'fetch' | 'pull' | 'push' | 'reset' | 'checkout'
   | 'stage' | 'unstage' | 'discard' | 'discardClean' | 'commit'
   | 'resolveConflict' | 'commitNoEdit'
-  | 'tagCreate' | 'tagDelete' | 'tagDeleteRemote' | 'tagPush';
+  | 'mergeAbort' | 'mergeContinue' | 'resolveDelete'
+  | 'tagCreate' | 'tagDelete' | 'tagDeleteRemote' | 'tagPush'
+  // 文件页操作（v0.14）：移动/重命名同为 git mv（重命名=同目录）；删除=git rm（未跟踪走 fs）
+  | 'moveFolder' | 'renamePath' | 'deletePaths'
+  | 'refresh';   // v0.9.2：refresh 纳入统一进度模型（无取消、秒级）
 
 export interface OpProgress {
   t: 'opProgress';
@@ -61,7 +69,15 @@ export interface ColWidths {
 }
 
 export type ExtEvent =
-  | { t: 'ready'; config: ConfigDto; repos: RepoMeta[]; language: string; colWidths?: ColWidths; selectedSha?: string; version?: string }
+  | { t: 'ready'; config: ConfigDto; repos: RepoMeta[]; language: string; colWidths?: ColWidths; selectedSha?: string; version?: string;
+      /** 详情面板高度百分比（vh）：不同尺寸屏幕按相对高度恢复 */
+      detailPct?: number;
+      /** 文件页布局（v0.14）：左区面板宽度 px + 详细信息视图列宽 px 数组 */
+      filesLayout?: { paneW: number; cols: number[] };
+      /** 侧栏折叠状态（v0.14.1）：跨会话保持 */
+      sideCollapsed?: boolean;
+      /** 已保存的工程列表 / 当前工作区命中的工程 / 工作区根路径（v0.11） */
+      projects?: ProjectInfo[]; activeProjectIds?: string[]; workspaceFolders?: string[] }
   | { t: 'repoState'; state: RepoState }
   | { t: 'commitsAppend'; repoId: string; offset: number; commits: Commit[]; hasMore: boolean }
   | OpProgress
@@ -69,12 +85,18 @@ export type ExtEvent =
   | { t: 'notify'; level: 'info' | 'warn' | 'error'; message: string }
   | { t: 'configChanged'; config: ConfigDto; language: string }
   | { t: 'themeChanged' }
+  | { t: 'projectsChanged'; projects: ProjectInfo[]; activeProjectIds: string[] }
   // 工作副本（Commit 功能）
   | { t: 'workState'; state: WorkState }
   | { t: 'showWork' }
+  // Pull/Fetch 摘要（v0.13）：拉到的纯净提交（排除 merge），面板内弹窗呈现；
+  // stat 为文件工作区现状（键=文件路径，重命名取新路径；仅含存在的文件）
+  | { t: 'pullSummary'; repoId: string; kind: 'pull' | 'fetch'; entries: PullSummaryEntry[]; truncated: boolean; stat: Record<string, PullFileStat> }
   | { t: 'aiChunk'; text: string }
-  | { t: 'aiDone'; model: string; instructions: number }
-  | { t: 'aiError'; code: 'noModel' | 'auth' | 'quota' | 'canceled' | 'error'; message?: string };
+  | { t: 'aiDone'; model: string; instructions: number; fallback?: boolean }
+  | { t: 'aiError'; code: 'noModel' | 'auth' | 'quota' | 'canceled' | 'error'; message?: string }
+  // 文件历史页（v0.14）：explorer 右键「查看文件历史」→ 打开面板切文件视图并定位路径
+  | { t: 'filesReveal'; path: string };
 
 export interface WVRequest {
   id: number;
@@ -108,16 +130,26 @@ export type WVCommand =
   | 'op:cancel'             // { opId }
   | 'ui:openFile'           // { path }
   | 'ui:openFileAt'         // { sha, path }
+  | 'ui:openFiles'          // { paths: string[] } -> { opened, missing }（详情面板多选批量打开）
   | 'ui:openDiffEditor'     // { sha, path, base?, worktree? }
   | 'ui:revealInFM'         // { path }
   | 'ui:copy'               // { text }
   | 'ui:saveColWidths'      // { widths: ColWidths }
+  | 'ui:saveDetailPct'      // { pct }（详情面板高度百分比，跨屏按相对高度恢复）
   | 'ui:openSettings'
   // 工作副本（Commit 功能）
   | 'work.state'            // {} -> WorkState
   | 'work.stage'            // { paths: string[] }
   | 'work.unstage'          // { paths: string[] }
-  | 'work.resolveConflict'  // { paths: string[], ours: boolean }（冲突二选一；全解决自动完成合并）
+  | 'work.resolveConflict'  // { paths: string[], ours: boolean }（git 级 ours/theirs；语义侧请用 merge.resolve）
+  // 合并解决器（v0.10）
+  | 'merge.session'         // { path } -> MergeSessionAny（文本/二进制/超限三态）
+  | 'merge.resolve'         // { path, side: 'mine'|'theirs' }（语义侧二选一，扩展侧按 mergeKind 映射 --ours/--theirs）
+  | 'merge.save'            // { path, content }（以合并后为准：原子写回 + add）
+  | 'merge.deleteAccept'    // { path, side: 'mine'|'theirs' }（一方删除场景：保留现存侧 / 采纳删除）
+  | 'merge.finish'          // {}（完成合并：merge→commit --no-edit；rebase→rebase --continue）
+  | 'merge.abort'           // {}（merge --abort / rebase --abort 按 mergeKind）
+  | 'merge.previewBinary'   // { path, side }（写临时文件后用系统程序打开预览）
   | 'tag.create'            // { name, sha?, message? }（message 非空=附注标签）
   | 'tag.delete'            // { name, remote? }（remote 存在=同时删远端）
   | 'tag.push'              // { name, remote? }
@@ -136,7 +168,24 @@ export type WVCommand =
   | 'work.loadDraft'        // {} -> CommitDraft | null
   | 'work.saveLayout'        // { filesW, barH }
   | 'ui:setView'             // { view: 'graph' | 'work' } —— 记忆上次视图（startView=last）
-  | 'ui:pickLanguage';       // {} → 宿主弹 QuickPick 三选一并写回 gitboard.language
+  | 'ui:pickLanguage'        // {} → 宿主弹 QuickPick 三选一并写回 gitboard.language
+  // 工程切换（v0.11）
+  | 'projects.add'           // { path, name }（同路径重复添加 = 重命名）→ 推 projectsChanged
+  | 'projects.rename'        // { id, name }
+  | 'projects.remove'        // { id }
+  | 'projects.pickFolder'    // {} -> { path } | null（系统文件夹选择对话框）
+  | 'projects.open'          // { id, newWindow }（vscode.openFolder：当前窗口替换 / 新窗口）
+  // 文件历史页（v0.14）；只读版本标签页复用 ui:openFileAt
+  | 'files.ls'              // { dir } -> FileItem[]（目录直接子项：HEAD 快照 + 工作区 stat）
+  | 'files.log'             // { path, follow } -> { items: FileHistoryItem[], chain: PathChain }（--follow 单命令）
+  | 'files.dirLog'          // { dir, follow } -> { items, chain }（目录级：链反查 + 多 pathspec）
+  | 'files.commitDiff'      // { sha, path } -> DiffPayload（详情展开：该文件此提交的变化）
+  | 'files.versionDiff'     // { a:{sha,path}, b:{sha,path} } -> DiffPayload（blob 级两版比对，跨移动有效）
+  | 'folder.move'           // { srcs: string[], dst }（多选批量 git mv；成功后引导纯移动提交）
+  | 'folder.rename'         // { path, newName }（同目录 git mv）
+  | 'folder.delete'         // { paths: string[] }（已跟踪 git rm / 未跟踪磁盘删除）
+  | 'ui:saveFilesLayout'    // { paneW, cols }（面板宽度与列宽持久化）
+  | 'ui:saveSideCollapsed'; // { collapsed }（侧栏折叠状态持久化，v0.14.1）
 
 export interface Pending {
   resolve: (v: any) => void;

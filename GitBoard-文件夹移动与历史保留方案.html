@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitBoard · 文件夹移动与历史保留方案（v0.14.0 需求）v1.4 可执行稿</title>
+<style>
+  :root{
+    --fg:#1f2328; --fg2:#57606a; --line:#d0d7de; --bg:#ffffff; --bg2:#f6f8fa;
+    --accent:#0969da; --green:#1a7f37; --red:#cf222e; --amber:#9a6700; --purple:#8250df;
+    --code-bg:#0d1117; --code-fg:#e6edf3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.75 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;color:var(--fg);background:var(--bg)}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code.inline{background:var(--bg2);border:1px solid var(--line);border-radius:4px;padding:0 5px;font:12.5px/1.6 Consolas,"Courier New",monospace;color:#953800;white-space:nowrap}
+  pre.code{background:var(--code-bg);color:var(--code-fg);border-radius:8px;padding:14px 16px;overflow:auto;font:12.5px/1.6 Consolas,"Courier New",monospace;tab-size:2}
+  pre.code code{background:none;border:none;color:inherit;padding:0;font-size:inherit;white-space:pre}
+  table.tbl{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  table.tbl th{background:var(--bg2);text-align:left}
+  table.tbl th,table.tbl td{border:1px solid var(--line);padding:6px 10px;vertical-align:top}
+  table.tbl tr:nth-child(even) td{background:#fbfcfd}
+  h1{font-size:28px;margin:.2em 0 .3em}
+  h2{font-size:21px;margin:2.2em 0 .6em;padding-left:12px;border-left:4px solid var(--accent)}
+  h3{font-size:17px;margin:1.6em 0 .5em;color:#24292f}
+  h4{font-size:15px;margin:1.2em 0 .4em;color:var(--fg2)}
+  p{margin:.6em 0}
+  ul,ol{padding-left:1.6em}
+  li{margin:.25em 0}
+  hr.sect{border:none;border-top:1px solid var(--line);margin:2.5em 0}
+  aside.toc{position:fixed;top:0;left:0;bottom:0;width:252px;overflow-y:auto;padding:20px 14px;border-right:1px solid var(--line);background:var(--bg2);font-size:13px}
+  aside.toc .toc-title{font-weight:600;margin-bottom:10px}
+  aside.toc a{display:block;color:var(--fg2);padding:2px 6px;border-radius:4px;line-height:1.5}
+  aside.toc a:hover{background:#eaeef2;text-decoration:none;color:var(--accent)}
+  aside.toc a.sub{padding-left:18px;font-size:12.3px}
+  main.doc{margin-left:252px;padding:36px 44px 80px;max-width:1080px}
+  .docmeta{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:12px 18px;margin:14px 0 8px;font-size:13.5px}
+  .revlog{background:#fff8c566;border:1px dashed #d4a72c88;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px}
+  .box{border-radius:8px;padding:10px 16px;margin:14px 0;font-size:13.8px;border:1px solid}
+  .box.note{background:#ddf4ff;border-color:#54aeff66}
+  .box.warn{background:#fff8c5;border-color:#d4a72c66}
+  .box.decision{background:#dafbe1;border-color:#4ac26b66}
+  .prio{display:inline-block;border-radius:10px;padding:0 9px;font-size:12px;font-weight:600;line-height:20px}
+  .p0{background:#dafbe1;color:var(--green)}
+  .p1{background:#fff8c5;color:var(--amber)}
+  .p2{background:#fbefff;color:var(--purple)}
+  .ok{color:var(--green);font-weight:600}
+  .bad{color:var(--red);font-weight:600}
+  .mid{color:var(--amber);font-weight:600}
+  .gwt{font-size:13.2px;background:var(--bg2);border-left:3px solid var(--accent);border-radius:0 6px 6px 0;padding:6px 12px;margin:6px 0}
+  .gwt b{color:var(--accent)}
+
+  /* 时间线示意 */
+  .tl{margin:16px 0;padding:14px 10px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;overflow-x:auto}
+  .tl-row{display:flex;align-items:center;gap:6px;min-width:640px}
+  .tl-c{flex:none;width:118px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 8px;font-size:12px;line-height:1.45;text-align:center}
+  .tl-c .sha{font:11px Consolas,monospace;color:var(--fg2)}
+  .tl-c.a-era{border-color:#54aeff88;background:#ddf4ff55}
+  .tl-c.move{border-color:#c297ff;background:#fbefff}
+  .tl-c.b-era{border-color:#4ac26b88;background:#dafbe155}
+  .tl-c .ph{font-weight:700;font-size:11.5px}
+</style>
+</head>
+<body>
+<aside class="toc">
+  <div class="toc-title">目录</div>
+  <a href="#bg">1 背景与根因</a>
+  <a href="#req">2 需求定义与验收标准</a>
+  <a href="#feas">3 技术可行性验证（实测）</a>
+  <a href="#spec">4 功能规格</a>
+  <a class="sub" href="#s1">4.1 页面框架与视图切换</a>
+  <a class="sub" href="#s2">4.2 左区：文件夹视图 / 详细信息视图</a>
+  <a class="sub" href="#s3">4.3 右区：文件历史面板</a>
+  <a class="sub" href="#s4">4.4 历史跟随移动（算法）</a>
+  <a class="sub" href="#s5">4.5 文件操作：移动/删除/重命名</a>
+  <a href="#tech">5 技术设计</a>
+  <a class="sub" href="#t1">5.1 协议消息表</a>
+  <a class="sub" href="#t2">5.2 service 方法与 git 参数</a>
+  <a class="sub" href="#t3">5.3 组件与接口</a>
+  <a class="sub" href="#t4">5.4 解析与路径安全</a>
+  <a class="sub" href="#t5">5.5 边界与风险</a>
+  <a href="#wbs">6 实施任务拆解（WBS）</a>
+  <a href="#test">7 测试计划（用例清单）</a>
+  <a href="#risk">8 集中风险与对策</a>
+  <a href="#open">9 评审确认点</a>
+</aside>
+<main class="doc">
+
+<h1>GitBoard 文件夹移动与历史保留方案<br><span style="font-size:17px;color:#57606a">—— 独立「文件历史」页 · 可执行需求文档</span></h1>
+<div class="docmeta">
+  <b>文档版本</b>：v1.4（<b style="color:#9a6700">五审稿 · 可执行</b>）&nbsp;·&nbsp;
+  <b>目标产品版本</b>：v0.14.0（P0）/ v0.14.x（P1）&nbsp;·&nbsp;
+  <b>日期</b>：2026-08-29&nbsp;·&nbsp;
+  <b>实测环境</b>：Git 2.49.0.windows.1（累计 20 项实验）&nbsp;·&nbsp;
+  <b>配套 UI 预览</b>：<code class="inline">GitBoard-文件历史页预览.html</code>（可交互：双视图 / 地址栏 / 多选 / 宽度拖拽 / 四场景）
+</div>
+<div class="revlog">
+<b>修订记录</b>：
+<b>v1.0</b>（一审稿）主界面筛选条方案 →
+<b>v1.1</b>（二审稿）重构为独立文件历史页（树/文件夹双视图 + 信息/预览/历史三段） →
+<b>v1.2</b>（三审稿）定案双视图/取消预览/移除路线 B，细化为可执行文档 →
+<b>v1.3</b>（四审稿）按用户反馈增补：左区宽度拖拽记忆（R9）、多选与删除/移动/重命名独立按钮（R10）、Win11 式地址栏（R11）、确认重命名与移动同机制（§4.4，第 20 项实测） →
+<b>v1.4</b>（五审稿，本版）细节定稿：
+<b>① 详细信息视图每一列可拖拽调宽并记忆（列边界手柄，悬停蓝色高亮）；② 移除选中行的单元格虚线描边——选中效果为纯色高亮，行内不出现任何竖向分割线（多选锚点不再有视觉标识）</b>。
+</div>
+<p>本文档定义 GitBoard 的<b>文件历史页</b>：以独立页面承载「浏览仓库文件 → 查看文件/文件夹的完整提交历史（跨移动跟随）→
+版本级操作（详情 / 打开指定版本 / 任意两版本比对）→ 引导式移动（<code class="inline">git mv</code>）」的完整闭环。
+核心承诺：<b>文件夹从 <code class="inline">A</code> 移动到 <code class="inline">B/A</code> 后，在 <code class="inline">B/A</code> 仍能看到 <code class="inline">A</code> 时期的全部提交，且不改写任何历史、对远端与协作者零影响。</b></p>
+
+<hr class="sect">
+<h2 id="bg">1 背景与根因</h2>
+<p><b>场景</b>：日常工作在文件夹 <code class="inline">A</code> 中持续提交产出；完工后移动到 <code class="inline">B/A</code> 归档。
+移动后按 <code class="inline">B/A</code> 查看历史时，「看不到」<code class="inline">A</code> 时期的提交。</p>
+<p><b>根因</b>（决定技术路线的关键认知）：<b>提交记录从未丢失</b>。Git 每个提交都是全仓库快照，<code class="inline">A</code> 时期的提交完好地在历史链中；
+「消失」是因为按路径过滤时，旧提交中的路径（<code class="inline">A/…</code>）匹配不上新路径（<code class="inline">B/A</code>）。
+<code class="inline">git mv</code> 与 rename 检测只影响差异展示，不会改写旧提交中的路径。</p>
+<div class="tl">
+  <div class="tl-row">
+    <div class="tl-c a-era"><span class="ph" style="color:#0969da">A 时期</span><br>day1 in A<br><span class="sha">56f3ad3</span></div>
+    <div class="tl-c a-era">day2 in A<br><span class="sha">6eb1857</span></div>
+    <div class="tl-c a-era">day3 update in A<br><span class="sha">ab1340a</span></div>
+    <div class="tl-c move"><span class="ph" style="color:#8250df">移动提交</span><br>move A to B/A<br><span class="sha">7f8077f</span></div>
+    <div class="tl-c b-era"><span class="ph" style="color:#1a7f37">B/A 时期</span><br>day4 in B/A<br><span class="sha">1ac9fa5</span></div>
+  </div>
+</div>
+<div class="box decision">
+<b>技术路线（定案）</b>：<b>查询合并显示</b>——不改任何提交、commit hash 不变、正常 pull/push、协作者零影响、随时可关闭跟随。
+移动操作以 <code class="inline">git mv</code> + 「纯移动单独成提交」引导保证 rename 检测 100% 命中，为查询跟随提供可靠数据基础。
+</div>
+
+<hr class="sect">
+<h2 id="req">2 需求定义与验收标准</h2>
+<table class="tbl">
+<tr><th style="width:48px">编号</th><th style="width:64px">优先级</th><th style="width:30%">需求</th><th>验收标准（核心场景）</th></tr>
+<tr>
+  <td><b>R1</b></td><td><span class="prio p0">P0</span></td>
+  <td><b>独立文件历史页</b>：工具栏视图分段第四段「🗂 文件」</td>
+  <td><div class="gwt"><b>给定</b>已打开仓库 <b>当</b>点击「文件」段 <b>则</b>进入文件页（左区资源管理器 + 右区面板）；切换到其他视图再切回，选中/视图形态/过滤词/滚动位置全部保持</div></td>
+</tr>
+<tr>
+  <td><b>R2</b></td><td><span class="prio p0">P0</span></td>
+  <td><b>左区双视图</b>：文件夹视图（平铺网格）与详细信息视图（名称/修改日期/类型/大小表格），图标友好</td>
+  <td><div class="gwt"><b>给定</b>文件页 <b>当</b>点 ▦/☰ 切换 <b>则</b>两视图各自正确渲染（平铺=大图标卡片；详细信息=四列表格、目录优先、列头可排序）；所有文件按扩展名显示类型图标；面包屑可逐级跳转；过滤框即时过滤</div></td>
+</tr>
+<tr>
+  <td><b>R3</b></td><td><span class="prio p0">P0</span></td>
+  <td><b>右区文件历史面板</b>：文件头 + 提交记录列表（<b>无预览段</b>）</td>
+  <td><div class="gwt"><b>给定</b>左区选中某文件 <b>当</b>右区刷新 <b>则</b>显示文件头（图标/文件名/路径/链徽标/跟随开关）与该文件全部提交（时间线圆点行）；选中目录时显示目录级历史</div></td>
+</tr>
+<tr>
+  <td><b>R4</b></td><td><span class="prio p0">P0</span></td>
+  <td><b>历史跟随移动与重命名</b></td>
+  <td><div class="gwt"><b>给定</b>文件/文件夹经历过 <code class="inline">A → B/A</code> 纯移动或「旧名 → 新名」纯重命名提交 <b>当</b>查看历史（跟随开）<b>则</b>移动/重命名前的提交全部显示并带时期徽标（当时路径），变更提交显示为里程碑行，文件头链徽标显示完整链；<b>当</b>关闭跟随 <b>则</b>仅显示当前路径时期提交</div></td>
+</tr>
+<tr>
+  <td><b>R5</b></td><td><span class="prio p1">P1</span></td>
+  <td><b>版本操作三件套</b>：详情 / 打开指定版本 / 比对任意两版本</td>
+  <td><div class="gwt">① 点 ⓘ 就地展开提交详情 + 该文件此提交的变化 diff；② 点 📄 在编辑器打开该提交时刻的只读版本（标题带短 sha）；③ 勾选任意两条 →「比对差异」→ 右区切换 diff 视图，<b>跨移动时期的两版本比对正确</b>（各自取当时路径）</div></td>
+</tr>
+<tr>
+  <td><b>R6</b></td><td><span class="prio p1">P1</span></td>
+  <td><b>移动操作（文件 + 文件夹）</b></td>
+  <td><div class="gwt"><b>给定</b>左区任一文件或文件夹 <b>当</b>右键「移动到…」选目标 <b>则</b>执行 <code class="inline">git mv</code> 并出现横幅引导纯移动提交（预填 <code class="inline">chore: 移动 A → B/A</code>）；目标已存在/嵌套移动被拦截并提示</div></td>
+</tr>
+<tr>
+  <td><b>R7</b></td><td><span class="prio p1">P1</span></td>
+  <td><b>手动移动补救</b></td>
+  <td><div class="gwt"><b>给定</b>用户在系统资源管理器手动移动后 <b>当</b>工作副本出现同前缀批量删除 + 同名未跟踪 <b>则</b>横幅提示「检测到文件夹移动」，一键按移动 stage 并引导纯移动提交</div></td>
+</tr>
+<tr>
+  <td><b>R8</b></td><td><span class="prio p2">P2</span></td>
+  <td><b>进阶</b>：已删除/旧名文件搜索、<code class="inline">--full-history</code> 开关、大仓库树虚拟化、地址栏路径自动补全</td>
+  <td>（后续版本）</td></tr>
+<tr>
+  <td><b>R9</b></td><td><span class="prio p0">P0</span></td>
+  <td><b>面板与列宽拖拽调整并记忆</b></td>
+  <td><div class="gwt"><b>给定</b>文件页 <b>当</b>拖动左右区分隔条 <b>则</b>宽度实时跟随（280–640px 钳制）；<b>当</b>在详细信息视图拖动任一列边界手柄 <b>则</b>该列宽度实时调整（每列有最小宽）；二者松开后均持久化（globalState），重开面板 / 重启窗口后保持。<b>选中行为纯色高亮，行内无任何竖向分割线</b></div></td>
+</tr>
+<tr>
+  <td><b>R10</b></td><td><span class="prio p1">P1</span></td>
+  <td><b>多选 + 删除 / 移动 / 重命名</b>（删除与移动有独立按钮）</td>
+  <td><div class="gwt"><b>给定</b>左区列表 <b>当</b>Ctrl/⇧ 多选（右区切换为批量面板）<b>则</b>命令条「🗑 删除 / ✂ 移动到…」作用于全部选中项；单选时「🗎 重命名（F2）」可用；删除有确认弹层（<code class="inline">git rm</code> / 磁盘删除）</div></td>
+</tr>
+<tr>
+  <td><b>R11</b></td><td><span class="prio p0">P0</span></td>
+  <td><b>地址栏</b>（Win11 资源管理器式）</td>
+  <td><div class="gwt"><b>给定</b>地址栏（默认面包屑态）<b>当</b>点击空白/✎/Ctrl+L 切编辑态并输入路径回车 <b>则</b>目录路径直接导航、文件路径定位选中并在编辑器打开；粘贴路径同样生效；不存在路径红框提示</div></td>
+</tr>
+</table>
+
+<hr class="sect">
+<h2 id="feas">3 技术可行性验证（实测）</h2>
+<p>立项前在临时仓库完成三轮共 19 项实验（Git 2.49.0.windows.1；脚本留存于 <code class="inline">%TEMP%/gitgraph-move-verify*.sh</code>）。核心结论：</p>
+<table class="tbl">
+<tr><th style="width:48%">实验</th><th style="width:14%">结果</th><th>对方案的意义</th></tr>
+<tr><td><code class="inline">git log -- B/A</code>（按新路径过滤）</td><td class="bad">只见移动后</td><td>复现用户痛点</td></tr>
+<tr><td><code class="inline">git log --diff-filter=R -M -- B/A</code></td><td class="bad">空</td><td><b>pathspec 过滤先于 rename 配对</b>：单查新路径无法发现旧路径——必须换查法</td></tr>
+<tr><td><b>文件级</b>：<code class="inline">git log --follow --name-status -- B/A/d1.md</code></td><td class="ok">一次拿全</td><td><b>右区主数据源</b>：每条提交自带当时路径，R100 行带双端路径；两次移动链完整</td></tr>
+<tr><td><b>目录级</b>：边界提交 <code class="inline">show -M</code>（无 pathspec）反查旧前缀迭代</td><td class="ok">链式闭环</td><td>目录历史跟随算法可行（§4.4）</td></tr>
+<tr><td><b>两版比对</b>：<code class="inline">git diff sha1:A/d1.md sha2:B/A/d1.md</code></td><td class="ok">正确</td><td>blob 级跨路径比对可行；stat 显示 <code class="inline">{A =&gt; B/A}/d1.md</code> 移动感知格式</td></tr>
+<tr><td>多 pathspec <code class="inline">git log -- B/A A</code></td><td class="ok">全量</td><td>目录历史合并显示（OR 语义）</td></tr>
+<tr><td>移动 + 内容大改同一提交（含降阈值 20%）</td><td class="bad">rename 丢失</td><td>「纯移动单独成提交」是硬性实践 → R6/R7 引导设计的依据</td></tr>
+<tr><td>50 文件目录移动 + 双 pathspec</td><td class="ok">50 条 R100</td><td>规模无压力（实现仍加 <code class="inline">diff.renameLimit=10000</code>）</td></tr>
+<tr><td>路径 <code class="inline">B/A[1]</code>：裸 pathspec vs <code class="inline">:(literal)</code></td><td class="ok">literal 安全</td><td>pathspec 一律 <code class="inline">:(literal)</code> 前缀</td></tr>
+<tr><td>中文路径 <code class="inline">git show HEAD:B/A/说明文档.md</code> 与 blob diff</td><td class="ok">正常</td><td>executor <code class="inline">quotepath=false</code> + diff 头过 <code class="inline">unescapeGitPath</code>（v0.13.3 已有）</td></tr>
+<tr><td><b>重命名</b>：<code class="inline">git log --follow --name-status -- 新名</code>（同目录改名仓库）</td><td class="ok">重命名前历史完整</td><td><b>第 20 项实验</b>：改名 <code class="inline">需求草稿.md → 需求说明.md</code> 后，按新名查询返回全部 5 条提交（含改名前 2 条，当时路径为旧名）；R100 行记录改名事件；重命名前最早版本 blob 比对有效——<b>重命名与移动同机制，跟随对二者同样生效</b></td></tr>
+</table>
+<div class="box note"><b>结论</b>：页面所需的全部 Git 能力实测通过，方案可行。UI 交互见配套预览页（已按三审稿更新并浏览器验证）。</div>
+
+<hr class="sect">
+<h2 id="spec">4 功能规格</h2>
+
+<h3 id="s1">4.1 页面框架与视图切换</h3>
+<ul>
+<li>工具栏视图分段：<code class="inline">⎔ 提交图 / ☰ 纯提交 / ▣ 工作副本 / 🗂 文件</code>（第四段新增，选中态与其他段一致）。</li>
+<li>文件页 = 左区（资源管理器，默认 388px，<b>分隔条拖拽 280–640px，松开持久化 globalState <code class="inline">gitboard.filesPaneWidth</code>，复用列宽拖拽交互</b>）+ 右区（文件历史面板）；窄视口（&lt;600px）左区可折叠为图标条。</li>
+<li>视图切换 display 不销毁 DOM；左区视图形态、当前目录、过滤词、右区选中与勾选对、滚动位置全部保持。</li>
+<li>数据源为 <b>HEAD 快照</b>（<code class="inline">ls-tree</code>）+ 工作区 <code class="inline">fs.stat</code>（详细信息列）；工作副本变更后自动刷新（复用现有 watcher → 树缓存失效）。</li>
+</ul>
+
+<h3 id="s2">4.2 左区：文件夹视图 / 详细信息视图</h3>
+<table class="tbl">
+<tr><th style="width:110px"></th><th style="width:44%">文件夹视图（▦）</th><th>详细信息视图（☰，默认）</th></tr>
+<tr><td><b>形态</b></td><td>平铺网格：大图标（30px）+ 名称卡片（92px 宽自适应列数），目录卡片左上计数角标、右上链角标</td><td>表格四列：<b>名称（图标+名称，排序箭头）/ 修改日期 / 类型 / 大小</b>；目录优先、同组字母序；列头点击排序（名称/日期/类型/大小）；<b>每列边界有拖拽手柄（悬停蓝色高亮），拖动调宽并持久化</b>（globalState <code class="inline">gitboard.filesColsW</code>，与提交图列宽拖拽同交互）；<code class="inline">table-layout:fixed</code> + 各列最小宽保护</td></tr>
+<tr><td><b>导航</b></td><td colspan="2">共用面包屑 <code class="inline">🏠 B › A</code>（点击任意层级跳转）+「↑ 上一级」；目录双击进入；文件单击选中联动右区</td></tr>
+<tr><td><b>数据列</b></td><td>卡片 tooltip 显示完整路径</td><td>修改日期/大小来自工作区 <code class="inline">fs.stat</code>（存在时）；类型按扩展名显示友好名（Markdown / Excel 工作表 / PNG 图像 / 文件夹…）；目录大小显示「—」；不在工作区（历史文件）日期/大小显示「—」</td></tr>
+<tr><td><b>过滤</b></td><td colspan="2">顶部过滤框按名称即时过滤（当前目录内），无命中显示空态</td></tr>
+<tr><td><b>链角标</b></td><td colspan="2">有移动历史的文件/文件夹显示 <code class="inline">⛓</code> 角标（详细信息视图在名称列尾），悬停显示完整路径链——一眼识别归档对象</td></tr>
+<tr><td><b>右键菜单</b></td><td colspan="2">文件与目录等价：打开 / 查看历史 / <b>移动到…</b> / 复制路径 / 在文件管理器中显示（复用 <code class="inline">showContextMenu</code> 浮层）</td></tr>
+</table>
+<h4>文件类型图标（<code class="inline">icons.ts fileIcon(name)</code>）</h4>
+<table class="tbl">
+<tr><th>类型</th><th>扩展名</th><th>颜色</th><th>类型</th><th>扩展名</th><th>颜色</th></tr>
+<tr><td>文件夹</td><td>—</td><td>#dcb67a</td><td>图片</td><td>.png .jpg .gif .svg .bmp</td><td>#a074c4</td></tr>
+<tr><td>Markdown</td><td>.md .markdown</td><td>#519aba</td><td>PDF</td><td>.pdf</td><td>#cc3e44</td></tr>
+<tr><td>TS / JS</td><td>.ts .tsx .js .jsx .mjs</td><td>#519aba / #cbcb41</td><td>Office</td><td>.xlsx .docx .pptx …</td><td>#8dc149 / #519aba / #cc3e44</td></tr>
+<tr><td>JSON</td><td>.json</td><td>#cbcb41</td><td>压缩包</td><td>.zip .rar .7z</td><td>#6d8086</td></tr>
+<tr><td>网页</td><td>.html .css .scss .vue</td><td>#e37933 / #519aba</td><td>文本/未知</td><td>.txt .log / 其他</td><td>#cccccc</td></tr>
+</table>
+<p>SVG 单形 + 类型色（深浅主题各配一版变量），两视图与右区文件头、只读版本 tab 复用同一映射。</p>
+
+<h4>地址栏（Win11 资源管理器式）与命令条</h4>
+<table class="tbl">
+<tr><th style="width:110px">元素</th><th>规格</th></tr>
+<tr><td><b>地址栏</b></td><td>左区头部下方，两种形态：<b>面包屑态</b>（<code class="inline">🗂 仓库根 › B › A</code>，点击任意层级导航；右端 ✎ 编辑 / ⧉ 复制当前路径）⇄ <b>编辑态</b>（点击空白 / ✎ / <span class="kbd">Ctrl+L</span> 进入，等宽字体显示完整仓库相对路径）。编辑态回车：<b>目录路径 → 导航</b>（面包屑与列表跳转）；<b>文件路径 → 定位选中（联动右区历史）并用编辑器打开</b>；粘贴路径同样生效；不存在的路径红框 + 提示。<span class="kbd">Esc</span> 取消恢复面包屑。路径自动补全（输入时下拉建议）为 P2（R8）</td></tr>
+<tr><td><b>命令条</b></td><td>地址栏下方：<b>🗑 删除</b>（红色 hover）、<b>✂ 移动到…</b>、<b>🗎 重命名 <span class="kbd">F2</span></b>、⧉ 复制路径 + 右端过滤框。<b>删除 / 移动对多选批量生效</b>（未选中时置灰）；重命名仅单选可用。快捷键：<span class="kbd">Del</span> 删除</td></tr>
+<tr><td><b>多选</b></td><td>单击单选；<span class="kbd">Ctrl</span>+点击累加/取消；<span class="kbd">Shift</span>+点击范围选择（锚点由交互逻辑内部维护，<b>选中行为纯色高亮，行内不绘制任何竖线/虚线</b>——五审定稿）。多选时右区切换为<b>批量面板</b>（§4.3），单击任一项恢复单选</td></tr>
+</table>
+
+<h3 id="s3">4.3 右区：文件历史面板</h3>
+<p><b>无预览段、无独立基础信息行</b>（按三审反馈移除；修改日期/类型/大小已由左区详细信息视图承载）。结构自上而下：</p>
+<table class="tbl">
+<tr><th style="width:110px">区段</th><th>规格</th></tr>
+<tr><td><b>文件头</b></td><td>类型图标 + 文件名 + 面包屑路径 + <b>链徽标</b>（<code class="inline">⛓ A → B/A</code>，当前段绿色，悬停显示各段时期范围）+「跟随移动」开关（默认开）。目录选中时显示目录级链徽标与目录历史</td></tr>
+<tr><td><b>提交记录</b></td><td>列头：提交记录 <b>N</b> · 跟随 k 次移动 + 操作提示。行结构：<b>比对勾选框 ☑ + 时间线圆点列（26px，与纯提交视图同风格）+ 说明 + 时期徽标（<code class="inline">A/</code>）+ 作者 + 时间 + 行尾操作 ⓘ/📄</b>。移动提交 = 里程碑行（浅紫底 + 左缘紫线 + <code class="inline">⇢ A → B/A</code> 徽标）。虚拟滚动行池复用；点击行 = 展开详情（同 ⓘ）</td></tr>
+<tr><td><b>详情展开</b></td><td>行下方就地展开（非弹窗）：完整提交信息（短 sha / 作者 / 时间 / 全文）+ <b>该文件在此提交的变化</b>（紧凑 diff，含 R100 时显示双路径）；再点收起。同一时间仅一个展开</td></tr>
+<tr><td><b>打开指定版本</b></td><td>行尾 📄：VS Code 原生只读标签页（<code class="inline">gitboard-hist</code> scheme，标题 <code class="inline">d1.md (ab1340a)</code>），编辑器顶部提示条：来源提交 + 当时路径 +「与当前版本比对」按钮；二进制文件 toast 提示改用详情</td></tr>
+<tr><td><b>两版比对</b></td><td>行尾勾选框（<b>恰好 2 条</b>：第 3 个勾选自动挤掉最早的）；勾满后底部比对条显示两短 sha → 点「比对差异」右区切换为 diff 视图：头部 <code class="inline">⟵ 返回</code> + 两版本各自当时路径（<code class="inline">ab1340a · A/d1.md ⇢ 7f8077f · B/A/d1.md</code>）+ ⇄ 交换方向 + 紧凑 diff（复用 <code class="inline">render.ts</code>，超长折叠）</td></tr>
+<tr><td><b>空态</b></td><td>未选中：提示「从左侧选择文件或文件夹」；选中但无历史：显示「无提交记录」</td></tr>
+<tr><td><b>多选态</b></td><td>左区多选（≥2）时右区切换为<b>批量面板</b>：「已选择 N 个项目」+ 独立按钮 <b>🗑 删除（N）/ ✂ 移动到…（N）</b> + 选中清单（图标/名称/完整路径）；单击任一项恢复单选历史面板</td></tr>
+</table>
+
+<h3 id="s4">4.4 历史跟随移动（算法）</h3>
+<h4>文件级（右区主路径，单命令）</h4>
+<pre class="code"><code>git log --follow --name-status -M --format="%H%x00%h%x00%an%x00%at%x00%s" -- ":(literal)&lt;path&gt;"
+# 输出：每条提交 + 一行该文件的状态（M/A/R100 old new）→ 一次往返得到：
+#   提交列表、每条提交的"当时路径"（M/A 行的路径 / R 行的新路径）、移动事件（R 行）、路径链</code></pre>
+<ul>
+<li>时期归属：按 R 行切分路径段；首条（最早）路径段即创建路径。</li>
+<li>比对操作直接取两行的 <code class="inline">sha + 当时路径</code>，无需二次查询。</li>
+</ul>
+<h4>重命名与移动是同一机制（补充确认）</h4>
+<p>用户补充问题：<b>重命名的文件能否取到重命名前的历史提交记录？——能，且无需任何额外机制。</b>
+在 Git 中，「同目录改名」与「跨目录移动」都是路径变更，统一记录为 R 状态（rename）条目；
+<code class="inline">--follow</code> 对二者同样跟随。第 20 项实验（<code class="inline">需求草稿.md → 需求说明.md</code> 同目录改名 + 叠加目录移动）实测：</p>
+<pre class="code"><code>$ git log --follow --name-status --format="COMMIT %h %s" -- B/A/需求说明.md
+COMMIT 837dba8 移动 A → B/A
+R100    A/需求说明.md      B/A/需求说明.md
+COMMIT 79590f1 更新需求说明
+M       A/需求说明.md
+COMMIT acbc61b 重命名：需求草稿 → 需求说明
+R100    A/需求草稿.md      A/需求说明.md      # ← 改名事件，双端路径齐全
+COMMIT bfd8a96 修改草稿
+M       A/需求草稿.md                          # ← 重命名前的历史，按当时旧名返回
+COMMIT 59a45dd 创建需求草稿
+A       A/需求草稿.md
+
+$ git diff 59a45dd:A/需求草稿.md HEAD:B/A/需求说明.md --stat   # 重命名前最早版 ↔ 当前版
+... | 2 ++                                                        # blob 比对有效 ✓</code></pre>
+<p>UI 呈现：改名提交同样显示为里程碑行（<code class="inline">⇢ 需求草稿.md → 需求说明.md</code>），旧名时期的提交带时期徽标（当时文件名），
+文件头链徽标为 <code class="inline">需求草稿.md → A/需求说明.md → B/A/需求说明.md</code>；
+跨改名/跨移动的两版本比对均取各自当时路径，blob diff 正确。<b>本页的「重命名（F2）」操作即同目录 <code class="inline">git mv</code>，
+同样引导「纯重命名单独成提交」保证 R100 识别。</b>（演示见预览页：历史列表含两个里程碑行与旧名时期徽标。）</p>
+
+<h4>目录级（链反查，选中文件夹时）</h4>
+<pre class="code"><code>S = [ ":(literal)"+dir ];  P = dir;  chain = [ dir ]
+repeat ≤ 8 轮（环/深度防护）:
+    E = git log --format=%H -- &lt;S&gt; 的最后一条        # 边界提交（最早涉及）
+    if E 不存在: break
+    R = git show -M --name-status --format= E 中新路径以 "P/" 开头的 R 条目   # 无 pathspec！
+    if R 为空: break                                 # 链终止（普通创建）
+    oldPrefix = 旧路径公共前缀（覆盖率 ≥ 80% 投票，不足则 break + partial 标记）
+    S += ":(literal)"+oldPrefix;  P = oldPrefix;  chain.unshift(oldPrefix)
+# 目录历史: git log &lt;排序参数&gt; -- &lt;S...&gt;（多 pathspec OR）+ 按段边界 sha 标注时期</code></pre>
+<ul>
+<li>成本：每轮 1 次纯 hash log + 1 次单提交 show；结果按「仓库+路径」缓存，新提交失效。</li>
+<li>降级：链断裂（移动+大改混提交、部分拆分）时显示当前路径时期 + 链徽标 tooltip 说明原因。</li>
+</ul>
+
+<h3 id="s5">4.5 文件操作：移动 / 删除 / 重命名 与手动移动补救</h3>
+<table class="tbl">
+<tr><th style="width:100px">操作</th><th style="width:36%">交互入口</th><th>语义与保障</th></tr>
+<tr><td><b>移动</b></td><td>命令条「✂ 移动到…」按钮（多选批量）/ 右键菜单 / VS Code 资源管理器右键直达</td><td>原生目录选择 → <code class="inline">git mv</code> 入队（多选逐项执行）→ 横幅引导<b>纯移动单独成提交</b>（预填 <code class="inline">chore: 移动 A → B/A</code>）</td></tr>
+<tr><td><b>删除</b></td><td>命令条「🗑 删除」按钮（多选批量）/ 右键 / <span class="kbd">Del</span></td><td>确认弹层（列明 N 项）：已跟踪 → <code class="inline">git rm</code>（进入待提交状态，提交前可恢复）；未跟踪 → 磁盘删除；删除后刷新树</td></tr>
+<tr><td><b>重命名</b></td><td>命令条「🗎 重命名 <span class="kbd">F2</span></b>」（仅单选）/ 右键</td><td>输入新名 → 同目录 <code class="inline">git mv</code> → 引导<b>纯重命名单独成提交</b>（预填 <code class="inline">chore: 重命名 旧名 → 新名</code>）；重命名前后历史自动跟随（§4.4）</td></tr>
+<tr><td><b>前置校验</b></td><td colspan="2">仓库归属 / 目标已存在同名 / 嵌套移动（A → A/sub）/ 重名冲突 / 工作副本不干净时确认</td></tr>
+</table>
+<p><b>为何强引导纯变更提交</b>：实测证明「移动（或重命名）+ 大改内容」同提交会使 rename 检测彻底失效（相似度过低，降阈值也无法恢复），
+历史跟随随之中断；纯变更（内容零改动）的 R100 识别是确定性的。<b>手动移动补救（R7）</b>：系统资源管理器拖动后，
+工作副本出现「同前缀批量 D + 同文件名批量未跟踪」时横幅提示（复用现有横幅交互），一键按移动 stage 并引导纯移动提交。</p>
+
+<hr class="sect">
+<h2 id="tech">5 技术设计</h2>
+
+<h3 id="t1">5.1 协议消息表</h3>
+<table class="tbl">
+<tr><th style="width:170px">命令（WVCommand）</th><th style="width:26%">参数</th><th style="width:30%">响应</th><th>说明</th></tr>
+<tr><td><code class="inline">files.tree</code></td><td>—</td><td><code class="inline">FileNode[]</code>（根树）</td><td>进入页面/树缓存失效时拉取；节点含详细信息列所需数据</td></tr>
+<tr><td><code class="inline">files.log</code></td><td><code class="inline">path, follow</code></td><td><code class="inline">{items: FileHistoryItem[], chain}</code></td><td>文件级（<code class="inline">--follow --name-status</code> 单命令）；follow=false 时服务端仍取链但只返回当前段</td></tr>
+<tr><td><code class="inline">files.dirLog</code></td><td><code class="inline">dir, follow</code></td><td><code class="inline">{items, chain}</code></td><td>目录级（链反查 + 多 pathspec）；items 逐条带 eraPrefix</td></tr>
+<tr><td><code class="inline">files.commitDiff</code></td><td><code class="inline">sha, path</code></td><td><code class="inline">DiffPayload</code></td><td>详情展开（path = 该提交时刻路径）</td></tr>
+<tr><td><code class="inline">files.versionDiff</code></td><td><code class="inline">a:{sha,path}, b:{sha,path}</code></td><td><code class="inline">DiffPayload</code></td><td>两版比对（blob 级，跨路径）</td></tr>
+<tr><td><code class="inline">files.versionOpen</code></td><td><code class="inline">sha, path</code></td><td><code class="inline">ok / err</code></td><td>宿主 TextDocumentContentProvider 打开只读 tab；二进制返回 err→toast</td></tr>
+<tr><td><code class="inline">folder.move</code></td><td><code class="inline">srcs[], dst</code></td><td>OpOutcome</td><td>校验后入队 <code class="inline">git mv</code>（<b>多选批量</b>逐项；走 <code class="inline">op:*</code> 进度体系）</td></tr>
+<tr><td><code class="inline">folder.rename</code></td><td><code class="inline">path, newName</code></td><td>OpOutcome</td><td>同目录 <code class="inline">git mv</code>；成功后引导纯重命名提交</td></tr>
+<tr><td><code class="inline">folder.delete</code></td><td><code class="inline">paths[]</code></td><td>OpOutcome</td><td><b>多选批量</b>：已跟踪 <code class="inline">git rm -r --</code>（待提交）；未跟踪磁盘删除（safeJoin 防越界）</td></tr>
+<tr><td><code class="inline">ui:saveFilesPaneW</code></td><td><code class="inline">w, cols[]</code></td><td>ok</td><td>左区面板宽度与详细信息视图列宽持久化（globalState <code class="inline">gitboard.filesPaneWidth / filesColsW</code>，复用 detailPct 模式）</td></tr>
+<tr><td><code class="inline">folder.moveCommit</code></td><td>—</td><td>同提交流程</td><td>横幅「按移动提交」：stage 相关条目 → 预填信息进入现有 commit 流程</td></tr>
+<tr><td><code class="inline">ui:openFile / ui:revealInFM / ui:copy</code></td><td colspan="3">复用现有命令（右键菜单的打开/定位/复制）</td></tr>
+</table>
+<h4>模型（common/models.ts 新增）</h4>
+<pre class="code"><code>FileNode      { name; path; isDir; children?; size?; mtime?; chainLen? }        // 详细信息列数据内联
+FileHistoryItem { sha; shortSha; subject; author; date; path;      // 当时路径
+                  status: 'M'|'A'|'R'; oldPath?; eraPrefix? }      // eraPrefix 由链切分
+PathChain     { segments: {prefix; fromSha}[]; partial?: boolean }
+// OpKind + 'moveFolder'；ExtEvent 复用 repoState / opProgress / opResult / notify</code></pre>
+
+<h3 id="t2">5.2 service 方法与 git 参数</h3>
+<table class="tbl">
+<tr><th style="width:150px">方法（git/service.ts）</th><th style="width:46%">git 参数（经 executor，参数数组）</th><th>要点</th></tr>
+<tr><td><code class="inline">treeOf()</code></td><td><code class="inline">ls-tree -r -z -- HEAD</code> + <code class="inline">fs.stat</code> 批量（safeJoin）</td><td>宿主建树下发；stat 失败/不存在 → size/mtime 置空（UI 显「—」）；按仓库缓存，watcher 失效</td></tr>
+<tr><td><code class="inline">fileLogOf(path)</code></td><td><code class="inline">log --follow --name-status --format=%H%x00%h%x00%an%x00%at%x00%s -- ":(literal)path"</code></td><td>§4.4 文件级；<code class="inline">parseFileLog</code> 状态机解析</td></tr>
+<tr><td><code class="inline">dirLogOf(dir)</code></td><td>链反查（§4.4）+ <code class="inline">log --format=… -- :(literal)p1 :(literal)p2 …</code></td><td>迭代 ≤ 8；<code class="inline">-c diff.renameLimit=10000</code>；结果缓存</td></tr>
+<tr><td><code class="inline">commitDiffOf(sha, path)</code></td><td><code class="inline">diff sha^ sha -- ":(literal)path"</code></td><td>首提交（无父）→ <code class="inline">diff --root</code> 全新增</td></tr>
+<tr><td><code class="inline">blobDiffOf(a, b)</code></td><td><code class="inline">diff a.sha:"a.path" b.sha:"b.path"</code></td><td>路径含特殊字符时引号包裹；diff 头路径过 <code class="inline">unescapeGitPath</code></td></tr>
+<tr><td><code class="inline">contentAt</code>（已有）</td><td>—</td><td>只读 tab 与预览数据源（provider 内调用）</td></tr>
+<tr><td><b>新 op：moveFolder / renameFolder / deletePaths</b></td><td><code class="inline">['mv','--',src,dst]</code> / <code class="inline">['mv','--',old,new]</code> / <code class="inline">['rm','-r','--',...paths]</code>（未跟踪走 fs，safeJoin）</td><td>runner buildArgs 新增三 kind；多选批量在 panel 层拆为队列串行</td></tr>
+</table>
+
+<h3 id="t3">5.3 组件与接口</h3>
+<table class="tbl">
+<tr><th style="width:200px">文件</th><th>职责</th></tr>
+<tr><td><b>新 <code class="inline">src/ui/app/filesView.ts</code></b></td><td>左区：<b>地址栏</b>（面包屑 ⇄ 编辑态，路径导航/文件定位打开）、<b>命令条</b>（删除/移动/重命名/复制路径 + 过滤框）、<b>多选状态机</b>（Ctrl/Shift/锚点）、<b>文件夹视图（平铺网格）</b> + <b>详细信息视图（四列表格/排序）</b>、图标渲染、右键菜单、<b>宽度拖拽（分隔条 + 持久化）</b>；对外 <code class="inline">update()/setView()/select()</code>；回调 <code class="inline">onSelect/onNav/onCmd</code></td></tr>
+<tr><td><b>新 <code class="inline">src/ui/app/filePanel.ts</code></b></td><td>右区：文件头（链徽标/跟随开关）+ 历史列表（行池虚拟滚动/里程碑/时期徽标/勾选状态机）+ <b>多选批量面板（N 项 + 删除/移动按钮）</b> + 详情就地展开 + 比对条 + diff 态（renderDiff）；对外 <code class="inline">update()/showDiff()/showMulti()/reset()</code></td></tr>
+<tr><td><code class="inline">src/ui/icons.ts</code></td><td><code class="inline">fileIcon(name): {svg, color}</code> 扩展名映射（§4.2 表）；主题变量双份配色</td></tr>
+<tr><td><code class="inline">src/ui/state.ts / main.ts</code></td><td>S 扩展 <code class="inline">files.{tree, selPath, viewMode, cwd, filter, picked[2], follow}</code>；App 接口 + 上述动作；视图切换沿用 applyView（display 不销毁）</td></tr>
+<tr><td><code class="inline">src/webview/panel.ts</code></td><td>files.*/folder.* 路由；注册 <code class="inline">gitboard-hist</code> TextDocumentContentProvider（contentAt + NUL 检测二进制→报错）；移动校验（目标存在/嵌套/仓库归属）与 showOpenDialog</td></tr>
+<tr><td><code class="inline">src/ops/runner.ts</code></td><td>buildArgs + <code class="inline">moveFolder → ['mv','--',src,dst]</code>（文件/目录同语义）</td></tr>
+<tr><td><code class="inline">src/extension.ts / package.json</code></td><td>命令 <code class="inline">gitboard.showFileHistory / gitboard.moveFolder</code>；<code class="inline">explorer/context</code> 菜单直达本页并定位路径</td></tr>
+</table>
+
+<h3 id="t4">5.4 解析与路径安全</h3>
+<ul>
+<li><b>新 <code class="inline">parseFileLog()</code></b>（parse.ts）：pretty 行（NUL 分隔五字段）+ name-status 行状态机；R 行 <code class="inline">R100&lt;TAB&gt;old&lt;TAB&gt;new</code> 直接映射 <code class="inline">oldPath/path</code>——与现有 <code class="inline">parseFiles()</code> 的 R 解析同构，负 token <code class="inline">.match()</code>（Mimosa 约束，勿用 <code class="inline">.exec(</code>）。</li>
+<li><b>pathspec 一律 <code class="inline">:(literal)</code></b>；executor 参数数组不经 shell（免注入）。</li>
+<li><b>中文路径</b>：executor 公共参数 <code class="inline">core.quotepath=false</code>；diff 输出头与 stat 行路径过 <code class="inline">unescapeGitPath</code>（v0.13.3 已有）。</li>
+<li><b>blob 语法 <code class="inline">sha:path</code></b>：sha 固定 40 位十六进制；路径含 <code class="inline">:</code>/空格时引号包裹。</li>
+<li><b>只读 tab URI</b>：<code class="inline">gitboard-hist:&lt;sha&gt;/?p=&lt;encodeURIComponent(path)&gt;</code>，避免路径与 authority 混淆。</li>
+</ul>
+
+<h3 id="t5">5.5 边界与风险</h3>
+<table class="tbl">
+<tr><th style="width:30%">场景</th><th>行为 / 对策</th></tr>
+<tr><td>移动 + 大改同一提交</td><td>rename 检测失效（实测）→ 链在该提交终止，链徽标 tooltip 说明原因；R6/R7 纯移动引导从源头避免</td></tr>
+<tr><td>目录部分拆分 / 合并移动</td><td>前缀投票覆盖率 &lt; 80% 停止迭代 + <code class="inline">partial</code> 标记，宁缺毋错</td></tr>
+<tr><td>二进制文件</td><td>详情 diff 走 numstat 头（无 hunks）；打开版本 toast 提示；比对显示 ± 统计</td></tr>
+<tr><td>大仓库树规模</td><td>ls-tree 单次往返 + 前端懒展开；十万级文件 P2 虚拟化（R8）</td></tr>
+<tr><td>已删除 / 旧名文件</td><td>不在 HEAD 树 → 本页不展示（R8 搜索历史路径补）</td></tr>
+<tr><td>merge 提交被历史简化隐藏</td><td>默认 simplification（更干净）；R8 提供 <code class="inline">--full-history</code></td></tr>
+<tr><td>链构建性能</td><td>每轮 2 次子进程、≤ 8 轮、按仓库+路径缓存；仅目录级触发</td></tr>
+<tr><td>子模块 / 符号链接</td><td>gitlink 无文件级 rename 语义，链自然终止</td></tr>
+<tr><td>工作副本有未提交修改时移动</td><td>目标路径含未提交变更 → 确认弹层后才执行</td></tr>
+<tr><td>批量删除含混合跟踪状态</td><td>已跟踪走 <code class="inline">git rm</code>、未跟踪走磁盘删除，结果 toast 分列说明；<code class="inline">git rm</code> 后提交前可 <code class="inline">restore --staged</code> 恢复</td></tr>
+<tr><td>重命名目标名已存在 / 非法字符</td><td>前置校验拦截（同名冲突 / 平台非法字符提示）</td></tr>
+</table>
+
+<hr class="sect">
+<h2 id="wbs">6 实施任务拆解（WBS）</h2>
+<table class="tbl">
+<tr><th style="width:52px">任务</th><th style="width:56px">版本</th><th style="width:34%">内容</th><th style="width:64px">预估</th><th>依赖</th></tr>
+<tr><td><b>W1</b></td><td>v0.14.0</td><td>协议 + 模型扩展（§5.1：WVCommand/OpKind/FileNode/FileHistoryItem/PathChain）</td><td>0.5d</td><td>—</td></tr>
+<tr><td><b>W2</b></td><td>v0.14.0</td><td>service.treeOf（ls-tree + fs.stat + 树缓存）</td><td>1d</td><td>W1</td></tr>
+<tr><td><b>W3</b></td><td>v0.14.0</td><td>filesView：<b>地址栏（导航/粘贴路径/文件定位打开）</b> + <b>面板宽度与列宽拖拽记忆</b> + 面包屑/过滤/右键 + <b>文件夹视图与详细信息视图</b> + fileIcon 图标体系</td><td>4d</td><td>W2</td></tr>
+<tr><td><b>W4</b></td><td>v0.14.0</td><td>service.fileLogOf + parseFileLog（follow/name-status）</td><td>1d</td><td>W1</td></tr>
+<tr><td><b>W5</b></td><td>v0.14.0</td><td>filePanel：文件头/历史列表/链徽标/时期徽标/里程碑行/跟随开关</td><td>2d</td><td>W4</td></tr>
+<tr><td><b>W6</b></td><td>v0.14.0</td><td>service.dirLogOf（链反查算法 + 缓存）</td><td>1.5d</td><td>W4</td></tr>
+<tr><td><b>W7</b></td><td>v0.14.x</td><td>详情就地展开（commitDiffOf + 紧凑 diff）</td><td>0.5d</td><td>W5</td></tr>
+<tr><td><b>W8</b></td><td>v0.14.x</td><td>打开指定版本（gitboard-hist provider + 只读 tab + 提示条）</td><td>1d</td><td>W5</td></tr>
+<tr><td><b>W9</b></td><td>v0.14.x</td><td>两版比对（勾选状态机 + blobDiffOf + diff 视图/交换方向）</td><td>1d</td><td>W5</td></tr>
+<tr><td><b>W10</b></td><td>v0.14.x</td><td>移动操作（folder.move 校验/git mv op/横幅引导）+ 手动移动检测 + explorer 右键直达</td><td>1d</td><td>W3</td></tr>
+<tr><td><b>W13</b></td><td>v0.14.x</td><td><b>多选状态机 + 命令条与批量面板 + 删除（git rm/确认）+ 重命名（F2/引导提交）</b></td><td>1.5d</td><td>W3, W10</td></tr>
+<tr><td><b>W11</b></td><td>随版本</td><td>i18n 中英 + README 双语 + package.json/nls</td><td>0.5d</td><td>W3-W10, W13</td></tr>
+<tr><td><b>W12</b></td><td>随版本</td><td>测试：单测/集成/harness-files e2e（§7）</td><td>2d</td><td>全部</td></tr>
+</table>
+<p><b>里程碑</b>：v0.14.0 = W1–W6 + W11/W12（P0：双视图浏览 + 地址栏 + 宽度/列宽记忆 + 文件/目录历史跟随）；v0.14.x = W7–W10 + W13（P1：版本三件套 + 移动/删除/重命名与多选闭环）。合计约 18.5 人日。</p>
+
+<hr class="sect">
+<h2 id="test">7 测试计划（用例清单）</h2>
+<table class="tbl">
+<tr><th style="width:90px">层级</th><th style="width:90px">编号</th><th>断言要点</th></tr>
+<tr><td rowspan="7"><b>单元</b><br>(vitest)</td><td>UT-F1</td><td>树构建：ls-tree 输出 → FileNode 层级/目录优先/chainLen</td></tr>
+<tr><td>UT-F2</td><td><code class="inline">fileIcon</code> 扩展名映射全覆盖（含未知/大小写/无扩展名）</td></tr>
+<tr><td>UT-F3</td><td><code class="inline">parseFileLog</code>：pretty NUL 字段 + M/A/R100 行；中文路径；CRLF</td></tr>
+<tr><td>UT-F4</td><td>链切分：R 序列 → segments/eraPrefix/里程碑标记</td></tr>
+<tr><td>UT-F5</td><td>目录链投票：公共前缀/80% 覆盖率/partial/环防护（≤8 轮）</td></tr>
+<tr><td>UT-F6</td><td><code class="inline">literalSpec</code> 与 blob 路径引号规则（含 <code class="inline">A[1]</code>、含 <code class="inline">:</code> 路径）</td></tr>
+<tr><td>UT-F7</td><td>勾选状态机（恰好 2 条、挤掉最早）；follow 开关行过滤</td></tr>
+<tr><td>UT-F8</td><td>地址栏解析（目录/文件/不存在路径、首尾斜杠归一化）；多选状态机（Ctrl 累加/Shift 范围/锚点）；宽度钳制 280–640</td></tr>
+<tr><td rowspan="6"><b>集成</b><br>(真实仓库<br>GITGRAPH_SMOKE=1)</td><td>IT-F1</td><td>文件级 follow：单次移动 → A 时期提交全部返回且 eraPrefix 正确</td></tr>
+<tr><td>IT-F2</td><td>两次移动链（A→C/A→B/A）：链 3 段、里程碑 2 行、时期正确</td></tr>
+<tr><td>IT-F3</td><td>目录级链反查：迭代收敛、终止判定、缓存失效（新提交后重算）</td></tr>
+<tr><td>IT-F4</td><td>blob 跨路径比对：diff 正确、stat 含 <code class="inline">{A =&gt; B/A}</code>；交换方向</td></tr>
+<tr><td>IT-F5</td><td>中文路径 + <code class="inline">A[1]</code> 特殊字符全链路（树/历史/比对）</td></tr>
+<tr><td>IT-F6</td><td>移动+大改混提交 → graceful 降级（当前段 + partial 提示）；纯移动 → R100 命中</td></tr>
+<tr><td>IT-F7</td><td><b>重命名</b>：同目录改名后按新名查询 → 改名前历史完整（当时旧名路径）；改名前最早版 ↔ 当前版 blob 比对；重命名 op（git mv）后 R100 识别</td></tr>
+<tr><td rowspan="3"><b>e2e</b><br>(harness-files)</td><td>E2-F1</td><td>双视图切换/排序/过滤/面包屑跳转/选中联动；图标映射渲染</td></tr>
+<tr><td>E2-F2</td><td>历史列表：里程碑/时期徽标/跟随开关行显隐/详情展开收起</td></tr>
+<tr><td>E2-F3</td><td>勾选比对流（勾 2 → 比对条 → diff 态 → 返回）；空态/加载态</td></tr>
+<tr><td>E2-F4</td><td>地址栏（编辑态切换/目录导航/文件路径定位/错误红框）；多选批量面板与命令条禁用态；面板宽度拖拽与记忆（globalState 读写）；<b>列宽拖拽（每列手柄、最小宽钳制、记忆恢复、重渲染后保持）；选中行 td 无边框/outline（无竖向分割线）</b></td></tr>
+</table>
+<p><b>真机验证清单</b>（VS Code，参照 v0.13.0 CDP 方法学）：只读版本 tab 打开与提示条、explorer 右键直达定位、git mv 后横幅与纯移动提交引导、手动移动检测横幅、<b>宽度拖拽记忆（重载窗口后保持）、地址栏粘贴路径导航与文件打开、多选批量 git rm/git mv、F2 重命名与引导提交</b>。</p>
+
+<hr class="sect">
+<h2 id="risk">8 集中风险与对策</h2>
+<table class="tbl">
+<tr><th style="width:34%">风险</th><th style="width:10%">等级</th><th>对策</th></tr>
+<tr><td>「移动+修改」混提交导致链断裂</td><td><span class="prio p1">中</span></td><td>R6/R7 纯移动强引导 + 降级提示说明原因</td></tr>
+<tr><td>rename 链误判（拆分/合并目录）</td><td><span class="prio p1">中</span></td><td>80% 覆盖率投票 + partial 标记，宁缺毋错</td></tr>
+<tr><td>大仓库树/历史加载耗时</td><td><span class="prio p2">低</span></td><td>懒展开、结果缓存、按需查询；P2 虚拟化</td></tr>
+<tr><td>pathspec/blob URI 特殊字符</td><td><span class="prio p2">低</span></td><td><code class="inline">:(literal)</code> + 引号 + URI 编码，均有实测</td></tr>
+<tr><td>第四视图对现有三视图回归</td><td><span class="prio p2">低</span></td><td>独立组件不动现有视图；状态保持机制同源；e2e 主 harness 回归</td></tr>
+</table>
+
+<hr class="sect">
+<h2 id="open">9 评审确认点</h2>
+<ol>
+<li><b>默认视图</b>：预览页以<b>详细信息视图</b>为默认（信息密度高、贴近资源管理器习惯）；如偏好文件夹视图默认请指出（一个常量切换）。</li>
+<li><b>日期格式</b>：详细信息视图「修改日期」采用 <code class="inline">2026/8/29 09:12</code> 绝对格式（资源管理器习惯）；如偏好相对时间可切换，已有 <code class="inline">dateFormat</code> 设置先例可复用。</li>
+<li><b>详情展开方式</b>：当前设计为「点击行 / ⓘ 就地展开」；如偏好仅 ⓘ 按钮触发（避免误触）请指出。</li>
+<li><b>删除语义</b>：已跟踪文件 = <code class="inline">git rm</code>（待提交，可恢复）；如偏好「移入回收站」（Electron 式 trash，VS Code 扩展 API 有 <code class="inline">workspace.fs.delete</code> 但无回收站）请指出，实装为 <code class="inline">git rm</code> + 确认弹层。</li>
+<li><b>地址栏打开文件的默认行为</b>：输入文件路径回车 = 选中（联动历史）+ 编辑器打开；如偏好只选中不打开请指出。</li>
+<li><b>WBS 分期</b>：v0.14.0（P0：浏览 + 地址栏 + 宽度记忆 + 历史跟随）/ v0.14.x（P1：版本三件套 + 移动/删除/重命名多选闭环，约 +2.5d）是否符合发布节奏预期。</li>
+</ol>
+
+</main>
+</body>
+</html>

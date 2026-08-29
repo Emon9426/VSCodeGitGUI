@@ -8,3 +8,7 @@ dist/
 *.log
 .DS_Store
 Thumbs.db
+
+# Mimosa 安全扫描会话产物
+.mimosa/
+.playwright-mcp/
