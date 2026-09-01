@@ -2,7 +2,7 @@
   "name": "gitboard",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.18.3",
+  "version": "0.18.4",
   "publisher": "EmonZhang3438",
   "license": "MIT",
   "icon": "media/icon.png",

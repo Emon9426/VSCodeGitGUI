@@ -72,14 +72,14 @@ code --install-extension EmonZhang3438.gitboard
 **方式一：命令行安装 vsix（推荐）**
 
 ```bash
-code --install-extension gitboard-0.18.3.vsix
+code --install-extension gitboard-0.18.4.vsix
 ```
 
 安装后执行 **Ctrl+Shift+P → “开发者：重新加载窗口”**（每次覆盖安装新版本后都需要；可对照工具栏右侧版本号确认当前构建已生效）。
 
 **方式二：VS Code 界面安装**
 
-扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.18.3.vsix` → 重新加载窗口。
+扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.18.4.vsix` → 重新加载窗口。
 
 **方式三：从源码构建**
 
@@ -301,6 +301,7 @@ npm run build && npm run package
 
 **v0.18.x**
 
+- **v0.18.4**（2026-09-02）：文档——README 全面重排版（新增 Issue 反馈入口与作者联系方式、版本历史独立为更新日志、补充快速笔记详解与 reveal 排查 FAQ）。
 - **v0.18.3**（2026-09-02）：「在资源管理器中显示」在部分 Windows 构建上依旧无效（explorer 对 `/select` 的解析随版本漂移）——改用无引号原样单参数的经典形态（自 XP 起各版本通用），新增 `gitboard.revealSelectStyle` 设置供异构环境一键切换兜底。
 - **v0.18.2**（2026-09-01）：修复长路径与含空格路径下「在资源管理器中显示」失效（含空格曾直接打开文档目录、>259 路径在严格 MAX_PATH 系统上曾误报"文件已不存在"）——增加 `\\?\` 前缀存在性探测与"最深可定位祖先目录"降级；快速笔记同步加固，文件缺失时明确提示。
 - **v0.18.1**（2026-09-01）：修复合并冲突"我的/他人的"二选一选侧反转（merge 与 rebase 均已修正）与二进制冲突预览打开错误一侧；工作副本文件列表宽度可自由拉宽并跨会话记忆；文件页"移动到"可连续使用且对话框初始定位到文件所在目录；后台自动获取增加低速中断保护。
@@ -382,7 +383,7 @@ code --install-extension EmonZhang3438.gitboard
 **Option 1 — CLI (recommended)**
 
 ```bash
-code --install-extension gitboard-0.18.3.vsix
+code --install-extension gitboard-0.18.4.vsix
 ```
 
 Then run **Ctrl+Shift+P → “Developer: Reload Window”** (required after every upgrade; check the version label on the toolbar).
@@ -505,6 +506,7 @@ Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angul
 
 ### Changelog
 
+- **v0.18.4** (2026-09-02): docs — full README restructure (issue-feedback section & contact info up front, changelog extracted into its own section, a dedicated Quick Notes section and a reveal troubleshooting FAQ).
 - **v0.18.3** (2026-09-02): "Reveal in file manager" still failed on some Windows builds (explorer's `/select` parsing drifts across versions) — switched to the classic raw single-argument form (universal since XP) and added the `gitboard.revealSelectStyle` fallback setting.
 - **v0.18.2** (2026-09-01): fixed "Reveal in file manager" on paths with spaces and very long paths (>259 chars, which strict MAX_PATH systems could misreport as "file no longer exists") — added a `\\?\` existence probe and a deepest-revealable-ancestor fallback; Quick Notes got the same hardening plus a clear missing-file notice.
 - **v0.18.1** (2026-09-01): fixed the inverted merge-conflict "mine/theirs" pick and the wrong-side binary preview; the working-copy list widens freely and persists; "Move to…" works repeatedly; background auto-fetch gained a low-speed cutoff.
