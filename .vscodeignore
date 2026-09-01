@@ -14,5 +14,6 @@ GitGraph-设计方案.html
 GitBoard-*.html
 .mimosa/**
 .playwright-mcp/**
+.zcode/**
 svg2png.js
 res/screenshots/**
