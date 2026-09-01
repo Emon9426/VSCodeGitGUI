@@ -1,8 +1,12 @@
 /**
  * revealableAncestor：Windows explorer 长路径降级（>259 上溯最深可用祖先）。
+ * fsExistsRobust：>259 真实文件的 \\?\ 前缀重试探测（防严格 MAX_PATH 系统误报不存在）。
  */
 import { describe, expect, it } from 'vitest';
-import { EXPLORER_MAX_PATH, revealableAncestor } from '../../src/webview/revealPath';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { EXPLORER_MAX_PATH, fsExistsRobust, revealableAncestor } from '../../src/webview/revealPath';
 
 /** 构造完整路径长度恰为 total 的文件路径（目录链 + 撑长文件名） */
 function pathOfLen(total: number, dir: string): string {
@@ -44,5 +48,30 @@ describe('revealableAncestor', () => {
     const dir = 'C:\\用户 目录\\项目 仓库';
     const p = pathOfLen(280, dir);
     expect(revealableAncestor(p)).toBe(dir);
+  });
+});
+
+describe.skipIf(process.platform !== 'win32')('fsExistsRobust（win32 长路径探测）', () => {
+  /** 在 tmpdir 下逐级建 >259 的目录链并写入文件（末级须 \\?\ 前缀），返回完整文件路径 */
+  function makeLongFile(): string {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'gb-reveal-test-'));
+    let d = base;
+    while (d.length < 300) {
+      d = path.join(d, 'seg-' + 'x'.repeat(58));
+      fs.mkdirSync(d.length >= 248 ? '\\\\?\\' + d : d);
+    }
+    const f = path.join(d, 'f.txt');
+    fs.writeFileSync('\\\\?\\' + f, 'x');
+    return f;
+  }
+
+  it('>259 的真实文件探测为 true（普通 stat 失败时走 \\\\?\\ 重试）', () => {
+    const f = makeLongFile();
+    expect(f.length).toBeGreaterThan(EXPLORER_MAX_PATH);
+    expect(fsExistsRobust(f)).toBe(true);   // 无论本系统是否放行 >259 stat，robust 都必须探到
+  });
+
+  it('短路径行为与普通 existsSync 一致', () => {
+    expect(fsExistsRobust(path.join(os.tmpdir(), 'definitely-not-exist-xyz.txt'))).toBe(false);
   });
 });

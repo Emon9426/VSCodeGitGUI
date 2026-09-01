@@ -19,6 +19,7 @@ import {
 import { docToMarkdown } from './exportMd';
 import { buildExportHtml } from './exportHtml';
 import { htmlToPdf } from './pdf';
+import { fsExistsRobust, revealableAncestor } from '../webview/revealPath';
 
 export class NotesPanel {
   static current: NotesPanel | undefined;
@@ -298,11 +299,21 @@ export class NotesPanel {
     return { fallback: true, path: fallbackHtml };
   }
 
-  /** 资源管理器定位（win 用 explorer /select 字面量形态；mac/linux 系统打开器；程序名全部字面量） */
+  /**
+   * 资源管理器定位（win 用 explorer /select **分离传参** + >259 祖先降级，与主面板同策略，
+   * 实测依据见 revealPath.ts 头注释；mac/linux 系统打开器；程序名全部字面量）。
+   * 笔记文件缺失时发提示而非静默——"点了没反应"无法与正常失败区分（Issue #2 反馈）。
+   */
   private revealFile(p: string): void {
     try {
-      if (!fs.existsSync(p)) return;
-      if (process.platform === 'win32') spawn('explorer', ['/select,', p], { windowsHide: true, detached: true }).unref();
+      if (!fsExistsRobust(p)) {
+        this.post({ t: 'notify', level: 'warn', message: this.t('notesRevealMissing', { path: path.basename(p) }) });
+        return;
+      }
+      if (process.platform === 'win32') {
+        const t = revealableAncestor(p.replace(/"/g, ''));
+        if (t) spawn('explorer', ['/select,', t], { windowsHide: true, detached: true }).unref();
+      }
       else if (process.platform === 'darwin') spawn('open', ['-R', p], { detached: true }).unref();
       else spawn('xdg-open', [path.dirname(p)], { detached: true }).unref();
     } catch { /* 静默 */ }
