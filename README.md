@@ -2,15 +2,42 @@
 
 **简体中文** | [English](#english-documentation)
 
-GitBoard 是一个 VS Code 桌面版插件，以图形化提交历史为核心，浏览与操作 Git 仓库：**GitHub 风格彩色拓扑提交图**（v0.14.6 起默认，可切回柔化曲线/直角风格）、提交详情与差异对比、Fetch / Pull / Push / 重置 / 切换分支等日常 GUI 操作、SourceTree 式**工作副本提交**（含 GitHub Copilot AI 生成提交信息）、**三栏合并冲突解决器**、**Pull/Fetch 变更摘要**，以及**文件历史页**——支持文件夹移动 / 重命名 / 删除，并跨移动跟随完整历史、任意两版本比对。针对大仓库做了分页加载、虚拟滚动与分层渲染优化；**v0.14.7 起启动不再等待 Git 探测**——工具栏、工程列表与布局记忆先行渲染，仓库扫描与提交历史后台加载（全程有加载反馈），工作区没有 Git 仓库时立即显示引导提示而非空白。**v0.15.0 新增「快速笔记」**：活动栏专属入口（`Ctrl+Alt+N`），三栏布局（文件列表 / 富文本编辑器 / 大纲），支持标题、字号字体、表格（合并 / 嵌套 / 列宽拖拽）、Confluence 式背景色卡片、代码块、行内代码、SVG 画板（流程图）、三种列表、时间戳与 `/` 命令菜单，以及选中文字的 Copilot **AI 编辑**（续写 / 润色 / 翻译 / 摘要 / 待办化 + 差异预览）。笔记默认保存到工程外目录（`~/GitBoardNotes`，可更改），**完全独立于 Git**——Git 崩溃不影响笔记，笔记打开不触发 Git 探测；支持导出 Markdown / 自包含 HTML（内嵌数据，可在插件内重新打开继续编辑）/ PDF（本机 Edge/Chrome 静默转换），并可另存为任意文件夹。**v0.17.0 笔记体验升级**：文档标题头（大标题 + 上次修改时间 + 专用分割线，旧笔记首行 H1 自动迁移为标题）、正文插图（对话框选择 / 粘贴 / 拖放，选中后四角拖拽调宽，data URL 单文件内嵌）、行号显示（段落 / 画板 / 图片 / 卡片各算 1 行）、AI 浮层可拖动并记忆位置（默认停靠右上不遮挡正文）、`/` 菜单与 AI 菜单空白点击或 ESC 一律关闭、删除笔记确认框居中可见（修复"删除无反应"）、画板图形与锚点按正文行高等比缩小（drawio 视觉密度）、工具栏 emoji 图标全部改为矢量 SVG（杜绝破损占位符）。**v0.18.0 笔记编辑深化**：代码块支持实时语法高亮、独立行号、右上角语言标签随时切换（纯文本自动识别常见语言），默认等宽字体；信息块图标后可直接输入加粗标题；画板连线默认 drawio 式正交折线、选中手柄缩小为小圆点（带隐形加大命中区）、Delete 只删画板内选中图形而非整个画板、图形支持双击/Enter/工具栏按钮插入文字；所有非正文元素（图片 / 信息块 / 代码块 / 画板 / 分隔线）选中或光标进入后右上角出现删除按钮；全局行号支持表格按行计数并在图片异步加载后自动对位。**v0.18.1 修复**：合并冲突"我的/他人的"二选一选侧反转（选谁得谁，merge 与 rebase 均已修正）、二进制冲突预览打开错误一侧；工作副本文件列表宽度可自由拉宽（上限 420 移除，动态保证 diff 区可用）并跨会话记忆；文件页"移动到"可连续使用（目录列表改为读取暂存区，移动后立即反映新路径）且对话框初始定位到文件所在目录；后台自动获取增加低速中断保护，网络挂起不再堵塞队列中的用户操作。**v0.18.2 修复**：长路径与含空格路径下「在资源管理器中显示」失效——含空格路径曾直接打开文档目录、超长路径（>259 字符）在严格 MAX_PATH 系统上曾误报"文件已不存在"；现 explorer 定位改用分离传参，并增加 `\\?\` 前缀存在性探测与"最深可定位祖先目录"降级；快速笔记的「在资源管理器中显示」同步加固（长路径降级 + 文件缺失时明确提示）。**v0.18.3 修复**：「在资源管理器中显示」在部分 Windows 构建上依旧无效（explorer 对 `/select` 的参数解析随版本漂移）——改用**无引号原样单参数**的经典形态（`explorer /select,C:\path with spaces`，自 XP 起各版本通用），并新增 `gitboard.revealSelectStyle` 设置（classic/separate/quoted）供异构环境一键切换兜底。
+> 提交图 · 工作副本提交 · 三栏合并 · 拉取摘要 · 文件历史 · 快速笔记——日常 Git 操作一站搞定，全程不离开 VS Code。
 
-GitBoard is a VS Code extension (desktop) built around a graphical commit history: a **GitHub-style colored topology graph** (the default since v0.14.6, with curved / angular styles as alternatives), commit details & diffs, everyday Git operations (Fetch / Pull / Push / Reset / Checkout), a SourceTree-style **working-copy commit view** (with GitHub Copilot AI commit messages), a **3-way merge conflict resolver**, **pull/fetch change summaries**, and a **file history page** — move / rename / delete files and folders while the full history keeps following them, with any-two-version compare. Large repos are handled with paged loading, virtualized scrolling and layered rendering. **Since v0.14.7 startup no longer waits for Git probing** — the toolbar, project list and layout memory render first, repository scanning and commit history load in the background (with visible loading feedback), and a workspace without a Git repository gets an instant guidance message instead of a blank panel. **v0.15.0 adds Quick Notes**: a dedicated activity-bar entry (`Ctrl+Alt+N`) with a 3-pane layout (note list / rich-text editor / outline), supporting headings, font family & size, tables (merge / nest / resizable columns), Confluence-style background cards, code blocks, inline code, an SVG sketch board (flowcharts), three list types, timestamps and a `/` command menu, plus Copilot **AI editing** on the selection (continue / polish / translate / summarize / to-dos with a diff preview). Notes are saved outside the workspace by default (`~/GitBoardNotes`, changeable) and are **fully independent of Git** — Git crashes never affect notes, and opening notes triggers no Git probing. Export to Markdown / self-contained HTML (embedded data, reopenable and editable inside the extension) / PDF (silently converted by the local Edge/Chrome), or save a copy to any folder. **v0.17.0 notes polish**: document title header (large title + last-modified time + a dedicated divider; legacy leading H1s migrate automatically), inline images (dialog / paste / drop, resize by dragging corner handles once selected, embedded as data URLs), line numbers (each paragraph / sketch / image / card counts as one line), a draggable AI panel that remembers its position (docked top-right by default, away from your text), slash & AI menus closing on blank click or ESC, a centered delete-note confirmation (fixes "delete does nothing"), sketch shapes and anchors scaled down to match text line height (drawio-like density), and all toolbar emoji icons replaced with vector SVGs (no more broken glyphs). **v0.18.0 deeper note editing**: code blocks get live syntax highlighting, their own line numbers and a top-right language chip for switching anytime (plain text auto-detects common languages), monospace by default; callouts accept a bold editable title right after the icon; sketch connectors now route as drawio-style orthogonal polylines by default, selection handles shrink to small dots (with invisible enlarged hit areas), Delete removes only the selected shape instead of the whole board, and shapes accept text via double-click / Enter / the toolbar button; every non-text block (image / callout / code block / sketch / divider) shows a delete button at its top-right once selected or focused; global line numbers count table rows individually and re-align automatically after images load. **v0.18.1 fixes**: the merge-conflict "mine / theirs" pick was inverted (you now get the side you choose, for both merge and rebase), and binary-conflict preview opened the wrong side; the working-copy file list can now be widened freely (the 420 px cap is gone; the diff pane always keeps usable space) and its width persists across sessions; the file page "Move to…" works repeatedly (the directory listing now reads the index, so new paths show up right after a move) and its dialog opens in the source file's directory; the background auto-fetch gains a low-speed cutoff so a hung network no longer blocks queued user operations. **v0.18.2 fixes**: "Reveal in file manager" failed on paths containing spaces (Explorer fell back to opening Documents) and on very long paths (>259 chars, which strict MAX_PATH systems could also misreport as "file no longer exists") — the Explorer call now passes `/select` and the path as separate arguments, with a `\\?\` existence probe and a fallback to the deepest revealable ancestor folder; the Quick Notes "Reveal in file manager" got the same hardening (long-path fallback plus a clear notice when the note file is missing). **v0.18.3 fixes**: "Reveal in file manager" was still broken on some Windows builds (explorer's `/select` parsing drifts across versions) — it now uses the classic raw single-argument form (`explorer /select,C:\path with spaces`, universal since XP), with a new `gitboard.revealSelectStyle` setting (classic/separate/quoted) as a one-click fallback for exotic environments.
+## 反馈与联系
+
+欢迎提出 **Issue** 与**新需求**，也欢迎反馈使用中遇到的任何问题——每一条反馈都会认真对待：
+
+- 🐛 **问题反馈 / 功能建议**：[GitHub Issues](https://github.com/Emon9426/VSCodeGitGUI/issues)
+- 📧 **联系作者**：[emonzhang3438@outlook.com](mailto:emonzhang3438@outlook.com)
+
+> 🐛 Bug reports & feature requests are always welcome at [GitHub Issues](https://github.com/Emon9426/VSCodeGitGUI/issues) · 📧 Contact the author: [emonzhang3438@outlook.com](mailto:emonzhang3438@outlook.com)
 
 ![主界面总览 / Overview](res/screenshots/overview.png)
 
 ---
 
 ## 中文文档
+
+### 简介
+
+GitBoard 是一个 VS Code 桌面插件，以**图形化提交历史**为核心，把日常 Git 操作搬进同一个面板：浏览彩色拓扑提交图、查看差异、Fetch / Pull / Push、重置与切换分支，用 SourceTree 式的工作副本视图提交代码（可由 GitHub Copilot 生成提交信息），在三栏合并器里解决冲突，用拉取摘要一眼看清"谁改了什么"，还能在文件历史页里跨移动跟随文件的完整历史，或随手在独立于 Git 的快速笔记里记点什么。
+
+针对大仓库做了分页加载、虚拟滚动与分层渲染；启动不等待 Git 探测——界面先行渲染，仓库扫描与提交历史后台加载，全程有加载反馈。
+
+**核心特性一览：**
+
+- 🎨 **GitHub 风彩色拓扑提交图**（可切换圆角 / 直角风格），HEAD / 分支 / 远程 / 标签徽标；
+- ✅ **SourceTree 式工作副本提交**——勾选即暂存，Copilot AI 一键生成提交信息；
+- 🔀 **IDEA / Beyond Compare 式三栏合并冲突解决器**；
+- 📥 **Pull / Fetch 变更摘要**——作者 → 目录 → 文件三层分组；
+- 📁 **文件历史页**——移动 / 重命名文件夹后历史完整跟随，任意两版本比对；
+- 📝 **快速笔记**——富文本 + SVG 画板 + AI 编辑，独立于 Git；
+- ⚡ **大仓库友好**——分页、虚拟滚动、后台自动获取（SourceTree 式）。
+
+### 目录
+
+[功能特性](#功能特性) · [安装](#安装) · [快速上手](#快速上手) · [功能使用详解](#功能使用详解) · [快捷键](#快捷键) · [常用设置](#常用设置) · [从源码开发](#从源码开发) · [常见问题](#常见问题) · [更新日志](#更新日志)
 
 ### 功能特性
 
@@ -25,7 +52,8 @@ GitBoard is a VS Code extension (desktop) built around a graphical commit histor
 | AI 提交信息 | GitHub Copilot 生成：流式填充、可停止/重生成/选模型；学习近 10 条提交的风格与语言；自动遵循 `.copilot/`、`.github/copilot-instructions.md` 等工程指示文件；复用 VS Code 当前登录账号，零凭证。大批量提交加固：统计与差异封顶截断、60s 无响应自动停止；差异不可用时自动降级为文件名 + 目录结构推断，并如实标注 |
 | 合并与冲突解决 | IDEA / Beyond Compare 式**三栏合并器**：我的版本 – 合并版本（最终保存的就是它，可编辑）– 他人版本；块级按钮（用我的/用他人/两个都要/都不要）+ 左右栏 «» 一键采纳 + 行内编辑，全程不显示 git 冲突标记，右缘冲突分布导航条；pull/提交遇冲突自动引导横幅；push 被拒引导"拉取并推送"；二进制冲突二选一 + 系统程序预览；一方删除场景；超限文件（>16000 行/2MB）显式警告；随时中止还原现场；全部解决后弹确认完成合并（rebase 语义自动反转）；解决进度落盘，重开无损 |
 | Pull/Fetch 摘要 | 每次拉到新提交后弹窗展示**纯净变更摘要**（排除合并等操作提交）：**作者 → 目录 → 文件** 三层分组；文件行带工作区大小与修改时间、行尾按钮一键打开或定位；同作者同文件多提交合并 ×N；重命名显示 `旧名 → 新名`；中文路径无八进制转义；`gitboard.pullFetchSummary` 开关，默认开启 |
-| 文件历史页 | 工具栏第四视图「🗂 文件」：左区资源管理器（文件夹视图/详细信息双视图、Win11 式地址栏、多选 + 删除/移动/重命名独立按钮）+ 右区**跨移动/重命名跟随的完整提交历史**（路径链与时期徽标、里程碑行、就地展开详情、只读打开历史版本、勾选任意两版比对）。详见[第 10 节](#10-文件历史页v0140) |
+| 文件历史页 | 工具栏第四视图「🗂 文件」：左区资源管理器（文件夹视图/详细信息双视图、Win11 式地址栏、多选 + 删除/移动/重命名独立按钮）+ 右区**跨移动/重命名跟随的完整提交历史**（路径链与时期徽标、里程碑行、就地展开详情、只读打开历史版本、勾选任意两版比对）。详见[第 11 节](#11-文件历史页v0140) |
+| 快速笔记 | 活动栏专属入口（`Ctrl+Alt+N`）：文件列表 / 富文本编辑器 / 大纲三栏；表格、背景色卡片、代码块、SVG 画板、`/` 命令菜单、AI 编辑（续写/润色/翻译/摘要/待办化）；存储于工程外目录、完全独立于 Git；导出 Markdown / 自包含 HTML / PDF。详见[第 12 节](#12-快速笔记v0150) |
 | 筛选 | 分支/远程/标签过滤 + 作者多选下拉 + 时间段（可叠加，条件按仓库记忆） |
 | 工程切换 | 左侧栏「工程」区：保存常用工程文件夹（自定义名称），双击当前窗口切换、右键新窗口打开/重命名/移除 |
 | 大仓库性能 | 分页加载（500/页，上限可配）、DOM 虚拟滚动 + Canvas 只绘视口、.git 监视防抖自动刷新 |
@@ -114,7 +142,7 @@ npm run package     # 产出 gitboard-x.y.z.vsix
 
 工具栏提供三组可叠加的筛选：**分支下拉**（或单击侧栏分支/远程/标签节点）、**作者多选下拉**（候选自动来自仓库全部作者，支持搜索过滤/全选/清空）、**起止日期选择器**（截止日期含当天全天）。有筛选时显示 × 一键清除；筛选无结果时空态会明确提示。条件按仓库分别记忆。
 
-#### 5.5 工程切换（v0.11.0）
+#### 6. 工程切换（v0.11.0）
 
 左侧栏最上方「**工程**」区，用于在几个常用工程间快速切换 VS Code 工作区：
 
@@ -122,14 +150,14 @@ npm run package     # 产出 gitboard-x.y.z.vsix
 - **切换**：**双击**工程即在**当前窗口**替换为新工程；右键可选「在新窗口打开」「在当前窗口打开」「重命名…」「移除」「复制路径」；
 - 当前工作区命中的工程自动高亮；工程列表持久化保存，重启不丢；路径已被移动/删除时打开会明确报错。
 
-#### 6. 个性化
+#### 7. 个性化
 
 - **列宽**：图形/提交说明/作者/SHA 四列表头右缘可拖拽调宽（悬停高亮），自动持久化，重装不丢；时间列自适应剩余空间；
 - **主题**：全部颜色消费 VS Code 主题变量，明暗自动适配；
 - **语言**：默认跟随 VS Code 界面语言，可强制指定；**工具栏「A / 中 / EN」按钮**或命令 `GitBoard: 切换界面语言` 一键切换，**即时生效、无需重载**；
 - **按钮反馈**：Fetch / Pull / Push / 刷新点击后按钮进入繁忙态（蓝色脉冲）、完成时短暂闪绿并 toast 说明结果——无新提交也会明确告知（“远程无新提交” / “已是最新的” / “获取完成：N 个分支引用有更新”）。
 
-#### 7. 工作副本与提交
+#### 8. 工作副本与提交
 
 ![工作副本 / Working copy](res/screenshots/working-copy.png)
 
@@ -146,7 +174,7 @@ SourceTree 式提交流程，全程不离开 GitBoard：
 - **AI 生成**：点 **✨** 由 GitHub Copilot 基于已暂存差异生成提交信息——流式填入，可 `Esc` 停止、重新生成、切换模型；语言与风格自动学习近 10 条提交；工程指示文件（`.copilot/*.md`、`.github/copilot-instructions.md`、`.github/instructions/*.instructions.md`）自动遵循；首次使用会请求确认（差异将发送至 Copilot 服务）。大批量提交加固：统计与差异封顶截断、60 秒无响应自动停止、任何失败都解除界面锁定；差异不可用（超大/二进制/超时）时自动降级为文件名 + 目录结构推断并如实标注；
 - **丢弃**：右键文件 →「丢弃更改…」，红色双重确认后回到 HEAD（未跟踪文件直接删除）。
 
-#### 8. 合并与冲突解决
+#### 9. 合并与冲突解决
 
 ![三栏合并器 / 3-way merge](res/screenshots/merge-conflict.png)
 
@@ -159,7 +187,7 @@ pull 或提交产生冲突时，自动切到工作副本视图并弹出引导横
 - **完成与回退**：全部解决后弹确认条完成合并（merge→创建合并提交 / rebase→继续变基，`--ours/--theirs` 语义自动反转）；随时「中止合并」还原现场；
 - **进度落盘**：解决结果防抖写回文件本身，中途关闭/崩溃重开无损。
 
-#### 9. Pull / Fetch 变更摘要
+#### 10. Pull / Fetch 变更摘要
 
 ![拉取摘要 / Pull summary](res/screenshots/pull-summary.png)
 
@@ -170,7 +198,7 @@ pull 或提交产生冲突时，自动切到工作副本视图并弹出引导横
 - 同作者同文件多提交合并为一行（×N，悬停列出全部提交与说明）；重命名显示 `旧名 → 新名`；不在工作区的文件显示 `—`；
 - 顶部汇总“N 个提交 · M 位作者 · K 个文件”；`gitboard.pullFetchSummary` 设置开关，默认开启；后台自动获取不弹此窗（静默语义）。
 
-#### 10. 文件历史页（v0.14.0）
+#### 11. 文件历史页（v0.14.0）
 
 ![文件历史页 / File history](res/screenshots/file-history.png)
 
@@ -192,19 +220,34 @@ pull 或提交产生冲突时，自动切到工作副本视图并弹出引导横
 - **移动后引导**：移动/重命名后提示"纯变更单独提交"（混合移动+内容修改会破坏 git 的 R100 重命名识别）；在系统资源管理器手动拖动后，回到 GitBoard 会自动检测并给出同样引导；
 - 入口：工具栏「🗂 文件」/ VS Code 资源管理器右键「**查看文件历史**」。
 
+#### 12. 快速笔记（v0.15.0）
+
+活动栏「快速笔记」图标（或 `Ctrl+Alt+N`、主面板工具栏 📝 按钮）直达，**完全独立于 Git**——Git 出问题不影响笔记，打开笔记也不触发 Git 探测：
+
+- **三栏布局**：文件列表（图标/列表双视图、搜索）/ 富文本编辑器 / 大纲；
+- **富文本**：标题、字体字号（中英分设）、表格（合并/嵌套/列宽拖拽）、Confluence 式背景色卡片、代码块（语法高亮 + 语言标签 + 独立行号）、行内代码、三种列表、时间戳、分隔线、正文插图、`/` 命令菜单；
+- **SVG 画板**：矩形/菱形/椭圆/文本/箭头，正交折线连线、锚点吸附、网格对齐、板内撤销重做；
+- **AI 编辑**：选中文字后续写 / 润色 / 翻译 / 摘要 / 待办化（GitHub Copilot，带差异预览）；
+- **行号与显示字符**：工具栏 # 开关行号；显示所有字符模式；
+- **导出**：Markdown / 自包含 HTML（内嵌数据，可在插件内重新打开继续编辑）/ PDF（本机 Edge/Chrome 静默转换），可另存为任意文件夹；
+- **存储**：默认 `~/GitBoardNotes`（可更改目录），`.gbnote.json` 原生格式，重命名/删除/搜索全内置。
+
 ### 快捷键
 
 | 按键 | 功能 |
 | --- | --- |
 | `Ctrl+Alt+G`（macOS `Cmd+Alt+G`） | 打开提交图 |
 | `Ctrl+Alt+C`（macOS `Cmd+Alt+C`） | 打开工作副本（提交）视图并聚焦信息栏 |
+| `Ctrl+Alt+N`（macOS `Cmd+Alt+N`） | 打开快速笔记 |
 | `Ctrl+Enter` | 提交（提交信息框内） |
 | `Esc` | 停止 AI 生成 |
 | `↑` / `↓` | 移动选中提交 |
 | `Enter` | 打开文件所在差异（在详情面板中） |
 | `F2` / `Del` / `Ctrl+L` | 文件页：重命名 / 删除 / 编辑地址栏 |
 
-### 常用设置（`Ctrl+,` 搜索 "gitboard"）
+### 常用设置
+
+（`Ctrl+,` 打开设置后搜索 "gitboard"）
 
 | 设置 | 默认 | 说明 |
 | --- | --- | --- |
@@ -245,6 +288,7 @@ npm run build && npm run package
 
 - **安装新版本后行为没变化？** 务必执行“开发者：重新加载窗口”；可对照工具栏右侧版本号确认当前构建。
 - **活动栏里找不到 GitBoard 图标？** 若工作区处于**受限模式**（不受信任），VS Code 会禁用本扩展——在“管理工作区信任”中将文件夹设为受信任即可。
+- **「在资源管理器中显示」没反应或打开了错误目录？** 少数 Windows 构建上 explorer 对 `/select` 参数的解析不同——在设置中把 `gitboard.revealSelectStyle` 依次换成 `separate`、`quoted` 试试（即时生效，无需重载）；都不行请带上 Windows 版本（winver）到 [Issues](https://github.com/Emon9426/VSCodeGitGUI/issues) 反馈。
 - **支持 vscode.dev / github.dev 吗？** 不支持，插件需要在本机执行 git 命令。
 - **超大仓库卡吗？** 分页 + 虚拟滚动保证流畅；可运行 `git commit-graph write --reachable` 进一步加速翻页。
 - **✨ AI 生成按钮没出现？** 需要 VS Code ≥ 1.99 且已登录 GitHub Copilot（与 Copilot Chat 同一账号）；未登录或不可用时按钮自动隐藏，其余提交功能不受影响。也可检查 `gitboard.ai.enabled` 是否开启。
@@ -253,15 +297,57 @@ npm run build && npm run package
 - **移动文件夹后历史会丢吗？** 不会。文件页的历史查询基于 `git log --follow` + 目录边界反查，跨移动/重命名完整跟随；唯一要求是**纯移动单独成提交**（移动的同时大改内容会破坏 git 的重命名识别），扩展会在你移动后主动提醒。
 - **图形列想换回旧样式？** 设置 `gitboard.graphStyle` 为 `curved`（短半径圆角）或 `angular`（直角折线）即可。
 
+### 更新日志
+
+**v0.18.x**
+
+- **v0.18.3**（2026-09-02）：「在资源管理器中显示」在部分 Windows 构建上依旧无效（explorer 对 `/select` 的解析随版本漂移）——改用无引号原样单参数的经典形态（自 XP 起各版本通用），新增 `gitboard.revealSelectStyle` 设置供异构环境一键切换兜底。
+- **v0.18.2**（2026-09-01）：修复长路径与含空格路径下「在资源管理器中显示」失效（含空格曾直接打开文档目录、>259 路径在严格 MAX_PATH 系统上曾误报"文件已不存在"）——增加 `\\?\` 前缀存在性探测与"最深可定位祖先目录"降级；快速笔记同步加固，文件缺失时明确提示。
+- **v0.18.1**（2026-09-01）：修复合并冲突"我的/他人的"二选一选侧反转（merge 与 rebase 均已修正）与二进制冲突预览打开错误一侧；工作副本文件列表宽度可自由拉宽并跨会话记忆；文件页"移动到"可连续使用且对话框初始定位到文件所在目录；后台自动获取增加低速中断保护。
+- **v0.18.0**（2026-08-30）：笔记编辑深化——代码块实时语法高亮 + 独立行号 + 语言标签（纯文本自动识别）、信息块标题可直接输入、画板连线默认正交折线、Delete 只删选中图形、所有非正文元素带删除按钮、行号支持表格按行计数并在图片加载后自动对位。
+
+**v0.17.0**（2026-08-30）：笔记体验升级——文档标题头（旧笔记首行 H1 自动迁移）、正文插图（粘贴/拖放/选图 + 四角拖拽调宽）、行号显示、AI 浮层可拖动并记忆位置、`/` 菜单与 AI 菜单空白点击或 ESC 关闭、删除笔记确认框居中可见、画板图形密度对齐正文行高、工具栏图标全部矢量 SVG。
+
+**v0.15.0**（2026-08-30）：新增「快速笔记」——三栏布局富文本笔记（表格/卡片/代码块/SVG 画板/`/` 菜单），Copilot AI 编辑（续写/润色/翻译/摘要/待办化 + 差异预览），存储于工程外目录、完全独立于 Git，导出 Markdown / 自包含 HTML / PDF。
+
+**v0.14.x**
+
+- **v0.14.7**（2026-08-30）：启动不再等待 Git 探测——工具栏/工程列表/布局记忆先行渲染，仓库扫描后台加载，无仓库时立即显示引导。
+- **v0.14.6**（2026-08-29）：图形列默认 GitHub 风格（细线低饱和配色 + 圆弧转弯 + 空心合并点）。
+- **v0.14.0**（2026-08-29）：文件历史页——跨移动/重命名跟随完整历史、路径链与时期徽标、任意两版本比对、Win11 式地址栏。
+
 ---
 
 ## English Documentation
 
 **[简体中文](#中文文档)** | **English**
 
-GitBoard brings a graphical commit history to VS Code (desktop): a **GitHub-style colored topology graph** (default since v0.14.6; curved / angular styles available), commit details & diffs, everyday Git operations, a SourceTree-style working-copy commit view with **AI commit messages via GitHub Copilot**, a **3-way merge conflict resolver**, **pull/fetch change summaries**, and a **file history page** that follows files across moves and renames. Built for large repos with paging, virtualized scrolling and layered rendering.
+> Commit graph · working-copy commits · 3-way merge · pull summaries · file history · quick notes — everyday Git in one panel, without leaving VS Code.
+
+## Feedback & Contact
+
+Bug reports and feature requests are always welcome — every piece of feedback counts:
+
+- 🐛 **Issues & feature requests**: [GitHub Issues](https://github.com/Emon9426/VSCodeGitGUI/issues)
+- 📧 **Contact the author**: [emonzhang3438@outlook.com](mailto:emonzhang3438@outlook.com)
 
 ![Overview](res/screenshots/overview.png)
+
+### Introduction
+
+GitBoard is a VS Code (desktop) extension that puts a **graphical commit history** at the center and gathers everyday Git operations into one panel: browse a colored topology graph, inspect diffs, Fetch / Pull / Push, reset and checkout, commit SourceTree-style with **AI commit messages via GitHub Copilot**, resolve conflicts in a 3-way merge editor, see "who changed what" in pull summaries, follow file history across moves and renames, and jot things down in Git-independent quick notes.
+
+Large repos are handled with paged loading, virtualized scrolling and layered rendering; startup never waits for Git probing — the shell renders first, scanning loads in the background.
+
+**Highlights:**
+
+- 🎨 **GitHub-style colored topology graph** (curved / angular styles available);
+- ✅ **SourceTree-style working-copy commits** with Copilot-generated messages;
+- 🔀 **IDEA / Beyond Compare style 3-way merge resolver**;
+- 📥 **Pull/fetch summaries** grouped author → directory → file;
+- 📁 **File history page** that follows moves & renames, with any-two-version compare;
+- 📝 **Quick notes** — rich text + sketch board + AI editing, fully independent of Git;
+- ⚡ **Large-repo friendly** — paging, virtualization, background auto-fetch.
 
 ### Features
 
@@ -276,7 +362,8 @@ GitBoard brings a graphical commit history to VS Code (desktop): a **GitHub-styl
 | AI commit messages | One-click generation via GitHub Copilot: streamed inline, stop/regenerate/model picker; style learned from the last 10 commits; automatically follows `.copilot/` and `.github/` instruction files; uses your signed-in account — zero credentials. Hardened for huge changesets: capped summary & diff, 60s watchdog, UI always unlocks; falls back to file-name/folder-structure inference when the diff is unusable, honestly noted |
 | Merge & conflict resolution | IDEA / Beyond Compare style **3-way merge editor**: Mine – Merged (what gets saved, editable) – Theirs; per-chunk buttons (use mine / theirs / keep both / neither) + «» adopt arrows + inline editing, git conflict markers never shown, conflict minimap; pull/commit conflicts open a guidance banner; rejected pushes guide you to pull-and-push; binary = pick-one-side + system preview; deleted-side scenarios; oversized files get an explicit warning and reduce to whole-file choices; abort anytime; a confirmation finishes the merge (rebase semantics flipped automatically); progress is saved to the file itself — reopening is lossless |
 | Pull/Fetch summary | After every pull/fetch that brings new commits, a popup lists the **pure changes** (merge ops excluded) grouped **author → directory → file**: filename rows (never truncated) with working-tree size & mtime, inline open/reveal buttons, same-file commits merged into ×N rows, renames as `old → new`; toggle with `gitboard.pullFetchSummary`, on by default |
-| File history page | Fourth view "🗂 Files": an explorer (tiles/details views, Win11-style address bar, multi-select with Delete / Move to… / Rename buttons) + a right panel with the **full history following moves/renames** (path chain, era badges, milestone rows, inline details, read-only revisions, any-two-version compare) — detailed in "Using the Features" §11 below |
+| File history page | Fourth view "🗂 Files": an explorer (tiles/details views, Win11-style address bar, multi-select with Delete / Move to… / Rename buttons) + a right panel with the **full history following moves/renames** (path chain, era badges, milestone rows, inline details, read-only revisions, any-two-version compare) |
+| Quick notes | Activity-bar entry (`Ctrl+Alt+N`): note list / rich-text editor / outline; tables, callout cards, code blocks, an SVG sketch board, a `/` command menu, AI editing; stored outside the workspace, fully independent of Git; export to Markdown / self-contained HTML / PDF |
 | Filtering | Branch/remote/tag filter + multi-select author dropdown + date range, stackable and remembered per repository |
 | Projects | "Projects" section in the sidebar: save favorite workspace folders with custom names; double-click to switch the current window, right-click for new window / rename / remove |
 | Large-repo performance | Paged loading (500/page, configurable cap), virtualized rows + viewport-only canvas rendering, debounced auto-refresh on `.git` changes |
@@ -375,12 +462,25 @@ The fourth view "🗂 Files" lets you move/rename folders without losing history
 - **Move guidance**: after a move/rename you are nudged to commit it alone (mixing moves with content changes breaks git's R100 rename detection); manual moves made in the system explorer are detected on return with the same nudge;
 - Entry points: the "🗂 Files" toolbar tab, or right-click a file in the VS Code explorer → **"Show File History"**.
 
+**12. Quick notes (v0.15.0)**
+
+The activity-bar "Quick Notes" icon (or `Ctrl+Alt+N`, or the 📝 button on the toolbar) opens a Git-independent notepad — Git problems never affect notes, and opening notes triggers no Git probing:
+
+- **3-pane layout**: note list (grid/list views, search) / rich-text editor / outline;
+- **Rich text**: headings, font family & size (separate CJK/Latin defaults), tables (merge / nest / resizable columns), Confluence-style callout cards, code blocks (syntax highlighting + language chip + line numbers), inline code, three list types, timestamps, dividers, inline images, and a `/` command menu;
+- **SVG sketch board**: rectangles, diamonds, ellipses, text and arrows with orthogonal connectors, anchor snapping, grid alignment and in-board undo/redo;
+- **AI editing**: continue / polish / translate / summarize / to-dos on the selection (GitHub Copilot, with a diff preview);
+- **Line numbers & show-all-chars** toggles on the toolbar;
+- **Export**: Markdown / self-contained HTML (embedded data, reopenable and editable inside the extension) / PDF (silently converted by the local Edge/Chrome), or save a copy anywhere;
+- **Storage**: `~/GitBoardNotes` by default (changeable), `.gbnote.json` native format, with built-in rename/delete/search.
+
 ### Keybindings
 
 | Key | Action |
 | --- | --- |
 | `Ctrl+Alt+G` / `Cmd+Alt+G` | Open the commit graph |
 | `Ctrl+Alt+C` / `Cmd+Alt+C` | Open the Working Copy view |
+| `Ctrl+Alt+N` / `Cmd+Alt+N` | Open Quick Notes |
 | `Ctrl+Enter` | Commit (inside the message box) |
 | `Esc` | Stop AI generation |
 | `↑` / `↓` | Move selection |
@@ -388,12 +488,13 @@ The fourth view "🗂 Files" lets you move/rename folders without losing history
 
 ### Settings
 
-Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angular), `commitPageSize`, `logOrder`, `maxAutoLoad`, `defaultPullStrategy`, `dateFormat`, `rowHeight`, `detailPanelPosition`, `language`, `fetchOnOpen`, `autoFetchInterval`, `pullFetchSummary`, `startView`, `ai.enabled` / `ai.modelFamily` / `ai.language` / `ai.learnFromHistory` / `ai.useWorkspaceInstructions`, `commit.clearMessage` / `commit.pushAfter`, plus `gitPath` for a custom git binary.
+Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angular), `commitPageSize`, `logOrder`, `maxAutoLoad`, `defaultPullStrategy`, `dateFormat`, `rowHeight`, `detailPanelPosition`, `language`, `fetchOnOpen`, `autoFetchInterval`, `pullFetchSummary`, `revealSelectStyle` (**classic** default — switch to separate/quoted if "Reveal in file manager" misbehaves on your Windows build), `startView`, `ai.enabled` / `ai.modelFamily` / `ai.language` / `ai.learnFromHistory` / `ai.useWorkspaceInstructions`, `commit.clearMessage` / `commit.pushAfter`, plus `gitPath` for a custom git binary.
 
 ### FAQ
 
 - **Nothing changed after upgrading?** Run "Developer: Reload Window"; the version label on the toolbar tells you which build is live.
 - **No GitBoard icon in the Activity Bar?** If the workspace is in **restricted (untrusted) mode**, VS Code disables the extension — trust the folder via "Manage Workspace Trust".
+- **"Reveal in file manager" does nothing or opens the wrong folder?** Explorer's `/select` parsing varies across Windows builds — try switching `gitboard.revealSelectStyle` to `separate` and then `quoted` (effective immediately, no reload); if none work, please report with your Windows version (winver) on [Issues](https://github.com/Emon9426/VSCodeGitGUI/issues).
 - **vscode.dev?** Not supported — the extension runs your local `git`.
 - **Huge repos?** Paging + virtualization keep it smooth; `git commit-graph write --reachable` speeds up paging further.
 - **No ✨ AI button?** Needs VS Code ≥ 1.99 and an active Copilot sign-in; the button hides itself when unavailable. Check `gitboard.ai.enabled`.
@@ -401,6 +502,18 @@ Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angul
 - **Does AI hang on huge changesets?** No: summary and diff are capped, a 60s watchdog stops stalled requests, and any failure unlocks the UI immediately.
 - **Does history survive folder moves?** Yes — the file page uses `git log --follow` plus directory-boundary reverse lookup, so history follows moves/renames completely. The one rule: **commit pure moves separately** (mixing a move with content changes breaks git's rename detection); GitBoard nudges you right after a move.
 - **Want the old graph look?** Set `gitboard.graphStyle` to `curved` or `angular`.
+
+### Changelog
+
+- **v0.18.3** (2026-09-02): "Reveal in file manager" still failed on some Windows builds (explorer's `/select` parsing drifts across versions) — switched to the classic raw single-argument form (universal since XP) and added the `gitboard.revealSelectStyle` fallback setting.
+- **v0.18.2** (2026-09-01): fixed "Reveal in file manager" on paths with spaces and very long paths (>259 chars, which strict MAX_PATH systems could misreport as "file no longer exists") — added a `\\?\` existence probe and a deepest-revealable-ancestor fallback; Quick Notes got the same hardening plus a clear missing-file notice.
+- **v0.18.1** (2026-09-01): fixed the inverted merge-conflict "mine/theirs" pick and the wrong-side binary preview; the working-copy list widens freely and persists; "Move to…" works repeatedly; background auto-fetch gained a low-speed cutoff.
+- **v0.18.0** (2026-08-30): deeper note editing — live syntax highlighting in code blocks with line numbers and language chips, orthogonal sketch connectors, delete buttons for every non-text block, table-aware line numbering.
+- **v0.17.0** (2026-08-30): notes polish — document title header, inline images, line numbers, a draggable AI panel, centered delete confirmation, drawio-density sketch shapes, all-SVG toolbar icons.
+- **v0.15.0** (2026-08-30): Quick Notes added — 3-pane rich-text notes (tables / cards / code blocks / sketch board / `/` menu), Copilot AI editing, Git-independent storage, Markdown/HTML/PDF export.
+- **v0.14.7** (2026-08-30): startup no longer waits for Git probing.
+- **v0.14.6** (2026-08-29): GitHub-style graph became the default.
+- **v0.14.0** (2026-08-29): file history page — history follows moves/renames, any-two-version compare.
 
 ### Development
 
