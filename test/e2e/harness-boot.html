@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<!-- mock VS Code API：必须先于 webview.js 定义 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * 启动序列 harness（v0.14.7）：ready(reposPending) 先行 → reposChanged(空) → 无仓库引导；
+ * 再 reposChanged(仓库) → loadingHistory → repoState → 提交图渲染。
+ * 验证「外壳先行渲染 + 全程加载反馈 + 无仓库引导不空白」。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const errs = [];
+  const assert = (cond, msg) => { if (!cond) errs.push(msg); };
+
+  // 1. 等 webview 发出 bootstrap
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  const config = {
+    language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+    graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+    commitPageSize: 500, maxAutoLoad: 20000, fetchOnOpen: false, fetchPrune: true,
+    defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+    aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+    commitPushAfter: false, startView: 'graph', autoFetchInterval: 0, pullFetchSummary: true,
+  };
+
+  // 2. ready 先行到达（reposPending=true，repos 空；工程列表随外壳下发）
+  window.__send({
+    t: 'ready', config,
+    repos: [], reposPending: true,
+    language: 'zh-CN', colWidths: undefined, selectedSha: undefined, version: 'e2e',
+    projects: [{ id: 'p1', name: 'ProjX', path: 'D:/x/ProjX' }],
+    activeProjectIds: ['p1'], workspaceFolders: ['D:/x/ProjX'],
+  });
+  await twoFrames(); await sleep(100);
+
+  // ---- 阶段 A：扫描中——工程区已渲染、仓库区加载行、主区加载态（不空白）
+  const projName = document.querySelector('.gg-side-item.project .gg-side-name')?.textContent ?? '';
+  assert(projName.includes('ProjX'), `A1 工程行未渲染 proj="${projName}"`);
+  const repoSec = document.querySelectorAll('.gg-side-sec')[1];
+  const repoLoading = repoSec?.querySelector('.gg-side-empty');
+  assert(!!repoLoading && !!repoLoading.querySelector('.gg-spinner') && repoLoading.textContent.includes('正在扫描'),
+    `A2 仓库区扫描加载行缺失 text="${repoLoading?.textContent ?? ''}"`);
+  const emptyA = document.querySelector('.gg-empty');
+  assert(emptyA?.classList.contains('show') && emptyA?.querySelector('.gg-empty-title')?.textContent === '正在扫描 Git 仓库…',
+    `A3 主区扫描态缺失 title="${emptyA?.querySelector('.gg-empty-title')?.textContent ?? ''}"`);
+  assert(emptyA?.querySelector('.gg-spinner')?.style.display !== 'none', 'A4 主区扫描 spinner 未显示');
+
+  // 3. reposChanged(空)：无仓库引导
+  window.__send({ t: 'reposChanged', repos: [] });
+  await twoFrames(); await sleep(100);
+
+  // ---- 阶段 B：无仓库——侧栏 noRepos 文案、主区引导（标题+副文案、无 spinner）
+  const repoEmptyB = document.querySelectorAll('.gg-side-sec')[1]?.querySelector('.gg-side-empty');
+  assert(repoEmptyB?.textContent === '当前工作区未发现 Git 仓库', `B1 侧栏无仓库文案 text="${repoEmptyB?.textContent ?? ''}"`);
+  assert(!repoEmptyB?.querySelector('.gg-spinner'), 'B2 侧栏扫描 spinner 未消失');
+  const emptyB = document.querySelector('.gg-empty');
+  assert(emptyB?.querySelector('.gg-empty-title')?.textContent === '当前工作区未发现 Git 仓库',
+    `B3 主区无仓库标题 title="${emptyB?.querySelector('.gg-empty-title')?.textContent ?? ''}"`);
+  assert(emptyB?.querySelector('.gg-empty-hint')?.textContent === '请先打开一个包含 Git 仓库的文件夹。'
+    && !emptyB?.querySelector('.gg-empty-hint')?.classList.contains('hidden'),
+    `B4 主区引导副文案缺失/隐藏 hint="${emptyB?.querySelector('.gg-empty-hint')?.textContent ?? ''}"`);
+  assert(emptyB?.querySelector('.gg-spinner')?.style.display === 'none', 'B5 主区 spinner 未消失');
+
+  // 4. reposChanged(发现仓库)：主区切「加载提交历史」
+  window.__send({ t: 'reposChanged', repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }] });
+  await twoFrames(); await sleep(100);
+  const emptyC = document.querySelector('.gg-empty');
+  assert(emptyC?.classList.contains('show') && emptyC?.querySelector('.gg-empty-title')?.textContent === '正在加载提交历史…',
+    `C1 主区加载历史态缺失 title="${emptyC?.querySelector('.gg-empty-title')?.textContent ?? ''}"`);
+  assert(!!document.querySelector('.gg-side-item.repo'), 'C2 仓库区条目未渲染');
+
+  // 5. repoState：提交图渲染、空态消失
+  const mk = (i) => ({
+    sha: 'a' + String(i).padStart(2, '0') + 'f'.repeat(37),
+    shortSha: 'a' + String(i).padStart(2, '0') + 'fffff',
+    parents: [],
+    author: { name: 'e2e', email: 'e2e@test', date: '2026-08-21T10:00:00+08:00' },
+    committer: { name: 'e2e', email: 'e2e@test', date: '2026-08-21T10:00:00+08:00' },
+    subject: `E2E-OLD-${i}`, body: '', refs: [],
+  });
+  const commits = Array.from({ length: 30 }, (_, i) => mk(i));
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: 'a' + '0'.repeat(39), branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'a' + '0'.repeat(39), isHead: true }],
+      remotes: [], tags: [], status: { dirtyCount: 0 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits, commitsLoaded: commits.length, hasMore: false, stateVersion: 1,
+    },
+  });
+  await twoFrames(); await sleep(200);
+
+  // ---- 阶段 D：列表渲染、空态收起
+  const emptyD = document.querySelector('.gg-empty');
+  assert(!emptyD?.classList.contains('show'), 'D1 空态未收起');
+  const rows = [...document.querySelectorAll('.gg-list .gg-row')];
+  const top = rows.find(r => r.style.transform === 'translateY(0px)') || rows[0];
+  assert(top && (top.querySelector('.gg-subject')?.textContent ?? '') === 'E2E-OLD-0',
+    `D2 顶行未渲染 top="${top?.querySelector('.gg-subject')?.textContent ?? '(none)'}"`);
+
+  finish(errs.length ? 'FAIL: ' + errs.join(' | ') : 'PASS');
+
+  function finish(result) {
+    window.__result = result;
+    document.title = 'e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>GitBoard 快速笔记 · UI 预览 v1.0</title>
+<style>
+  :root {
+    --bg: #1e1e1e; --panel: #252526; --panel2: #2d2d2d; --border: #3c3c3c;
+    --fg: #cccccc; --muted: #9d9d9d; --accent: #0e639c; --accent-hover: #1177bb;
+    --active: #37373d; --code-bg: #1b1b1b; --sel: #264f78;
+    --card-info-bg: #1f3a5180; --card-info-bd: #4daafc; --card-info-t: #4daafc;
+    --card-ok-bg: #1f4a2e80; --card-ok-bd: #4ec98a; --card-ok-t: #4ec98a;
+    --card-warn-bg: #4a3f1f80; --card-warn-bd: #e0b33c; --card-warn-t: #e0b33c;
+    --card-danger-bg: #4a232380; --card-danger-bd: #f1707b; --card-danger-t: #f1707b;
+    --card-note-bg: #2d2d2d; --card-note-bd: #808080; --card-note-t: #b8b8b8;
+    --tb: #d4d4d4; --inline-code: #ce9178; --kw: #569cd6; --str: #6a9955;
+  }
+  body.light {
+    --bg: #ffffff; --panel: #f8f8f8; --panel2: #f0f0f0; --border: #e0e0e0;
+    --fg: #24292f; --muted: #6a737d; --accent: #0969da; --accent-hover: #0757ba;
+    --active: #e8e8e8; --code-bg: #f6f8fa; --sel: #b6d7ff;
+    --card-info-bg: #ddf4ff; --card-info-bd: #0969da; --card-info-t: #0550ae;
+    --card-ok-bg: #dafbe1; --card-ok-bd: #1a7f37; --card-ok-t: #116329;
+    --card-warn-bg: #fff8c5; --card-warn-bd: #d4a72c; --card-warn-t: #7d6608;
+    --card-danger-bg: #ffebe9; --card-danger-bd: #cf222e; --card-danger-t: #a40e26;
+    --card-note-bg: #f6f8fa; --card-note-bd: #8c959f; --card-note-t: #57606a;
+    --tb: #24292f; --inline-code: #a31515; --kw: #0000ff; --str: #098658;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif; overflow: hidden; }
+  .hidden { display: none !important; }
+
+  /* ===== 预览控制条 ===== */
+  .pv-bar { display: flex; align-items: center; gap: 6px; padding: 7px 12px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .pv-bar b { font-size: 12.5px; margin-right: 4px; }
+  .pv-btn { padding: 3px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel2); color: var(--fg); cursor: pointer; font-size: 12px; }
+  .pv-btn:hover { border-color: var(--accent); }
+  .pv-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pv-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+  .pv-hint { color: var(--muted); font-size: 11.5px; margin-left: auto; }
+
+  /* ===== 模拟 VS Code 外壳 ===== */
+  .vscode { height: calc(100% - 37px); display: flex; flex-direction: column; }
+  .tabs { display: flex; background: var(--panel2); border-bottom: 1px solid var(--border); }
+  .tab { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--panel); font-size: 12.5px; border-right: 1px solid var(--border); border-top: 1px solid var(--accent); }
+  .tab .x { color: var(--muted); }
+  .notes { flex: 1; display: flex; min-height: 0; }
+
+  /* ===== 左栏：文件列表 ===== */
+  .n-side { width: 230px; min-width: 180px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .n-side-head { display: flex; align-items: center; padding: 7px 10px 3px; font-size: 11px; font-weight: 700; letter-spacing: .4px; color: var(--muted); }
+  .n-side-head .act { margin-left: auto; display: flex; gap: 4px; }
+  .mini-btn { border: none; background: transparent; color: var(--fg); cursor: pointer; font-size: 12px; padding: 1px 5px; border-radius: 3px; }
+  .mini-btn:hover { background: var(--active); }
+  .n-dir { padding: 0 10px 6px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .n-dir a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .n-search { margin: 2px 10px 8px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); font-size: 12px; outline: none; }
+  .n-search:focus { border-color: var(--accent); }
+  .n-view-toggle { display: flex; gap: 2px; margin: 0 10px 6px; }
+  .n-view-toggle .pv-btn { flex: none; padding: 2px 9px; font-size: 11.5px; }
+  .n-list { flex: 1; overflow: auto; padding: 0 6px 8px; }
+  .n-item { display: flex; align-items: center; gap: 7px; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12.5px; }
+  .n-item:hover { background: var(--active); }
+  .n-item.on { background: var(--sel); color: #fff; }
+  .n-item .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .n-item .d { color: var(--muted); font-size: 10.5px; }
+  .n-item.on .d { color: #c8dcf0; }
+  /* 图标网格视图 */
+  .n-list.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 0 10px 8px; }
+  .n-list.grid .n-item { flex-direction: column; text-align: center; padding: 8px 4px 6px; gap: 4px; }
+  .n-list.grid .n-item .t { white-space: normal; font-size: 11.5px; line-height: 1.3; max-height: 30px; overflow: hidden; }
+  .n-list.grid .n-item .d { display: none; }
+  .n-ico { font-size: 15px; }
+
+  /* ===== 中栏：编辑器 ===== */
+  .n-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+  .n-titlebar { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .n-titlebar .name { font-weight: 600; }
+  .n-save { color: var(--muted); font-size: 11.5px; }
+  .n-titlebar .right { margin-left: auto; display: flex; gap: 4px; position: relative; }
+  .n-toolbar { display: flex; align-items: center; gap: 3px; padding: 4px 10px; border-bottom: 1px solid var(--border); flex-wrap: wrap; position: relative; }
+  .tb-btn { min-width: 26px; height: 24px; padding: 0 7px; border: none; border-radius: 4px; background: transparent; color: var(--fg); cursor: pointer; font-size: 12.5px; }
+  .tb-btn:hover { background: var(--active); }
+  .tb-btn.on { background: var(--sel); color: #fff; }
+  .tb-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+  .tb-btn.ai { color: #c586c0; font-weight: 700; }
+  .tb-caret { font-size: 9px; opacity: .7; margin-left: 2px; }
+
+  .editor { flex: 1; overflow: auto; padding: 22px 34px 60px; }
+  .doc { max-width: 760px; margin: 0 auto; outline: none; }
+  .doc h1 { font-size: 24px; margin: 6px 0 10px; }
+  .doc h2 { font-size: 19px; margin: 20px 0 8px; padding-bottom: 3px; border-bottom: 1px solid var(--border); }
+  .doc h3 { font-size: 15.5px; margin: 16px 0 6px; }
+  .doc p { margin: 7px 0; font-size: 13.5px; }
+  .doc code.ic { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; font: 12px Consolas,monospace; color: var(--inline-code); }
+  .doc pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font: 12px/1.6 Consolas,monospace; overflow: auto; position: relative; }
+  .doc pre .lang { position: absolute; top: 6px; right: 10px; font-size: 10.5px; color: var(--muted); }
+  .doc pre .cp { position: absolute; bottom: 6px; right: 10px; font-size: 10.5px; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; cursor: pointer; }
+  .doc .kw { color: var(--kw); } .doc .str { color: var(--str); }
+  .doc ul, .doc ol { margin: 6px 0; padding-left: 22px; }
+  .doc li { margin: 3px 0; }
+  .todo { list-style: none; padding-left: 4px !important; }
+  .todo .cb { display: inline-block; width: 13px; height: 13px; border: 1.5px solid var(--muted); border-radius: 3px; margin-right: 7px; vertical-align: -2px; cursor: pointer; position: relative; }
+  .todo.done .cb { background: var(--accent); border-color: var(--accent); }
+  .todo.done .cb::after { content: "✓"; position: absolute; top: -4px; left: 1px; color: #fff; font-size: 10px; }
+  .todo.done .tx { color: var(--muted); text-decoration: line-through; }
+  .doc blockquote { margin: 8px 0; padding: 4px 14px; border-left: 3px solid var(--muted); color: var(--muted); background: var(--panel); border-radius: 0 6px 6px 0; }
+  .doc hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+  /* 背景色卡片 */
+  .callout { border: 1px solid; border-left-width: 4px; border-radius: 8px; padding: 9px 14px; margin: 10px 0; }
+  .callout .ct { font-weight: 700; font-size: 12.5px; display: flex; gap: 6px; margin-bottom: 2px; }
+  .co-info { background: var(--card-info-bg); border-color: var(--card-info-bd); } .co-info .ct { color: var(--card-info-t); }
+  .co-ok { background: var(--card-ok-bg); border-color: var(--card-ok-bd); } .co-ok .ct { color: var(--card-ok-t); }
+  .co-warn { background: var(--card-warn-bg); border-color: var(--card-warn-bd); } .co-warn .ct { color: var(--card-warn-t); }
+  .co-danger { background: var(--card-danger-bg); border-color: var(--card-danger-bd); } .co-danger .ct { color: var(--card-danger-t); }
+  .co-note { background: var(--card-note-bg); border-color: var(--card-note-bd); } .co-note .ct { color: var(--card-note-t); }
+
+  /* 表格 */
+  .tbl-wrap { overflow-x: auto; margin: 10px 0; }
+  table.ed { border-collapse: collapse; font-size: 12.5px; min-width: 60%; }
+  table.ed th, table.ed td { border: 1px solid var(--border); padding: 5px 10px; text-align: left; }
+  table.ed th { background: var(--panel2); font-weight: 600; }
+  table.ed td.merged { background: var(--active); }
+  .cell-sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .tbl-float { display: inline-flex; gap: 2px; margin-left: 10px; vertical-align: middle; background: var(--panel); border: 1px solid var(--border); border-radius: 5px; padding: 2px; }
+  .tbl-float .tb-btn { min-width: 22px; height: 20px; font-size: 11px; }
+
+  /* 画板 */
+  .sketch { border: 1px solid var(--border); border-radius: 8px; margin: 12px 0; background: var(--panel); position: relative; }
+  .sketch.hover-edit::after { content: "双击进入画板编辑"; position: absolute; inset: auto 0 0; text-align: center; font-size: 10.5px; color: var(--muted); padding: 3px; }
+  .sketch-tools { display: flex; align-items: center; gap: 2px; padding: 4px 8px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .sketch-tools .tb-btn { min-width: 24px; height: 22px; font-size: 12px; }
+  .sketch-tools .tb-btn.on { background: var(--sel); color: #fff; }
+  .sketch svg { display: block; width: 100%; }
+  .sk-node { cursor: move; }
+  .sk-node.sel .shape { stroke: var(--accent) !important; stroke-dasharray: 4 2; }
+  .sk-label { font-size: 11px; fill: var(--fg); }
+
+  /* 选中浮动条 */
+  .sel-pop { position: absolute; display: flex; gap: 1px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 2px; box-shadow: 0 3px 10px rgba(0,0,0,.35); z-index: 40; }
+
+  /* ===== 右栏：大纲 ===== */
+  .n-outline { width: 190px; min-width: 150px; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+  .ol-head { padding: 7px 12px 3px; font-size: 11px; font-weight: 700; letter-spacing: .4px; color: var(--muted); }
+  .ol-tree { flex: 1; overflow: auto; padding: 2px 6px 10px; font-size: 12.5px; }
+  .ol-item { display: block; width: 100%; text-align: left; border: none; background: transparent; color: var(--fg); cursor: pointer; padding: 3px 8px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ol-item:hover { background: var(--active); }
+  .ol-item.on { background: var(--sel); color: #fff; }
+  .ol-2 { padding-left: 24px; } .ol-3 { padding-left: 40px; } .ol-4 { padding-left: 54px; color: var(--muted); }
+
+  /* ===== "/" 菜单 ===== */
+  .slash { position: absolute; width: 300px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.4); z-index: 60; overflow: hidden; }
+  .slash-input { width: 100%; border: none; outline: none; background: transparent; color: var(--fg); padding: 9px 12px; font-size: 12.5px; border-bottom: 1px solid var(--border); }
+  .slash-list { max-height: 300px; overflow: auto; padding: 4px; }
+  .slash-group { font-size: 10.5px; color: var(--muted); padding: 5px 8px 1px; font-weight: 700; }
+  .slash-item { display: flex; align-items: center; gap: 9px; padding: 5px 8px; border-radius: 5px; cursor: pointer; }
+  .slash-item:hover, .slash-item.cur { background: var(--active); }
+  .slash-item .ico { width: 26px; height: 26px; border: 1px solid var(--border); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 13px; background: var(--bg); flex: none; }
+  .slash-item .tt { font-size: 12.5px; }
+  .slash-item .dd { font-size: 10.5px; color: var(--muted); }
+
+  /* ===== 导出菜单 ===== */
+  .export-menu { position: absolute; top: 34px; right: 12px; width: 240px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.4); z-index: 60; padding: 4px; }
+  .export-menu .mi { display: flex; align-items: center; gap: 9px; padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 12.5px; }
+  .export-menu .mi:hover { background: var(--active); }
+  .export-menu .mi .dd { color: var(--muted); font-size: 10.5px; }
+  .export-menu hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+  /* ===== AI 浮层 ===== */
+  .ai-pop { position: absolute; width: 330px; background: var(--panel); border: 1px solid #c586c0; border-radius: 9px; box-shadow: 0 6px 24px rgba(0,0,0,.4); z-index: 60; overflow: hidden; }
+  .ai-pop .hd { display: flex; align-items: center; gap: 7px; padding: 8px 12px; font-weight: 700; font-size: 12.5px; color: #c586c0; border-bottom: 1px solid var(--border); }
+  .ai-acts { display: flex; flex-wrap: wrap; gap: 5px; padding: 9px 12px; }
+  .ai-act { padding: 3px 11px; border: 1px solid var(--border); border-radius: 20px; background: var(--panel2); cursor: pointer; font-size: 12px; }
+  .ai-act:hover { border-color: #c586c0; color: #c586c0; }
+  .ai-custom { display: flex; gap: 6px; padding: 0 12px 10px; }
+  .ai-custom input { flex: 1; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg); padding: 4px 8px; font-size: 12px; outline: none; }
+  .ai-custom .go { border: none; border-radius: 5px; background: #c586c0; color: #1e1e1e; font-weight: 700; cursor: pointer; padding: 0 12px; }
+  .ai-result { margin: 0 12px 12px; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; font-size: 12.5px; }
+  .ai-result .row { padding: 7px 11px; }
+  .ai-result .old { background: var(--card-danger-bg); color: var(--muted); text-decoration: line-through; }
+  .ai-result .new { background: var(--card-ok-bg); }
+  .ai-result .ops { display: flex; gap: 8px; padding: 7px 11px; border-top: 1px solid var(--border); }
+  .ai-result .ops .pv-btn { font-size: 11.5px; padding: 2px 12px; }
+  .sel-text { background: var(--sel); border-radius: 2px; }
+
+  .cursor-line { position: relative; }
+  .cursor-line::after { content: ""; position: absolute; width: 2px; height: 17px; background: var(--accent); animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .resizer { width: 3px; cursor: col-resize; background: transparent; flex: none; }
+  .resizer:hover { background: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="pv-bar noprint">
+  <b>🎨 UI 预览 · GitBoard 快速笔记</b>
+  <span class="pv-sep"></span>
+  <button class="pv-btn on" data-scene="edit" onclick="setScene('edit')">A · 编辑态</button>
+  <button class="pv-btn" data-scene="slash" onclick="setScene('slash')">B · “/”菜单</button>
+  <button class="pv-btn" data-scene="sketch" onclick="setScene('sketch')">C · 画板模式</button>
+  <button class="pv-btn" data-scene="export" onclick="setScene('export')">D · 导出菜单</button>
+  <button class="pv-btn" data-scene="ai" onclick="setScene('ai')">E · AI 编辑</button>
+  <span class="pv-sep"></span>
+  <button class="pv-btn" id="themeBtn" onclick="toggleTheme()">🌗 深色</button>
+  <span class="pv-hint">提示：B 场景的过滤输入真实可用；大纲/文件列表/画板元素可点击</span>
+</div>
+
+<div class="vscode">
+  <div class="tabs">
+    <div class="tab">📝 会议记录 <span class="x">✕</span></div>
+  </div>
+  <div class="notes">
+
+    <!-- ============ 左栏 ============ -->
+    <aside class="n-side">
+      <div class="n-side-head">快速笔记 — GITBOARDNOTES
+        <span class="act">
+          <button class="mini-btn" title="更改笔记目录">📂</button>
+          <button class="mini-btn" title="在资源管理器中显示">↗</button>
+        </span>
+      </div>
+      <div class="n-dir">C:\Users\Emon\GitBoardNotes <a onclick="alert('选择新的笔记根目录（可指向任意文件夹，支持记忆）')">更改</a></div>
+      <input class="n-search" placeholder="🔍 搜索笔记…" oninput="filterNotes(this.value)">
+      <div class="n-view-toggle">
+        <button class="pv-btn on" id="vGrid" onclick="setView('grid')" title="图标视图">▤ 图标</button>
+        <button class="pv-btn" id="vList" onclick="setView('list')" title="列表视图">☰ 列表</button>
+        <button class="pv-btn" style="flex:1" title="新建笔记">＋ 新建</button>
+      </div>
+      <div class="n-list grid" id="noteList">
+        <div class="n-item on" data-k="会议记录"><span class="n-ico">📝</span><span class="t">会议记录</span><span class="d">10:24</span></div>
+        <div class="n-item" data-k="本周 TODO"><span class="n-ico">📝</span><span class="t">本周 TODO</span><span class="d">09:12</span></div>
+        <div class="n-item" data-k="架构灵感"><span class="n-ico">📝</span><span class="t">架构灵感</span><span class="d">昨天</span></div>
+        <div class="n-item" data-k="API 备忘"><span class="n-ico">📝</span><span class="t">API 备忘</span><span class="d">08-28</span></div>
+        <div class="n-item" data-k="阅读摘录"><span class="n-ico">📝</span><span class="t">阅读摘录</span><span class="d">08-27</span></div>
+        <div class="n-item" data-k="流程图草稿"><span class="n-ico">📝</span><span class="t">流程图草稿</span><span class="d">08-26</span></div>
+      </div>
+    </aside>
+    <div class="resizer" title="拖拽调宽"></div>
+
+    <!-- ============ 中栏 ============ -->
+    <main class="n-main">
+      <div class="n-titlebar">
+        <span class="name">会议记录</span>
+        <span class="n-save" id="saveState">✓ 已保存 · 10:24</span>
+        <span class="right">
+          <button class="pv-btn" onclick="setScene('export')" id="exportBtn">导出 ▾</button>
+        </span>
+      </div>
+      <div class="n-toolbar">
+        <button class="tb-btn" title="加粗"><b>B</b></button>
+        <button class="tb-btn" title="斜体"><i>I</i></button>
+        <button class="tb-btn" title="下划线"><u>U</u></button>
+        <button class="tb-btn" title="删除线"><s>S</s></button>
+        <button class="tb-btn" title="行内代码">⌗</button>
+        <button class="tb-btn" title="文字颜色">A<span style="color:#e0b33c">▂</span></button>
+        <button class="tb-btn" title="高亮"><span style="background:var(--card-warn-bd);border-radius:2px;padding:0 3px">ab</span></button>
+        <span class="tb-sep"></span>
+        <button class="tb-btn" title="标题">H1 <span class="tb-caret">▾</span></button>
+        <button class="tb-btn" title="列表">•— <span class="tb-caret">▾</span></button>
+        <button class="tb-btn" title="背景卡片" onclick="alert('下拉：ℹ️信息 / ✅成功 / ⚠️警告 / ⛔危险 / 📝笔记')">▤ <span class="tb-caret">▾</span></button>
+        <button class="tb-btn" title="表格">▦</button>
+        <button class="tb-btn" title="代码块">&lt;/&gt;</button>
+        <button class="tb-btn" title="画板" onclick="setScene('sketch')">🎨</button>
+        <button class="tb-btn" title="分割线">—</button>
+        <span class="tb-sep"></span>
+        <button class="tb-btn" title="字体">字体 <span class="tb-caret">▾</span></button>
+        <button class="tb-btn" title="字号">13 <span class="tb-caret">▾</span></button>
+        <span class="tb-sep"></span>
+        <button class="tb-btn" title="插入 / 菜单" onclick="setScene('slash')">/ 命令</button>
+        <button class="tb-btn ai" title="AI 编辑" onclick="setScene('ai')">✦ AI</button>
+      </div>
+
+      <div class="editor" id="editor">
+        <div class="doc">
+          <h1 id="h-1" onclick="olGo('h-1')">周会记录 · 08-30</h1>
+          <p>参会：李明、王芳、陈晨。<span class="cursor-line">本次结论如下</span></p>
+
+          <div class="callout co-info">
+            <div class="ct">ℹ️ 信息</div>
+            下周切换到 v2 接口，旧接口保留 30 天兼容期。
+          </div>
+
+          <h2 id="h-2" onclick="olGo('h-2')">一、进展同步</h2>
+          <ul class="todo">
+            <li class="done"><span class="cb" onclick="this.parentElement.classList.toggle('done')"></span><span class="tx">完成登录模块联调</span></li>
+            <li class="done"><span class="cb" onclick="this.parentElement.classList.toggle('done')"></span><span class="tx">修复导出 PDF 中文乱码</span></li>
+            <li><span class="cb" onclick="this.parentElement.classList.toggle('done')"></span><span class="tx">性能压测报告 <code class="ic">P99 &lt; 200ms</code></span></li>
+          </ul>
+          <ol>
+            <li>前端：虚拟滚动已上线</li>
+            <li>后端：缓存层灰度 20%</li>
+          </ol>
+
+          <div class="callout co-warn">
+            <div class="ct">⚠️ 警告</div>
+            灰度期间错误率阈值 0.5%，超限自动回滚。
+          </div>
+
+          <h2 id="h-3" onclick="olGo('h-3')">二、责任矩阵（合并单元格示例）</h2>
+          <div class="tbl-wrap">
+            <table class="ed">
+              <tr><th>模块</th><th>负责人</th><th>截止</th></tr>
+              <tr><td class="merged" rowspan="2">网关 <div class="tbl-float hidden"><button class="tb-btn">合并</button><button class="tb-btn">拆分</button></div></td><td>李明</td><td>09-05</td></tr>
+              <tr><td>王芳</td><td>09-12</td></tr>
+              <tr><td>控制台</td><td class="merged" colspan="2">陈晨（全栈）</td></tr>
+            </table>
+          </div>
+
+          <h3 id="h-4" onclick="olGo('h-4')">2.1 发布流程</h3>
+          <div class="sketch" id="sketchBox">
+            <div class="sketch-tools hidden" id="skTools">
+              <button class="tb-btn on" title="选择">⬚</button>
+              <button class="tb-btn" title="矩形">▭</button>
+              <button class="tb-btn" title="圆角矩形">▢</button>
+              <button class="tb-btn" title="菱形">◇</button>
+              <button class="tb-btn" title="椭圆">◯</button>
+              <button class="tb-btn" title="直线">╱</button>
+              <button class="tb-btn" title="箭头连线">→</button>
+              <button class="tb-btn" title="文字">T</button>
+              <span class="tb-sep"></span>
+              <button class="tb-btn" title="删除选中">🗑</button>
+              <button class="tb-btn" title="适配内容">⤢</button>
+              <span style="margin-left:auto;font-size:10.5px;color:var(--muted)">点击图形可选中 · 拖拽移动 · 箭头自动吸附锚点</span>
+            </div>
+            <svg viewBox="0 0 620 150" id="skSvg">
+              <defs>
+                <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path>
+                </marker>
+              </defs>
+              <g class="sk-node" onclick="skSel(this)"><rect class="shape" x="14" y="57" width="72" height="34" rx="17" fill="none" stroke="var(--muted)" stroke-width="1.5"></rect><text class="sk-label" x="50" y="78" text-anchor="middle">开始</text></g>
+              <line x1="86" y1="74" x2="140" y2="74" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr)"></line>
+              <g class="sk-node" onclick="skSel(this)"><rect class="shape" x="142" y="57" width="84" height="34" rx="4" fill="none" stroke="var(--muted)" stroke-width="1.5"></rect><text class="sk-label" x="184" y="78" text-anchor="middle">拉取代码</text></g>
+              <line x1="226" y1="74" x2="280" y2="74" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr)"></line>
+              <g class="sk-node" onclick="skSel(this)"><polygon class="shape" points="322,40 364,74 322,108 280,74" fill="none" stroke="var(--muted)" stroke-width="1.5"></polygon><text class="sk-label" x="322" y="78" text-anchor="middle">测试通过?</text></g>
+              <line x1="364" y1="74" x2="418" y2="74" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr)"></line>
+              <text class="sk-label" x="388" y="66">是</text>
+              <g class="sk-node" onclick="skSel(this)"><rect class="shape" x="420" y="57" width="84" height="34" rx="4" fill="none" stroke="var(--muted)" stroke-width="1.5"></rect><text class="sk-label" x="462" y="78" text-anchor="middle">发布上线</text></g>
+              <line x1="322" y1="108" x2="322" y2="132" stroke="var(--muted)" stroke-width="1.5"></line>
+              <line x1="322" y1="132" x2="462" y2="132" stroke="var(--muted)" stroke-width="1.5"></line>
+              <line x1="462" y1="132" x2="462" y2="94" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr)"></line>
+              <text class="sk-label" x="330" y="128">否 · 修复</text>
+            </svg>
+          </div>
+
+          <h2 id="h-5" onclick="olGo('h-5')">三、备注</h2>
+          <blockquote>引用：接口文档见 Confluence「平台 / 网关 v2」。</blockquote>
+          <pre><span class="lang">ts</span><button class="cp" onclick="alert('已复制')">复制</button><span class="kw">const</span> ok = await gate.check(req);
+<span class="kw">if</span> (!ok) <span class="kw">return</span> <span class="str">'401'</span>;</pre>
+          <hr>
+          <p style="color:var(--muted);font-size:12px">— 由 GitBoard 快速笔记记录 · 支持 <b>/</b> 呼出插入菜单</p>
+        </div>
+
+        <!-- "/" 菜单浮层 -->
+        <div class="slash hidden" id="slashMenu" style="left:calc(50% - 150px); top:120px">
+          <input class="slash-input" id="slashInput" placeholder="输入命令过滤（如：表格、卡片、todo…）" oninput="slashFilter()">
+          <div class="slash-list" id="slashList">
+            <div class="slash-group">结构</div>
+            <div class="slash-item" data-k="标题1 heading"><span class="ico">H₁</span><div><div class="tt">标题 1</div><div class="dd">一级章节标题</div></div></div>
+            <div class="slash-item" data-k="标题2 heading"><span class="ico">H₂</span><div><div class="tt">标题 2</div><div class="dd">二级章节标题</div></div></div>
+            <div class="slash-item" data-k="标题3 heading"><span class="ico">H₃</span><div><div class="tt">标题 3</div><div class="dd">三级章节标题</div></div></div>
+            <div class="slash-item" data-k="标题4 heading"><span class="ico">H₄</span><div><div class="tt">标题 4</div><div class="dd">四级小节标题</div></div></div>
+            <div class="slash-group">列表</div>
+            <div class="slash-item" data-k="无序列表 bullet"><span class="ico">•—</span><div><div class="tt">无序列表</div><div class="dd">圆点列表项</div></div></div>
+            <div class="slash-item" data-k="有序列表 ordered number"><span class="ico">1.</span><div><div class="tt">有序列表</div><div class="dd">编号列表项</div></div></div>
+            <div class="slash-item" data-k="待办 todo task check"><span class="ico">☑</span><div><div class="tt">待办列表</div><div class="dd">可勾选任务（Ctrl+Enter 切换）</div></div></div>
+            <div class="slash-group">内容</div>
+            <div class="slash-item" data-k="表格 table"><span class="ico">▦</span><div><div class="tt">表格</div><div class="dd">3×3 起始 · 支持合并 / 嵌套</div></div></div>
+            <div class="slash-item" data-k="代码块 code"><span class="ico">&lt;/&gt;</span><div><div class="tt">代码块</div><div class="dd">带语言高亮与复制按钮</div></div></div>
+            <div class="slash-item" data-k="行内代码 inline"><span class="ico">⌗</span><div><div class="tt">行内代码</div><div class="dd">正文中的代码片段</div></div></div>
+            <div class="slash-item" data-k="引用 quote"><span class="ico">❝</span><div><div class="tt">引用块</div><div class="dd">摘录与出处</div></div></div>
+            <div class="slash-item" data-k="分割线 divider hr"><span class="ico">—</span><div><div class="tt">分割线</div><div class="dd">水平分隔</div></div></div>
+            <div class="slash-item" data-k="时间戳 timestamp date"><span class="ico">🕗</span><div><div class="tt">时间戳</div><div class="dd">插入当前日期时间</div></div></div>
+            <div class="slash-group">卡片（Confluence 式）</div>
+            <div class="slash-item" data-k="信息卡片 卡片 info blue"><span class="ico">ℹ️</span><div><div class="tt">信息卡片</div><div class="dd">蓝色提示容器</div></div></div>
+            <div class="slash-item" data-k="成功卡片 卡片 ok green"><span class="ico">✅</span><div><div class="tt">成功卡片</div><div class="dd">绿色结果容器</div></div></div>
+            <div class="slash-item" data-k="警告卡片 卡片 warn yellow"><span class="ico">⚠️</span><div><div class="tt">警告卡片</div><div class="dd">黄色注意容器</div></div></div>
+            <div class="slash-item" data-k="危险卡片 卡片 danger red"><span class="ico">⛔</span><div><div class="tt">危险卡片</div><div class="dd">红色警示容器</div></div></div>
+            <div class="slash-item" data-k="笔记卡片 卡片 note gray"><span class="ico">📝</span><div><div class="tt">笔记卡片</div><div class="dd">中性备忘容器</div></div></div>
+            <div class="slash-group">媒体</div>
+            <div class="slash-item" data-k="画板 画图 sketch 流程图"><span class="ico">🎨</span><div><div class="tt">画板</div><div class="dd">基础图形 + 箭头连线 = 流程图</div></div></div>
+          </div>
+        </div>
+
+        <!-- AI 浮层 -->
+        <div class="ai-pop hidden" id="aiPop" style="left:calc(50% - 165px); top:96px">
+          <div class="hd">✦ AI 编辑 <span style="color:var(--muted);font-weight:400;font-size:11px">— GitHub Copilot</span></div>
+          <div class="ai-acts">
+            <span class="ai-act" onclick="aiShow()">续写</span>
+            <span class="ai-act" onclick="aiShow()">润色</span>
+            <span class="ai-act" onclick="aiShow()">翻译 → EN</span>
+            <span class="ai-act" onclick="aiShow()">摘要</span>
+            <span class="ai-act" onclick="aiShow()">待办化</span>
+          </div>
+          <div class="ai-custom"><input placeholder="自定义指令，如：改成表格形式…" onkeydown="if(event.key==='Enter')aiShow()"><button class="go" onclick="aiShow()">→</button></div>
+          <div class="ai-result hidden" id="aiResult">
+            <div class="row old" id="aiOld">本次结论如下</div>
+            <div class="row new" id="aiNew">本次会议形成三项结论：接口切换时间表、灰度发布风险预案、责任矩阵分工（详见下文）。</div>
+            <div class="ops">
+              <button class="pv-btn" onclick="aiAccept()">✓ 接受替换</button>
+              <button class="pv-btn" onclick="alert('已插入到选区之后')">＋ 插入</button>
+              <button class="pv-btn" onclick="setScene('ai')">↺ 重试</button>
+              <button class="pv-btn" onclick="aiClose()">✕ 放弃</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <div class="resizer" title="拖拽调宽"></div>
+
+    <!-- ============ 右栏：大纲 ============ -->
+    <aside class="n-outline">
+      <div class="ol-head">大纲</div>
+      <div class="ol-tree" id="olTree">
+        <button class="ol-item on" onclick="olGo('h-1',this)">周会记录 · 08-30</button>
+        <button class="ol-item ol-2" onclick="olGo('h-2',this)">一、进展同步</button>
+        <button class="ol-item ol-2" onclick="olGo('h-3',this)">二、责任矩阵（合并单元格示例）</button>
+        <button class="ol-item ol-3" onclick="olGo('h-4',this)">2.1 发布流程</button>
+        <button class="ol-item ol-2" onclick="olGo('h-5',this)">三、备注</button>
+      </div>
+    </aside>
+
+    <!-- 导出菜单 -->
+    <div class="export-menu hidden" id="exportMenu">
+      <div class="mi" onclick="alert('转换为 Markdown 并弹出保存对话框（含降级规则）')">⬇️ <div><b>Markdown (.md)</b><div class="dd">合并单元格等将按降级表转换</div></div></div>
+      <div class="mi" onclick="alert('导出自包含 HTML：内嵌完整数据，浏览器可读、插件可再编辑')">🌐 <div><b>HTML (.html)</b><div class="dd">单文件 · 内嵌数据可往返编辑</div></div></div>
+      <div class="mi" onclick="alert('Edge/Chrome 静默转换为 PDF（矢量、中文友好）；失败回退浏览器打印')">📄 <div><b>PDF (.pdf)</b><div class="dd">本机浏览器内核静默转换</div></div></div>
+      <hr>
+      <div class="mi" onclick="alert('选择目标文件夹，保存原生格式或所选导出格式')">💾 <div><b>另存为…</b><div class="dd">保存副本到指定文件夹</div></div></div>
+      <div class="mi" onclick="alert('在系统资源管理器中显示当前 .gbnote.json')">↗ <div><b>在资源管理器中显示</b></div></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  /* ---------- 场景 ---------- */
+  let scene = 'edit';
+  function setScene(s) {
+    scene = s;
+    document.querySelectorAll('.pv-btn[data-scene]').forEach(b => b.classList.toggle('on', b.dataset.scene === s));
+    $('#slashMenu').classList.toggle('hidden', s !== 'slash');
+    $('#aiPop').classList.toggle('hidden', s !== 'ai');
+    $('#aiResult').classList.toggle('hidden', s !== 'ai');
+    $('#exportMenu').classList.toggle('hidden', s !== 'export');
+    $('#skTools').classList.toggle('hidden', s !== 'sketch');
+    $('#sketchBox').classList.toggle('hover-edit', s !== 'sketch');
+    $('#sketchBox').style.borderColor = s === 'sketch' ? 'var(--accent)' : '';
+    // 编辑态：模拟光标 + 表格选区浮动条
+    document.querySelectorAll('.tbl-float').forEach(f => f.classList.toggle('hidden', s !== 'edit'));
+    document.querySelectorAll('td.merged').forEach(c => c.classList.toggle('cell-sel', s === 'edit'));
+    const cl = document.querySelector('.cursor-line');
+    if (cl) cl.classList.toggle('cursor-line', s === 'edit' || s === 'slash');
+    const sel = document.getElementById('selSpan');
+    if (s === 'ai') aiOpen(); 
+  }
+  const $ = s => document.querySelector(s);
+
+  /* ---------- 主题 ---------- */
+  function toggleTheme() {
+    document.body.classList.toggle('light');
+    $('#themeBtn').textContent = document.body.classList.contains('light') ? '☀️ 浅色' : '🌗 深色';
+  }
+
+  /* ---------- 文件列表 ---------- */
+  function setView(v) {
+    $('#vGrid').classList.toggle('on', v === 'grid');
+    $('#vList').classList.toggle('on', v === 'list');
+    $('#noteList').classList.toggle('grid', v === 'grid');
+  }
+  function filterNotes(q) {
+    q = q.trim().toLowerCase();
+    document.querySelectorAll('#noteList .n-item').forEach(it => {
+      it.style.display = !q || it.dataset.k.toLowerCase().includes(q) ? '' : 'none';
+    });
+  }
+  document.getElementById('noteList').addEventListener('click', e => {
+    const it = e.target.closest('.n-item'); if (!it) return;
+    document.querySelectorAll('#noteList .n-item').forEach(x => x.classList.remove('on'));
+    it.classList.add('on');
+    $('#saveState').textContent = '✓ 已打开 · ' + it.dataset.k;
+  });
+
+  /* ---------- 大纲 ---------- */
+  function olGo(id, btn) {
+    const el = document.getElementById(id);
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.querySelectorAll('.ol-item').forEach(b => b.classList.remove('on'));
+    (btn || [...document.querySelectorAll('.ol-item')].find(b => b.getAttribute('onclick').includes(id)))?.classList.add('on');
+    el.animate([{ background: 'var(--sel)' }, { background: 'transparent' }], { duration: 1200 });
+  }
+
+  /* ---------- "/" 菜单 ---------- */
+  function slashFilter() {
+    const q = $('#slashInput').value.trim().toLowerCase();
+    let lastGroup = null;
+    document.querySelectorAll('#slashList .slash-item').forEach(it => {
+      const hit = !q || it.dataset.k.toLowerCase().includes(q);
+      it.style.display = hit ? '' : 'none';
+      if (hit) lastGroup = it.previousElementSibling?.classList.contains('slash-group') ? it.previousElementSibling : lastGroup;
+    });
+    document.querySelectorAll('#slashList .slash-group').forEach(g => g.classList.add('hidden'));
+    document.querySelectorAll('#slashList .slash-item').forEach(it => {
+      if (it.style.display !== 'none') {
+        let p = it.previousElementSibling;
+        while (p && !p.classList.contains('slash-group')) p = p.previousElementSibling;
+        if (p) p.classList.remove('hidden');
+      }
+    });
+  }
+  document.getElementById('slashList').addEventListener('click', e => {
+    const it = e.target.closest('.slash-item'); if (!it) return;
+    $('#slashInput').value = '';
+    slashFilter(); setScene('edit');
+    $('#saveState').textContent = '● 已插入「' + it.querySelector('.tt').textContent + '」 · 未保存';
+  });
+
+  /* ---------- 画板 ---------- */
+  function skSel(g) {
+    document.querySelectorAll('.sk-node').forEach(n => n.classList.remove('sel'));
+    g.classList.add('sel');
+  }
+
+  /* ---------- AI ---------- */
+  function aiOpen() {
+    const p = $('#editor p:nth-of-type(1)');
+    p.innerHTML = '参会：李明、王芳、陈晨。<span class="sel-text" id="selSpan">本次结论如下</span>';
+  }
+  function aiShow() {
+    $('#aiResult').classList.remove('hidden');
+    $('#saveState').textContent = '✦ AI 已生成建议';
+  }
+  function aiAccept() {
+    const sel = document.getElementById('selSpan');
+    if (sel) sel.outerHTML = document.getElementById('aiNew').textContent;
+    aiClose(); $('#saveState').textContent = '✓ 已保存（AI 修改已落盘）';
+  }
+  function aiClose() { $('#aiResult').classList.add('hidden'); }
+
+  /* ---------- 导出菜单点击外部关闭（预览控制条内的点击不参与） ---------- */
+  document.addEventListener('click', e => {
+    if (scene === 'export' && !e.target.closest('#exportMenu') && !e.target.closest('#exportBtn') && !e.target.closest('.pv-bar')) setScene('edit');
+  });
+
+  setScene('edit');
+</script>
+</body>
+</html>

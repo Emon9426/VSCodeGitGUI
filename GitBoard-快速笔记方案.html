@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>GitBoard 快速笔记 · 需求方案 v1.0</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #6a737d; --border: #e1e4e8;
+    --accent: #0969da; --accent-bg: #ddf4ff; --code-bg: #f6f8fa;
+    --warn-bg: #fff8c5; --warn-bd: #d4a72c; --ok-bg: #dafbe1; --ok-bd: #1a7f37;
+    --danger-bg: #ffebe9; --danger-bd: #cf222e; --info-bg: #ddf4ff; --info-bd: #0969da;
+    --head-bg: #f6f8fa; --shadow: 0 1px 3px rgba(0,0,0,.08); --maxw: 1080px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.75 "Segoe UI", "Microsoft YaHei", sans-serif; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 32px 28px 80px; }
+  h1 { font-size: 26px; margin: 8px 0 4px; }
+  h2 { font-size: 19px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 15.5px; margin: 24px 0 8px; }
+  p { margin: 8px 0; }
+  .sub { color: var(--muted); font-size: 12.5px; }
+  .meta { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0 0; font-size: 12.5px; color: var(--muted); }
+  .badge { display: inline-block; padding: 1px 9px; border-radius: 20px; font-size: 12px; border: 1px solid var(--warn-bd); background: var(--warn-bg); color: #7d6608; font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 13px; }
+  th, td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--head-bg); font-weight: 600; white-space: nowrap; }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; font: 12.5px/1.6 Consolas, monospace; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow: auto; font: 12.5px/1.6 Consolas, monospace; }
+  .callout { border: 1px solid var(--info-bd); border-left-width: 4px; background: var(--info-bg); border-radius: 8px; padding: 10px 14px; margin: 12px 0; }
+  .callout.warn { border-color: var(--warn-bd); background: var(--warn-bg); }
+  .callout.ok { border-color: var(--ok-bd); background: var(--ok-bg); }
+  .callout.danger { border-color: var(--danger-bd); background: var(--danger-bg); }
+  .callout b:first-child { display: inline-block; margin-bottom: 2px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .toc { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 20px; font-size: 13px; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc ol { margin: 6px 0; padding-left: 20px; }
+  .tag { display: inline-block; font-size: 11.5px; padding: 0 7px; border-radius: 4px; background: var(--accent-bg); color: var(--accent); margin-right: 4px; white-space: nowrap; }
+  .pill-no { color: var(--muted); font-size: 12px; }
+  kbd { display: inline-block; padding: 0 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--code-bg); font: 12px Consolas, monospace; }
+  .arch { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; font: 12.5px/1.7 Consolas, monospace; white-space: pre; overflow: auto; }
+  @media print { body { -webkit-print-color-adjust: exact; } .noprint { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>GitBoard 快速笔记 · 需求与设计方案</h1>
+<div class="meta">
+  <span class="badge">v1.0 · 评审中（未经许可不实施）</span>
+  <span>2026-08-30</span><span>归属：GitBoard (EmonZhang3438.gitboard)</span><span>目标版本：v0.15.0</span>
+</div>
+<p class="sub">目标：在 VS Code 内提供一个<strong>不依赖 Git、秒开</strong>的富文本快速笔记页——文字、表格、代码、画图一站式记录，支持导出 Markdown / HTML / PDF。</p>
+
+<div class="toc">
+<b>目录</b>
+<ol>
+  <li><a href="#bg">背景与目标</a></li>
+  <li><a href="#market">市面产品调研与借鉴</a></li>
+  <li><a href="#kernel">编辑器内核选型（含画图方案）</a></li>
+  <li><a href="#req">需求规格 R1–R16</a></li>
+  <li><a href="#ui">UI 界面规格（附可交互预览页）</a></li>
+  <li><a href="#arch">技术架构（隔离 / 存储 / 协议 / HTML 往返）</a></li>
+  <li><a href="#export">导出与降级规则</a></li>
+  <li><a href="#perf">性能与 Git 隔离预算</a></li>
+  <li><a href="#ms">里程碑 N1–N3</a></li>
+  <li><a href="#risk">风险与对策</a></li>
+  <li><a href="#confirm">评审确认点（待拍板）</a></li>
+</ol>
+</div>
+
+<h2 id="bg">1. 背景与目标</h2>
+<p>当前 GitBoard 所有操作都在一个 Workspace 下，缺少<strong>随手记录</strong>的入口：想记几行字，却要纠结存到哪个工程、什么格式。本功能在插件内新增「快速笔记」页，特点：</p>
+<table>
+  <tr><th style="width:110px">诉求</th><th>设计回应</th><th>需求编号</th></tr>
+  <tr><td>不想选保存位置</td><td>默认保存到<strong>工程外</strong>的固定笔记目录（可改），新建即写盘，零对话框</td><td>R2</td></tr>
+  <tr><td>完整富文本</td><td>标题/字号字体/表格（合并+嵌套）/背景色卡片/代码块/行内代码/画图区/三种列表/AI 编辑/分割线，<kbd>/</kbd> 呼出菜单</td><td>R4–R10</td></tr>
+  <tr><td>快、不依赖 Git</td><td>独立模块零 Git 引用、独立 webview bundle、懒加载；Git 崩溃不影响</td><td>R11–R12</td></tr>
+  <tr><td>带走与复用</td><td>导出 MD / HTML / PDF、另存为任意文件夹；HTML 保存完整数据可再次打开继续编辑</td><td>R13–R15</td></tr>
+  <tr><td>管理多条笔记</td><td>三栏布局：左文件列表（图标/列表双视图）、中编辑器、右大纲</td><td>R16</td></tr>
+</table>
+<div class="callout"><b>定位一句话</b><br>Obsidian 的「本地文件、秒开、数据归我」 × Confluence 的「富文本表达力（表格/彩色卡片）」 × Notion 的「/ 命令交互」——但长在 VS Code 里，给开发者用。</div>
+
+<h2 id="market">2. 市面产品调研与借鉴</h2>
+<table>
+  <tr><th style="width:120px">产品</th><th>核心形态</th><th>对我们的借鉴</th><th>不照搬的原因</th></tr>
+  <tr><td><b>Obsidian</b></td><td>本地 Markdown 文件库 + 双链 + Canvas</td><td>①本地纯文件存储，数据归用户、秒开；②左侧文件列表 + 右侧大纲的三栏信息架构；③文件名即标题</td><td>以 MD 为源导致表格合并/彩色卡片/画图等富文本表达能力受限（MD 无此语义）</td></tr>
+  <tr><td><b>Notion</b></td><td>云端块式编辑 + 数据库</td><td>①「/」呼出块菜单的交互范式；②块级拖拽与选中浮动工具栏</td><td>云端慢、强登录，违背「快速、本地」定位</td></tr>
+  <tr><td><b>Confluence</b></td><td>企业 Wiki 富文本</td><td>①<strong>预制彩色背景卡片</strong>（信息/成功/警告/危险）的表达方式；②强大的表格（合并单元格）；③页面树</td><td>过重，非个人快速记录场景</td></tr>
+  <tr><td><b>Typora</b></td><td>所见即所得 MD 编辑器</td><td>①所见即所得（无预览分栏）的编辑体验；②导出 PDF/HTML 的心智</td><td>MD 源文件限制同上</td></tr>
+  <tr><td><b>语雀</b></td><td>云端知识库</td><td>①「画板」作为可嵌入内容块（不是独立页面）；②大纲联动高亮</td><td>云端、企业向</td></tr>
+  <tr><td><b>flomo / OneNote</b></td><td>轻量速记</td><td>①「新建即写、零对话框」的速记心智；②默认落固定位置</td><td>富文本能力弱（无表格合并/画图）</td></tr>
+  <tr><td>VS Code 笔记插件<br>（Markdown Notes / Foam 等）</td><td>MD 文件 + 编辑器联动</td><td>反衬空白：<b>VS Code 内几乎没有「所见即所得富文本 + 本地秒开」的笔记方案</b>（均为 MD 路线）</td><td>——</td></tr>
+</table>
+<div class="callout ok"><b>调研结论</b><br>①存储走本地文件（数据归属、可同步、可备份）；②编辑体验走所见即所得富文本而非 MD 源码；③「/」菜单 + 选中浮动工具栏成为标配交互；④彩色卡片、表格合并是差异化表达力（Confluence 系）；⑤画图做成<strong>内容块</strong>（语雀式）而非独立画布应用，保证流程图嵌在笔记上下文里。</div>
+
+<h2 id="kernel">3. 编辑器内核选型（含画图方案）</h2>
+<h3>3.1 富文本内核对比</h3>
+<table>
+  <tr><th style="width:110px">内核</th><th>架构 / 框架耦合</th><th>表格合并</th><th>嵌套结构</th><th>HTML 往返</th><th>结论</th></tr>
+  <tr><td><b>TipTap</b><br><span class="pill-no">(ProseMirror)</span></td><td>headless，<strong>原生 TS 可用</strong>（无 React 依赖）；扩展生态最大</td><td>✅ 官方 Table 扩展（mergeCells / splitCell）</td><td>✅ ProseMirror schema 原生支持任意块嵌套</td><td>✅ 内置 DOMParser/序列化，保真度高</td><td><b>✅ 选定</b></td></tr>
+  <tr><td>Lexical<br><span class="pill-no">(Meta)</span></td><td>React 生态为主，vanilla 接入成本高</td><td>△ 社区扩展</td><td>✅</td><td>△ 需自写</td><td>备选否决</td></tr>
+  <tr><td>Slate</td><td><strong>强绑 React</strong>，本项目零 React</td><td>△ 自写</td><td>✅</td><td>△</td><td>否决（框架冲突）</td></tr>
+  <tr><td>Quill 2</td><td>vanilla 友好</td><td>❌ 弱（无原生合并）</td><td>❌ 有限</td><td>△ 有损</td><td>否决（表格硬伤）</td></tr>
+  <tr><td>Editor.js</td><td>块式 JSON</td><td>△ 社区</td><td>△</td><td>△</td><td>否决（块式心智不符）</td></tr>
+  <tr><td>Milkdown<br><span class="pill-no">(ProseMirror)</span></td><td>MD 优先的 PM 封装</td><td>✅</td><td>✅</td><td>△ MD 中转有损</td><td>否决（同 TipTap 底座但绕道 MD）</td></tr>
+</table>
+<p><b>选定：TipTap（开源核心，MIT）</b>。理由：①与本项目 vanilla TS webview 零冲突；②表格合并/嵌套、TaskList、代码高亮、Highlight/颜色、Placeholder 全部有官方开源扩展；③HTML 序列化内置 → 导出/再导入保真是<strong>天然能力</strong>（正好满足 R14 的 HTML 往返）；④文档与社区最成熟。所依赖扩展均为开源 npm 包（@tiptap/core、starter-kit、extension-table 等），<strong>不引入其付费云服务</strong>。</p>
+<h3>3.2 画图方案</h3>
+<table>
+  <tr><th style="width:130px">方案</th><th>体积</th><th>能力</th><th>结论</th></tr>
+  <tr><td>Excalidraw 嵌入</td><td>&gt;1MB，<strong>强依赖 React</strong></td><td>最全</td><td>否决：体积与框架冲突，违背快速打开</td></tr>
+  <tr><td>mermaid 渲染</td><td>~700KB</td><td>文本→图（非自由绘制）</td><td>否决：需求是「画」不是「写代码生成」</td></tr>
+  <tr><td><b>自研轻量 SVG 画板</b><br><span class="pill-no">(TipTap NodeView)</span></td><td>~30–40KB（自研）</td><td>基础图形 + 箭头连线 + 文字 = 流程图</td><td><b>✅ 选定</b></td></tr>
+</table>
+<p><b>画板能力定稿（够画流程图即可，不做全能绘图）</b>：矩形/圆角矩形、菱形（判断）、椭圆、直线、<strong>箭头连线（自动吸附图形锚点）</strong>、文本标签、选中/拖拽移动/删除、缩放画布适配内容宽。数据存为画板节点内的 JSON，渲染为内联 SVG（导出 HTML 直接内联，导出 MD 见降级表）。</p>
+
+<h2 id="req">4. 需求规格 R1–R16</h2>
+<table>
+  <tr><th style="width:64px">编号</th><th style="width:190px">需求</th><th>规格与验收标准</th></tr>
+  <tr><td>R1</td><td>入口与直达</td><td>活动栏新增「快速笔记」图标（与 GitBoard 图标并列）；单击直达笔记页（WebviewPanel 标签页）；另有命令 <code>gitboard.notes</code>（命令面板）与快捷键 <kbd>Ctrl+Alt+N</kbd>。无任何中间面板。</td></tr>
+  <tr><td>R2</td><td>默认目录（工程外）</td><td>默认 <code>~/GitBoardNotes/</code>（Windows 即 <code>%USERPROFILE%\GitBoardNotes</code>），首次打开自动创建；globalState 记忆 <code>gitboard.notesDir</code>，可在页内「更改目录」。新建笔记零对话框直接落盘。</td></tr>
+  <tr><td>R3</td><td>新建/命名</td><td>新建笔记默认名「未命名笔记」，文件名自动 slug + 去重（<code>未命名笔记.gbnote.json</code>、<code>-2</code> 递增）；标题自动跟随正文首行 Heading（文件重命名 = 列表重命名）。</td></tr>
+  <tr><td>R4</td><td>文本与排版</td><td>多级标题 H1–H4；正文；<b>字体</b>（默认/宋体/黑体/楷体/等宽 + 自定义输入）与<b>字号</b>（12–32px 预设 + 自定义）；加粗/斜体/下划线/删除线/行内代码/文字颜色/高亮色；有序/无序/待办列表（待办 <kbd>Ctrl+Enter</kbd> 切换勾选）；引用块；分割线。</td></tr>
+  <tr><td>R5</td><td>表格</td><td>插入 N×M 表格（默认 3×3）；行列增删；表头行/列开关；<b>合并单元格</b>（多选后合并/拆分，colspan+rowspan）；<b>嵌套表格</b>（单元格内可再插表格/列表/卡片，schema 层支持）；列宽拖拽。</td></tr>
+  <tr><td>R6</td><td>背景色卡片</td><td>Confluence 式预制卡片 5 种：信息(蓝)/成功(绿)/警告(黄)/危险(红)/笔记(灰)，各带可选标题栏与图标；卡片内是完整富文本容器（可放任意块）。</td></tr>
+  <tr><td>R7</td><td>代码块</td><td>围栏代码块 + 语言下拉（高亮渲染，低配 light/highlight.js 子集）；复制按钮；Tab 缩进。</td></tr>
+  <tr><td>R8</td><td>画图区域</td><td>见 3.2：内嵌 SVG 画板块，双击进入编辑，点击外部退出；画板占位高度自适应。</td></tr>
+  <tr><td>R9</td><td>「/」命令菜单</td><td>行首输入 <kbd>/</kbd> 呼出（也支持工具栏按钮）；支持中文/英文关键字过滤；分组展示（结构/内容/媒体）；<kbd>↑↓</kbd> 选择 <kbd>Enter</kbd> 确认 <kbd>Esc</kbd> 关闭。菜单项 = 4 标题/3 列表/表格/代码块/行内代码/5 卡片/画板/分割线/引用/时间戳。</td></tr>
+  <tr><td>R10</td><td>AI 编辑</td><td>复用现有 Copilot 通路（vscode.lm，零凭证，与提交信息 AI 同开关 <code>gitboard.ai.enabled</code>）。选中文字 → 浮动「AI」按钮或 <kbd>Ctrl+Alt+A</kbd>：续写/润色/翻译(中↔EN)/摘要/自定义指令；结果以<strong>差异预览</strong>呈现（接受替换/插入/放弃）。无可用模型时入口隐藏。</td></tr>
+  <tr><td>R11</td><td>性能：秒开</td><td>笔记页冷启动到可编辑 ≤ 300ms（本地目录、≤100 笔记规模）；打开不触碰任何 Git 探测。</td></tr>
+  <tr><td>R12</td><td>Git 崩溃隔离</td><td>notes 模块<strong>零 git import</strong>（CI 断言：notes bundle 不含 executor/service 引用）；GitBoard 主面板异常/未打开均不影响笔记页；笔记页异常不影响主面板（独立错误边界）。</td></tr>
+  <tr><td>R13</td><td>自动保存</td><td>输入防抖 800ms 自动保存 + 失焦/切换/关闭强制保存；标题栏保存状态指示（●未保存/✓已保存/时间）；<kbd>Ctrl+S</kbd> 手动保存。</td></tr>
+  <tr><td>R14</td><td>导出 HTML（往返）</td><td>自包含单文件 .html：内联样式 + 内嵌完整文档 JSON（<code>&lt;script type="application/json"&gt;</code>）。浏览器双击打开=纯阅读（数据块被浏览器忽略）；在插件内「打开」该 html → 检测到数据块 → <b>格式与内容完全还原且可继续编辑</b>。再次保存回写 html 同格式。</td></tr>
+  <tr><td>R15</td><td>导出 MD / PDF / 另存为</td><td>MD：按降级表转换（见 §7），画图导出为同名 .svg 文件引用；PDF：优先本机 Edge/Chrome headless 静默导出（矢量、中文友好），失败回退「用系统浏览器打开 HTML 手动打印」；另存为：把当前笔记（原生格式或所选导出格式）保存到指定文件夹。</td></tr>
+  <tr><td>R16</td><td>三栏布局</td><td>左：文件列表（<b>图标网格 / 列表</b>双视图切换、按修改时间倒序、关键字过滤、新建/重命名/删除/在资源管理器中显示）；中：编辑器；右：大纲（H1–H4 树、点击滚动定位、光标所在章节自动高亮、可折叠）。三栏宽度可拖拽并记忆；可分别折叠。</td></tr>
+</table>
+
+<h2 id="ui">5. UI 界面规格</h2>
+<p>完整可交互预览见同目录 <b>《GitBoard-快速笔记预览.html》</b>（深浅主题、五种场景：编辑态 / “/”菜单 / 画图模式 / 导出菜单 / AI 编辑）。布局骨架：</p>
+<pre>┌────────────────────────────────────────────────────────────────────────┐
+│ ⌘ 快速笔记        面包屑: 📁 GitBoardNotes ▸ 会议记录     ●已保存  导出▾ │  ← 顶栏 40px
+├──────────┬──────────────────────────────────────────┬──────────────────┤
+│ 🔍 搜索   │ [B][I][U][S][⌗][H1▾][列表▾][卡片▾][表格]  │ 大纲        ⌃⌄  │  ← 工具栏 36px
+│ ▤|☰ 切换  │ [</>代码][🎨画板][✦AI]     字体▾ 字号▾     │                  │
+│ ＋ 新建   │──────────────────────────────────────────│ ● 标题1          │
+│──────────│  # 一级标题（自动同步文件名）              │   ○ 1.1 小节     │
+│ ▤ 图标视图│  正文…<code>行内代码</code>…                    │   ○ 1.2 小节     │
+│ ┌──┬──┐ │  ┌ 信息卡片(蓝) ─────────────┐            │ ○ 标题2          │
+│ │📄│📄│ │  │ 提示内容…                 │            │ ○ 标题3          │
+│ ├──┼──┤ │  └─────────────────────────┘            │  （当前节高亮）    │
+│ │📄│📄│ │  ┌──┬──┬──┐ 表格（支持合并/嵌套）        │                  │
+│ └──┴──┘ │  │  │  │  │                          │                  │
+│ ☰ 列表视图│  ├──┼──┴──┤ ← rowspan 合并           │                  │
+│ 📄 会议记录│  │  │     │                          │                  │
+│ 📄 TODO  │  └──┴─────┘                          │                  │
+│ 📄 灵感  │  ┌ 🎨 画板（流程图）──────────┐           │                  │
+│          │  │ [开始]→[处理]→◇判断→[结束] │           │                  │
+│          │  └──────────────────────────┘           │                  │
+└──────────┴──────────────────────────────────────────┴──────────────────┘
+   240px               弹性（编辑器）                    200px（可折叠）
+</pre>
+<p>交互细节：<kbd>/</kbd> 菜单浮层贴近光标；选中文字浮出格式条（B/I/U/代码/颜色/AI）；表格选区出现合并/拆分浮动按钮；画板块 hover 显示「双击编辑」；导出按钮下拉四项（MD/HTML/PDF/另存为）。全部沿用 GitBoard 紧凑风格（小号字、小间距、主题变量）。</p>
+
+<h2 id="arch">6. 技术架构</h2>
+<h3>6.1 模块与隔离（对应 R11/R12）</h3>
+<pre class="arch">src/
+├─ notes/                      ★ 新增顶层模块，禁止 import git/**
+│  ├─ NotesPanel.ts            WebviewPanel 生命周期/消息路由/文件 IO 编排
+│  ├─ notesStore.ts            目录管理、列表/读写/重命名/删除/搜索（fs，零 git）
+│  ├─ exportMd.ts              doc→Markdown（含降级规则）
+│  ├─ exportHtml.ts            doc→自包含 HTML（内嵌 JSON，往返源）
+│  └─ pdf.ts                   Edge/Chrome headless 探测与静默导出
+├─ ui/notes/                   ★ 独立 webview bundle（out/notes.js，esbuild 第二入口）
+│  ├─ main.ts                  三栏装配/状态机
+│  ├─ editor/                  TipTap 装配 + 自定义扩展（卡片/画板/时间戳）
+│  ├─ sketch.ts                SVG 画板（NodeView）
+│  └─ outline.ts / fileList.ts 大纲与文件列表
+</pre>
+<ul>
+  <li><b>懒加载</b>：<code>extension.ts</code> 不在 activate 时 require notes；首次打开笔记页才 <code>import('./notes/NotesPanel')</code>——Git 主路径零额外开销。</li>
+  <li><b>独立 bundle</b>：out/notes.js 与主 webview.js 分离，TipTap 体积只进笔记页。</li>
+  <li><b>隔离断言</b>：单元测试扫描 notes 产物，出现 <code>git/executor|git/service|child_process.*git</code> 引用即失败。</li>
+</ul>
+<h3>6.2 存储格式（原生 .gbnote.json）</h3>
+<pre>{
+  "version": 1,
+  "title": "会议记录",              // UI 显示名；正文首 H1 变化时自动跟随
+  "created": "2026-08-30T10:00:00+08:00",
+  "updated": "2026-08-30T12:30:00+08:00",
+  "doc": { /* TipTap/ProseMirror 文档 JSON —— 唯一权威数据 */ }
+}</pre>
+<p>选 JSON 而非 MD 作原生格式的原因：表格合并/嵌套、彩色卡片、画板在 MD 中<strong>无语义可表达</strong>（必然有损）；JSON 是编辑器无损源，导出才谈降级。文件仍是人类可读、可进 Git/同步盘。</p>
+<h3>6.3 HTML 往返机制（对应 R14）</h3>
+<pre class="arch">导出 .html
+  ├─ &lt;style&gt;    内联笔记样式（阅读态渲染，与编辑态视觉一致）
+  ├─ &lt;body&gt;     doc → DOM（浏览器直接打开即原文，数据块被忽略）
+  └─ &lt;script type="application/json" id="gitboard-note"&gt;
+       { "gitboardNote": 1, "version": 1, "doc": {...} }   ← 完整无损数据
+插件内打开 .html
+  └─ 检测 #gitboard-note → JSON.parse → schema 校验 → 载入编辑器（继续编辑）
+       └─ 保存策略：默认回写原 .html（保持往返）；「另存为」可落 .gbnote.json</pre>
+<h3>6.4 消息协议（gitboard.notes.*）</h3>
+<table>
+  <tr><th style="width:44%">Webview → 宿主</th><th>说明</th></tr>
+  <tr><td><code>notes.list / notes.read / notes.create / notes.rename / notes.delete</code></td><td>文件 CRUD（read 返回 doc JSON）</td></tr>
+  <tr><td><code>notes.save</code> <span class="pill-no">{id, doc, title}</span></td><td>自动/手动保存（防抖由前端发）</td></tr>
+  <tr><td><code>notes.setDir / notes.pickDir</code></td><td>查看/更改笔记根目录</td></tr>
+  <tr><td><code>notes.export</code> <span class="pill-no">{id, doc, fmt: md|html|pdf}</span></td><td>导出（md/html → 保存对话框；pdf → 静默管线）</td></tr>
+  <tr><td><code>notes.saveAs</code> <span class="pill-no">{id, doc, fmt}</span></td><td>另存为指定文件夹（系统对话框选目录）</td></tr>
+  <tr><td><code>notes.revealInFM</code></td><td>在资源管理器中显示笔记文件</td></tr>
+  <tr><td><code>notes.ai</code> <span class="pill-no">{action, text, custom?}</span></td><td>AI 编辑（复用 lm.ts；流式 chunk 回传）</td></tr>
+  <tr><td><b>宿主 → Webview</b></td><td><code>notesList / noteContent / saved{id,at} / dirChanged / aiChunk / aiDone / aiError / notify</code></td></tr>
+</table>
+
+<h2 id="export">7. 导出与降级规则</h2>
+<table>
+  <tr><th style="width:150px">节点</th><th>Markdown</th><th>HTML</th><th>PDF</th></tr>
+  <tr><td>H1–H4</td><td>#~#### 保真</td><td>保真</td><td>保真</td></tr>
+  <tr><td>字体/字号/颜色</td><td>移除（MD 无语义）</td><td>保真</td><td>保真</td></tr>
+  <tr><td>行内代码/代码块</td><td>保真（围栏+语言）</td><td>保真</td><td>保真</td></tr>
+  <tr><td>列表（含待办）</td><td>保真（GFM task list）</td><td>保真</td><td>保真</td></tr>
+  <tr><td>普通表格</td><td>保真（GFM 管道表）</td><td>保真</td><td>保真</td></tr>
+  <tr><td>合并单元格</td><td><b>降级</b>：拆平为普通表 + 首格保留内容，表尾 HTML 注释提示</td><td>保真</td><td>保真</td></tr>
+  <tr><td>嵌套表格</td><td><b>降级</b>：内表压平为缩进列表</td><td>保真</td><td>保真</td></tr>
+  <tr><td>背景卡片</td><td><b>降级</b>：blockquote + 标题 emoji（ℹ️✅⚠️❌📝）</td><td>保真</td><td>保真</td></tr>
+  <tr><td>画板</td><td>导出 <code>同名.svg</code> 并引用；「仅文本」选项可移除</td><td>内联 SVG</td><td>矢量渲染</td></tr>
+  <tr><td>时间戳/引用/分割线</td><td>保真/保真/保真</td><td>保真</td><td>保真</td></tr>
+</table>
+<div class="callout warn"><b>PDF 管线（含已知坑）</b><br>Chromium 128+ 后 <code>msedge --headless --print-to-pdf</code> 存在静默失效问题，必须加独立临时 <code>--user-data-dir</code>。管线：①按序探测 Edge → Chrome（Windows 固定路径 / macOS /usr/bin、/Applications；Linux 常见路径）；②spawn：<code>&lt;browser&gt; --headless --disable-gpu --user-data-dir=&lt;临时目录&gt; --print-to-pdf=&lt;目标&gt; file:///&lt;导出html&gt;</code>；③校验产物存在&gt;0 字节；④失败回退 = 打开系统浏览器展示 HTML 并提示「Ctrl+P 另存为 PDF」。</div>
+
+<h2 id="perf">8. 性能与 Git 隔离预算</h2>
+<table>
+  <tr><th>指标</th><th>预算</th><th>手段</th></tr>
+  <tr><td>笔记页冷启动</td><td>≤ 300ms 可编辑</td><td>懒加载模块；文件列表一次 fs.readdir；编辑器按需创建</td></tr>
+  <tr><td>切换笔记</td><td>≤ 80ms</td><td>LRU 缓存最近 5 篇 doc</td></tr>
+  <tr><td>主面板影响</td><td>0</td><td>独立 bundle、独立懒加载分支</td></tr>
+  <tr><td>Git 崩溃影响</td><td>0</td><td>零 git import 断言测试；NotesPanel 全程 try/catch 边界</td></tr>
+  <tr><td>bundle 增量</td><td>notes.js 预计 +450~600KB（min）</td><td>仅笔记页加载；主 webview.js 体积不变</td></tr>
+</table>
+
+<h2 id="ms">9. 里程碑</h2>
+<table>
+  <tr><th style="width:90px">里程碑</th><th>内容</th><th style="width:90px">预估</th></tr>
+  <tr><td><b>N1 核心编辑</b></td><td>三栏骨架 + 文件列表 CRUD + TipTap 装配（标题/列表/待办/行内代码/代码块/分割线/引用/字号字体/颜色高亮）+ <kbd>/</kbd> 菜单 + 背景卡片 + 自动保存 + 普通表格 + 默认目录管理</td><td>4–5 天</td></tr>
+  <tr><td><b>N2 表达力</b></td><td>表格合并/嵌套/列宽 + SVG 画板块 + 大纲联动高亮 + 导出 MD/HTML/PDF + HTML 往返打开 + 另存为 + 图标/列表双视图</td><td>4–5 天</td></tr>
+  <tr><td><b>N3 AI 与打磨</b></td><td>AI 编辑（五动作+差异预览）+ 搜索高亮 + 快捷键全集 + e2e/真机验证 + README 双语</td><td>3–4 天</td></tr>
+</table>
+
+<h2 id="risk">10. 风险与对策</h2>
+<table>
+  <tr><th style="width:220px">风险</th><th>对策</th></tr>
+  <tr><td>嵌套表格内列宽拖拽/选区交互与外层冲突</td><td>N2 首项验证；不可用时降级「嵌套表格内容保真渲染 + 仅支持光标编辑基础操作」，R5 验收以合并为准、嵌套标注「基础编辑」</td></tr>
+  <tr><td>Edge headless PDF 静默失效（Chromium 128+ 已知）</td><td>强制独立 --user-data-dir + 产物校验 + 浏览器打印回退（§7）</td></tr>
+  <tr><td>中文 IME 组合输入与编辑器冲突</td><td>ProseMirror 对 IME 成熟处理；e2e 补中文输入用例</td></tr>
+  <tr><td>TipTap 付费功能边界</td><td>仅使用开源 npm 包（MIT）；锁版本；CI 检查依赖许可证</td></tr>
+  <tr><td>notes bundle 体积拖慢打包/加载</td><td>独立懒加载入口；体积预算入 CI</td></tr>
+  <tr><td>用户把笔记目录放进工程造成困惑</td><td>更改目录时提示「该目录在当前工作区内」；不做 Git 集成（纯文件）</td></tr>
+</table>
+
+<h2 id="confirm">11. 评审确认点（请逐项拍板）</h2>
+<table>
+  <tr><th style="width:56px">#</th><th>问题</th><th style="width:200px">建议默认</th></tr>
+  <tr><td>C1</td><td>入口形态：活动栏第二个图标（笔记）单独直达，OK？</td><td>✅ 独立图标 + Ctrl+Alt+N</td></tr>
+  <tr><td>C2</td><td>默认目录 <code>~/GitBoardNotes</code>，OK？</td><td>✅ ~/GitBoardNotes</td></tr>
+  <tr><td>C3</td><td>原生格式 <code>.gbnote.json</code>（无损富文本源）可接受？（MD 为导出物而非存储物）</td><td>✅ .gbnote.json</td></tr>
+  <tr><td>C4</td><td>PDF 采用「本机 Edge/Chrome 静默转换，失败回退浏览器手动打印」，OK？</td><td>✅ headless 优先</td></tr>
+  <tr><td>C5</td><td>画板范围 = 流程图级（图形+箭头+文字），不做自由画布/手写，OK？</td><td>✅ 流程图级</td></tr>
+  <tr><td>C6</td><td>AI 编辑复用提交信息同款 Copilot 通路与 <code>ai.enabled</code> 开关，OK？</td><td>✅ 复用</td></tr>
+  <tr><td>C7</td><td>分期 N1→N2→N3 顺序（先核心编辑后画板/导出再 AI），OK？</td><td>✅ N1→N2→N3</td></tr>
+</table>
+
+<p class="sub" style="margin-top:28px">配套文档：《GitBoard-快速笔记预览.html》（可交互 UI 预览）。本方案未经明确许可不进入实施。</p>
+</div>
+</body>
+</html>

@@ -319,6 +319,11 @@ button.danger:hover { background: #c62121; }
   font-size: 12px;
 }
 .gg-footer-count { padding-top: 8px; }
+/* 启动期 git 加载进度条（v0.15.1）：indeterminate 流动动画，完成即收起（高度过渡防跳变） */
+.gg-loadbar { height: 0; overflow: hidden; transition: height 0.2s ease; background: transparent; }
+.gg-loadbar.show { height: 3px; }
+.gg-loadbar-inner { height: 3px; width: 40%; background: var(--vscode-charts-blue, #3794ff); border-radius: 2px; animation: gg-loadslide 1.1s ease-in-out infinite; }
+@keyframes gg-loadslide { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
 .gg-spinner {
   width: 12px; height: 12px;
   border: 2px solid var(--vscode-descriptionForeground);
@@ -700,7 +705,8 @@ button.danger:hover { background: #c62121; }
 
 /* ---- 左：文件状态 ---- */
 .gg-work-files {
-  position: relative; flex: none; min-width: 200px; max-width: 420px;
+  /* 上限=容器宽-340px（与拖拽 JS 动态钳制一致：保证右侧 diff 区 ≥360px 可用） */
+  position: relative; flex: none; min-width: 200px; max-width: calc(100% - 340px);
   display: flex; flex-direction: column; min-height: 0;
   border-right: 1px solid var(--vscode-panel-border, #333);
 }

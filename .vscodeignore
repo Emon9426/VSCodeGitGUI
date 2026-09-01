@@ -15,3 +15,4 @@ GitBoard-*.html
 .mimosa/**
 .playwright-mcp/**
 svg2png.js
+res/screenshots/**

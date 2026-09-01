@@ -12,12 +12,12 @@ import type { Commit, FileEntry, LogFilter, MergeSessionAny, ProjectInfo, PullFi
 import { MERGE_MAX_BYTES, MERGE_MAX_LINES, RENAME_SEP } from '../common/models';
 import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, WVRequest } from '../common/protocol';
 import { GitError, GitExecutor, isGitError } from '../git/executor';
-import { discoverRepos, repoIdOf } from '../git/discovery';
+import { discoverRepos, repoIdOf, sharedDetect } from '../git/discovery';
 import { GitService, EMPTY_TREE, safeAuthorName } from '../git/service';
 import { FilesService, safeRelPath } from '../git/files';
 import { PullSummaryService } from '../git/summary';
 import { RepoWatcher } from '../git/watcher';
-import { detectMove } from '../git/parse';
+import { detectMove, semanticToOurs } from '../git/parse';
 import { OpRunner, type OpSpec, type PullStrategy } from '../ops/runner';
 import { DiffContentProvider, GITBOARD_SCHEME, EMPTY_REF, gitboardUri } from './diffProvider';
 import { revealableAncestor } from './revealPath';
@@ -32,7 +32,7 @@ function readConfig(): ConfigDto {
     language: cfg.get('language', 'auto'),
     dateFormat: cfg.get('dateFormat', 'datetime'),
     rowHeightPx: rowHeight === 'compact' ? 20 : rowHeight === 'loose' ? 28 : 24,
-    graphStyle: cfg.get('graphStyle', 'curved'),
+    graphStyle: cfg.get('graphStyle', 'github'),
     graphColumnWidth: cfg.get('graphColumnWidth', 180),
     maxTagChips: cfg.get('maxTagChips', 2),
     showRemoteChips: cfg.get('showRemoteChips', true),
@@ -141,6 +141,12 @@ export class GraphPanel {
 
   private pendingRepoId?: string;
   private ready = false;
+  /** handleBootstrap 已开始（webview 在线，可随时推送事件；pendingWorkView 等排队仅在此之前有效） */
+  private bootstrapped = false;
+  /** 仓库扫描已完成至少一次（webview 重建走热路径，ready 直接带全量 repos） */
+  private reposResolved = false;
+  /** 进行中的仓库扫描（in-flight 去重；完成后清空，失败不缓存以便重试） */
+  private reposResolve?: Promise<void>;
 
   /** 面板已就绪时切换仓库；未就绪时挂起待 bootstrap 完成 */
   private openRepo(repoId: string): void {
@@ -241,6 +247,9 @@ export class GraphPanel {
     }
     const req = m as WVRequest;
     if (typeof req?.id !== 'number' || typeof req?.cmd !== 'string') return;   // E_PROTOCOL：静默丢弃
+    // 仓库扫描未完成的早期请求（外壳先行渲染期间用户已可点击）：等扫描结束再路由，
+    // 避免 service/runner 尚未就绪时报错；ensureRepos 幂等且不抛（失败路径同样置 resolved）
+    if (!this.reposResolved) await this.ensureRepos();
     this.channel.appendLine(`[req] ${req.cmd} #${req.id}`);
     try {
       const data = await this.route(req.cmd, req.args ?? {});
@@ -472,6 +481,10 @@ export class GraphPanel {
       case 'ui:openSettings':
         await vscode.commands.executeCommand('workbench.action.openSettings', 'gitboard');
         return null;
+      case 'ui:openNotes':
+        // 直达快速笔记面板（懒加载独立模块，不经过 GraphPanel/Git 链路）
+        await vscode.commands.executeCommand('gitboard.notes');
+        return null;
 
       // ---------- 工程切换（v0.11） ----------
       case 'projects.add': {
@@ -607,7 +620,7 @@ export class GraphPanel {
         const clamp = (v: unknown, def: number, min: number, max: number) =>
           typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, Math.round(v))) : def;
         await this.context.globalState.update('gitboard.workLayout', {
-          filesW: clamp(args.filesW, 272, 200, 420),
+          filesW: clamp(args.filesW, 272, 200, 900),
           barH: clamp(args.barH, 150, 104, 320),
         });
         return null;
@@ -625,14 +638,66 @@ export class GraphPanel {
 
   // ---------- 初始化与仓库 ----------
 
+  /**
+   * 启动时序（v0.14.7）：ready 不再等待 git 探测——外壳（配置/工程列表/布局记忆/语言）
+   * 先行渲染，仓库发现后台异步进行，完成后推 reposChanged 补发；无仓库/大仓库慢加载
+   * 不再阻塞整个界面。webview 回收重建（repos 已在内存）走热路径，ready 携带全量。
+   */
   private async handleBootstrap(): Promise<void> {
+    this.bootstrapped = true;
+    const version = String((this.context.extension.packageJSON as any).version ?? '');
+    this.postStartView();
+    if (this.reposResolved) {
+      this.post({ t: 'ready', config: this.config, repos: this.repos, language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha, version, ...this.readyExtras() });
+      await this.afterReposReady();
+      this.flushFilesReveal();   // explorer 右键在 bootstrap 期间排队的定位
+      return;
+    }
+    this.post({ t: 'ready', config: this.config, repos: [], reposPending: true, language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha, version, ...this.readyExtras() });
+    void this.ensureRepos();   // 后台：detect → discoverRepos → reposChanged → 自动选仓
+  }
+
+  /** 初始视图：命令直达 / startView 配置（work | last）——不依赖 git，随首个 ready 先行 */
+  private postStartView(): void {
+    let showWork = this.pendingWorkView;
+    this.pendingWorkView = false;
+    if (this.config.startView === 'work') showWork = true;
+    else if (this.config.startView === 'last' && this.context.globalState.get<string>('gitboard.lastView') === 'work') showWork = true;
+    if (showWork) this.post({ t: 'showWork' });
+  }
+
+  /** 仓库就绪（或确认无仓库）后接续：挂起的仓库直达 / 重建重发 / 自动选首个仓库 */
+  private async afterReposReady(): Promise<void> {
+    if (this.pendingRepoId && this.repos.some(r => r.id === this.pendingRepoId)) {
+      const id = this.pendingRepoId;
+      this.pendingRepoId = undefined;
+      await this.selectRepo(id);
+    } else if (this.currentRepoId) {
+      // webview 被回收后重建：重发当前仓库状态（强制——新 webview 无本地状态，指纹相同也必须推）
+      await this.refresh(true);
+    } else if (this.repos.length) {
+      await this.selectRepo(this.repos[0].id);
+    }
+  }
+
+  /** 确保仓库扫描完成（幂等：进行中复用同一 promise；失败不缓存，可重试） */
+  private ensureRepos(): Promise<void> {
+    if (this.reposResolved) return Promise.resolve();
+    if (this.reposResolve) return this.reposResolve;
+    this.reposResolve = this.resolveRepos().finally(() => { this.reposResolve = undefined; });
+    return this.reposResolve;
+  }
+
+  private async resolveRepos(): Promise<void> {
     if (!this.executor) {
       const configured = vscode.workspace.getConfiguration('gitboard').get<string>('gitPath', '') || '';
       try {
-        this.executor = await GitExecutor.detect(configured, builtinGitPath());
-      } catch (e) {
+        this.executor = await sharedDetect(configured, builtinGitPath());
+      } catch {
+        // git 不可用：仍结束扫描（界面显示无仓库引导 + 错误提示），不阻塞外壳
+        this.post({ t: 'reposChanged', repos: [] });
+        this.reposResolved = true;
         this.ready = true;
-        this.post({ t: 'ready', config: this.config, repos: [], language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha, ...this.readyExtras() });
         this.post({ t: 'notify', level: 'error', message: `${this.t('gitNotFound')} — ${this.t('gitNotFoundHint')}` });
         return;
       }
@@ -644,26 +709,11 @@ export class GraphPanel {
     }
     this.repos = await discoverRepos(this.executor, vscode.workspace.workspaceFolders ?? []);
     for (const r of this.repos) this.roots.set(r.id, r.root);
-    const version = String((this.context.extension.packageJSON as any).version ?? '');
-    this.post({ t: 'ready', config: this.config, repos: this.repos, language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha, version, ...this.readyExtras() });
+    this.post({ t: 'reposChanged', repos: this.repos });
+    this.reposResolved = true;
     this.ready = true;
-    if (this.pendingRepoId && this.repos.some(r => r.id === this.pendingRepoId)) {
-      const id = this.pendingRepoId;
-      this.pendingRepoId = undefined;
-      await this.selectRepo(id);
-    } else if (this.currentRepoId) {
-      // webview 被回收后重建：重发当前仓库状态（强制——新 webview 无本地状态，指纹相同也必须推）
-      await this.refresh(true);
-    } else if (this.repos.length) {
-      await this.selectRepo(this.repos[0].id);
-    }
-    // 初始视图：命令直达 / startView 配置（work | last）
-    let showWork = this.pendingWorkView;
-    this.pendingWorkView = false;
-    if (this.config.startView === 'work') showWork = true;
-    else if (this.config.startView === 'last' && this.context.globalState.get<string>('gitboard.lastView') === 'work') showWork = true;
-    if (showWork) this.post({ t: 'showWork' });
-    this.flushFilesReveal();   // explorer 右键在 bootstrap 期间排队的定位
+    await this.afterReposReady();
+    this.flushFilesReveal();   // explorer 右键排队的定位：仓库就绪后才可寻址
   }
 
   private currentRoot(): string {
@@ -996,7 +1046,7 @@ export class GraphPanel {
     const root = this.roots.get(this.currentRepoId)!;
     const opId = ++this.opSeq;
     void this.runner.run(
-      root, { kind: 'fetch', all: true, prune: this.config.fetchPrune }, opId,
+      root, { kind: 'fetch', all: true, prune: this.config.fetchPrune, background: true }, opId,
       () => undefined,   // 不转发进度：后台行为保持安静
       () => '',
     ).then(outcome => {
@@ -1097,6 +1147,7 @@ export class GraphPanel {
         message, outputTail: outcome.outputTail,
       });
       if (outcome.ok) {
+        this.files?.invalidateTree(root);   // commit/checkout/reset 等改变 index/HEAD → 文件页目录缓存失效
         void this.refresh(true);   // 操作成功：强制重推（fetch/pull/push/checkout/reset 后表格必刷新）
         void this.workStateNow().catch(() => undefined);
         if (refsBefore && (kind === 'fetch' || kind === 'pull')) {
@@ -1131,7 +1182,8 @@ export class GraphPanel {
 
   /** 命令面板「提交更改」：打开主界面并切到工作副本视图 */
   openWorkView(): void {
-    if (this.ready) this.post({ t: 'showWork' });
+    // bootstrap 已开始 ⇒ webview 在线，直接推送（不依赖 git）；否则排队随首个 ready 发出
+    if (this.bootstrapped) this.post({ t: 'showWork' });
     else this.pendingWorkView = true;
   }
 
@@ -1228,7 +1280,10 @@ export class GraphPanel {
       } else {
         this.post({ t: 'opResult', opId, kind, ok: outcome.ok, message: outcome.message, outputTail: outcome.outputTail });
       }
-      if (outcome.ok) void this.workStateNow();
+      if (outcome.ok) {
+        this.files?.invalidateTree(root);   // stage/unstage/discard 等改变 index → 文件页目录缓存失效
+        void this.workStateNow();
+      }
     });
   }
 
@@ -1260,7 +1315,7 @@ export class GraphPanel {
   /** 语义侧 → git ours 映射：merge 我=:2/--ours；rebase 我=:3/--theirs（语义反转，设计方案 §4.6） */
   private sideToOurs(sideTheirs: boolean, root: string): boolean {
     const kind = this.service?.mergeKindOf(root) ?? 'merge';
-    return kind === 'rebase' ? !sideTheirs : sideTheirs;
+    return semanticToOurs(kind, sideTheirs);
   }
 
   /** 合并会话：三栏数据 / 二进制 / 超限三态（XY 码判删除侧，contentAt 取 stage 内容） */
@@ -1368,7 +1423,7 @@ export class GraphPanel {
     if (!this.service || !this.currentRepoId) return null;
     const root = this.currentRoot();
     const kind = this.service.mergeKindOf(root);
-    const stage = (kind === 'rebase') !== sideTheirs ? 2 : 3;   // sideTheirs→语义侧映射
+    const stage = semanticToOurs(kind, sideTheirs) ? 2 : 3;   // 语义侧→stage2/3（merge 我=:2；rebase 我=:3）
     const content = await this.service.contentAt(root, ':' + stage, relPath);
     if (content == null) { void vscode.window.showWarningMessage(this.t('mergePreviewMissing')); return null; }
     const rawExt = path.extname(relPath).slice(1);
@@ -1464,6 +1519,7 @@ export class GraphPanel {
     if (!outcome.ok) throw new Error(outcome.message ?? 'commit failed');
 
     await this.context.globalState.update(`gitboard.commitDraft:${this.currentRepoId}`, undefined);
+    this.files?.invalidateTree(root);   // 提交改变 HEAD/index → 文件页目录缓存失效
     void this.refresh(true);   // 提交成功：强制重推
     // 提交后的即时状态：dirty 随响应返回，前端据此决定是否显示推送询问条
     // （工作区已干净时干净空态自带「推送」按钮，绿色询问条不再叠加）
@@ -1625,13 +1681,14 @@ export class GraphPanel {
   }
 
   /** ready 事件的附加字段：面板高度百分比 + 工程列表/命中标记 + 工作区根路径 */
-  private readyExtras(): { detailPct?: number; projects: ProjectInfo[]; activeProjectIds: string[]; workspaceFolders: string[]; filesLayout?: { paneW: number; cols: number[] }; sideCollapsed?: boolean } {
+  private readyExtras(): { detailPct?: number; projects: ProjectInfo[]; activeProjectIds: string[]; workspaceFolders: string[]; filesLayout?: { paneW: number; cols: number[] }; sideCollapsed?: boolean; workFilesW?: number } {
     const projects = this.readProjects();
     const folders = (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath);
     const activeProjectIds = projects.filter(p => folders.some(f => this.samePath(f, p.path))).map(p => p.id);
     const detailPct = this.context.globalState.get<number>('gitboard.detailPct');
     const filesLayout = this.context.globalState.get<{ paneW: number; cols: number[] }>('gitboard.filesLayout');
     const sideCollapsed = this.context.globalState.get<boolean>('gitboard.sideCollapsed');
+    const workLayout = this.context.globalState.get<{ filesW?: number }>('gitboard.workLayout');
     return {
       detailPct: typeof detailPct === 'number' && Number.isFinite(detailPct) ? detailPct : undefined,
       projects,
@@ -1639,6 +1696,7 @@ export class GraphPanel {
       workspaceFolders: folders,
       filesLayout: filesLayout && typeof filesLayout.paneW === 'number' ? filesLayout : undefined,
       sideCollapsed: sideCollapsed === true ? true : undefined,
+      workFilesW: typeof workLayout?.filesW === 'number' && Number.isFinite(workLayout.filesW) ? workLayout.filesW : undefined,
     };
   }
 

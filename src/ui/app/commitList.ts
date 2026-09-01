@@ -43,13 +43,18 @@ export function createCommitList(app: App): CommitList {
   scroll.tabIndex = 0;
   const sizer = el('div', 'gg-list-sizer');
   const footer = el('div', 'gg-list-footer');
+  const loadbar = el('div', 'gg-loadbar');
+  const loadbarInner = el('div', 'gg-loadbar-inner');
+  loadbar.appendChild(loadbarInner);
   const empty = el('div', 'gg-empty');
+  const emptySpinner = el('span', 'gg-spinner');
+  emptySpinner.style.display = 'none';
   const emptyTitle = el('div', 'gg-empty-title', S.t('noCommits'));
   const emptyHint = el('div', 'gg-empty-hint', S.t('noCommitsHint'));
-  empty.append(emptyTitle, emptyHint);
+  empty.append(emptySpinner, emptyTitle, emptyHint);
   scroll.append(sizer, footer);
   body.append(scroll, canvas.canvas, empty);
-  wrap.append(header, body);
+  wrap.append(loadbar, header, body);
   canvas.attach(scroll);
 
   let pool: HTMLElement[] = [];
@@ -111,14 +116,39 @@ export function createCommitList(app: App): CommitList {
     }
     applyWidths();
     sizer.style.height = `${total()}px`;
-    const showEmpty = !!S.state && S.commits.length === 0;
+    // 空态（v0.14.7）：启动扫描 git / 仓库已发现但首页 log 在途 / 工作区无仓库 /
+    // 既有两态（仓库无提交 | 筛选无结果）——启动全程有反馈，不再空白
+    const scanning = S.reposPending;
+    const loadingGit = !scanning && !S.state && S.repos.length > 0;
+    const noRepo = !scanning && !S.state && S.repos.length === 0;
+    // 顶部加载进度条（v0.15.1）：git 探测/首页历史在途时显示，完成即收起
+    loadbar.classList.toggle('show', scanning || loadingGit);
+    const showEmpty = (!!S.state && S.commits.length === 0) || scanning || loadingGit || noRepo;
     empty.classList.toggle('show', showEmpty);
     if (showEmpty) {
-      // 区分"仓库无提交"与"筛选无结果"
-      const filtered = !!(S.state?.filterRef || S.logFilter.authors.length || S.logFilter.since || S.logFilter.until);
-      const title = S.t(filtered ? 'noMatches' : 'noCommits');
+      let title: string;
+      let hint: string | undefined;   // undefined = 隐藏副文案
+      if (scanning) {
+        title = S.t('loadingRepos');
+      } else if (loadingGit) {
+        title = S.t('loadingHistory');
+      } else if (noRepo) {
+        title = S.t('noRepos');
+        hint = S.t('noReposHint');
+      } else {
+        // 区分"仓库无提交"与"筛选无结果"
+        const filtered = !!(S.state?.filterRef || S.logFilter.authors.length || S.logFilter.since || S.logFilter.until);
+        title = S.t(filtered ? 'noMatches' : 'noCommits');
+        if (!filtered) hint = S.t('noCommitsHint');
+      }
       if (emptyTitle.textContent !== title) emptyTitle.textContent = title;
-      emptyHint.classList.toggle('hidden', filtered);
+      if (hint) {
+        if (emptyHint.textContent !== hint) emptyHint.textContent = hint;
+        emptyHint.classList.remove('hidden');
+      } else {
+        emptyHint.classList.add('hidden');
+      }
+      emptySpinner.style.display = (scanning || loadingGit) ? '' : 'none';
     }
   }
 

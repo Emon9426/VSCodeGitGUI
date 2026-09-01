@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body, #notes-app { height: 100%; margin: 0; }
+</style>
+<!-- mock VS Code API：必须先于 notes.js 定义；模拟宿主响应 rpc 与事件 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => {
+      window.__sent.push(m);
+      // 模拟扩展宿主：notes.* 请求 → res 信封
+      if (m && m.id && m.cmd) {
+        setTimeout(() => {
+          const d = window.__hostData;
+          const respond = (data) => window.postMessage({ t: 'res', id: m.id, ok: true, data }, '*');
+          switch (m.cmd) {
+            case 'notes.list': respond(d.notes); break;
+            case 'notes.create': {
+              const meta = { id: d.nextId || '未命名笔记', title: m.args.title || '未命名笔记', updated: Date.now(), created: Date.now() };
+              d.notes.unshift(meta); d.nextId = (d.nextId || '未命名笔记') + '-2';
+              respond(meta);
+              setTimeout(() => window.postMessage({ t: 'notesList', notes: d.notes }, '*'), 10);
+              break;
+            }
+            case 'notes.read': {
+              const n = d.files[m.args.id];
+              respond(n || { meta: { id: m.args.id, title: m.args.id, updated: 1, created: 1 }, doc: { type: 'doc', content: [{ type: 'paragraph' }] } });
+              break;
+            }
+            case 'notes.save': respond({ savedAt: Date.now() }); break;
+            case 'notes.rename': respond({ id: m.args.title, title: m.args.title, updated: Date.now(), created: Date.now() }); break;
+            case 'notes.delete': {
+              d.notes = d.notes.filter(n2 => n2.id !== m.args.id);
+              delete d.files[m.args.id];
+              respond(null);
+              setTimeout(() => window.postMessage({ t: 'notesList', notes: d.notes }, '*'), 10);
+              break;
+            }
+            case 'notes.pickImage': {
+              respond({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', name: 't.png' });
+              break;
+            }
+            default: respond(null);
+          }
+        }, 5);
+      }
+    },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+  window.__hostData = { notes: [], files: {}, nextId: undefined };
+</script>
+<link rel="stylesheet" href="../../out/notes.css">
+</head>
+<body>
+<div id="notes-app"></div>
+<script src="../../out/notes.js"></script>
+<script>
+/**
+ * 快速笔记 harness（v0.15.0）：notesReady → 三栏/编辑器渲染 → 新建/输入/自动保存 →
+ * 大纲联动 → / 菜单 → 导出请求。结果写入 document.title。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const errs = [];
+  const assert = (cond, msg) => { if (!cond) errs.push(msg); };
+  const cmds = () => window.__sent.filter(m => m.cmd).map(m => m.cmd);
+
+  // 1. 等 bootstrap
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  // 2. notesReady（含两篇笔记）
+  window.__hostData.notes = [
+    { id: '会议记录', title: '会议记录', updated: Date.now() - 5000, created: Date.now() },
+    { id: 'TODO', title: 'TODO', updated: Date.now() - 90000, created: Date.now() },
+  ];
+  window.__hostData.files['会议记录'] = {
+    meta: { id: '会议记录', title: '会议记录', updated: Date.now(), created: Date.now() },
+    doc: { type: 'doc', content: [
+      { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: '周会记录' }] },
+      { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: '一、进展' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: '正文内容' }] },
+    ] },
+  };
+  window.postMessage({ t: 'notesReady', dir: 'C:/Users/Emon/GitBoardNotes', notes: window.__hostData.notes, language: 'zh-CN', version: 'e2e' }, '*');
+  await twoFrames(); await sleep(200);
+
+  // ---- 阶段 A：三栏装配
+  assert(!!document.querySelector('.n-side'), 'A1 左栏缺失');
+  assert(!!document.querySelector('.n-main .ProseMirror'), 'A2 TipTap 编辑器未创建');
+  assert(!!document.querySelector('.n-outline'), 'A3 右栏大纲缺失');
+  assert(document.querySelectorAll('.gg-tbtn').length >= 15, `A4 工具栏按钮不足 (${document.querySelectorAll('.gg-tbtn').length})`);
+  assert(!!document.querySelector('.n-item'), 'A5 文件列表未渲染');
+
+  // ---- 阶段 B：打开笔记 → 标题头接住旧 H1 + 大纲联动
+  const item = [...document.querySelectorAll('.n-item')].find(x => x.textContent.includes('会议记录'));
+  item.click();
+  await sleep(120);
+  assert(cmds().includes('notes.read'), 'B1 未发出 notes.read');
+  await sleep(150);
+  // v0.17：旧文档首个 H1 迁移为标题头（正文不再残留 H1）
+  const titleInput2 = document.querySelector('.n-doc-title');
+  assert(titleInput2 && titleInput2.value === '周会记录', `B2 标题头未接住旧 H1 title="${titleInput2?.value ?? ''}"`);
+  assert(!document.querySelector('.ProseMirror h1'), 'B2b 正文仍残留标题 H1');
+  const h2 = document.querySelector('.ProseMirror h2');
+  assert(h2 && h2.textContent === '一、进展', `B2c 正文 h2 异常 "${h2?.textContent ?? ''}"`);
+  assert(!!document.querySelector('.n-dochead .n-doc-titleline'), 'B2d 标题专用分割线缺失');
+  assert(document.querySelector('.n-doc-meta')?.textContent.includes('上次修改'), 'B2e 修改时间缺失');
+  const olItems = [...document.querySelectorAll('.n-ol-item')];
+  assert(olItems.length === 1 && olItems.some(b => b.textContent === '一、进展'), `B3 大纲未联动 (${olItems.map(b => b.textContent)})`);
+
+  // ---- 阶段 C：编辑 → 防抖自动保存（800ms）
+  const before = cmds().filter(c => c === 'notes.save').length;
+  const pm = document.querySelector('.ProseMirror');
+  pm.focus();
+  document.execCommand('insertText', false, ' 追加');
+  await sleep(1200);
+  const after = cmds().filter(c => c === 'notes.save').length;
+  assert(after > before, `C1 自动保存未触发 (before=${before} after=${after})`);
+  const saveReq = window.__sent.filter(m => m.cmd === 'notes.save').pop();
+  assert(saveReq && JSON.stringify(saveReq.args.doc).includes('追加'), 'C2 保存内容不含新输入');
+
+  // ---- 阶段 D：新建笔记（create 即写盘语义）
+  const newBtn = document.querySelector('.pv-mini.new');
+  newBtn.click();
+  await sleep(150);
+  assert(cmds().includes('notes.create'), 'D1 未发出 notes.create');
+  await sleep(100);
+
+  // ---- 阶段 E：/ 菜单（v0.17：工具栏按钮已移除，行首输入 / 呼出）
+  const Ed = window.__gbEd;
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+  Ed.commands.setTextSelection(1);
+  Ed.commands.insertContent('/');
+  await sleep(100);
+  assert(!!document.querySelector('.gg-slash:not(.hidden)'), 'E1 / 菜单未呼出');
+  const menuCount = document.querySelectorAll('.gg-slash-item').length;
+  assert(menuCount >= 14, `E2 菜单项不足 (${menuCount})`);
+  const input = document.querySelector('.gg-slash-input');
+  input.value = '卡片';
+  input.dispatchEvent(new Event('input'));
+  await sleep(80);
+  const visible = [...document.querySelectorAll('.gg-slash-item')].filter(x => x.style.display !== 'none');
+  assert(visible.length === 5, `E3 过滤「卡片」应为 5 项 got ${visible.length}`);
+  document.querySelector('.gg-slash-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await sleep(60);
+
+  // ---- 阶段 F：卡片插入（工具栏下拉）
+  const calloutBtn = [...document.querySelectorAll('.gg-tbtn')].find(b => b.title === '卡片');
+  calloutBtn.click();
+  await sleep(80);
+  assert(!!document.querySelector('.gg-toolbar-menu:not(.hidden)'), 'F1 卡片下拉未显示');
+  const infoItem = [...document.querySelectorAll('.gg-toolbar-menu:not(.hidden) .gg-menu-item')].find(x => x.textContent.includes('info'));
+  infoItem.click();
+  await sleep(120);
+  assert(!!document.querySelector('.ProseMirror .gg-callout'), 'F2 卡片未插入');
+
+  // ---- 阶段 G：画板插入与渲染
+  const sketchBtn = [...document.querySelectorAll('.gg-tbtn')].find(b => b.title.includes('画板'));
+  if (!sketchBtn) { finish('FAIL: no sketch btn'); return; }
+  sketchBtn.click();
+  await sleep(120);
+  assert(!!document.querySelector('.ProseMirror .gg-sketch svg.gb-sk-svg'), 'G1 画板未渲染');
+
+  // ---- 阶段 H-N（v0.16 新功能；Ed 已在阶段 E 前取得）
+
+  // H 文字颜色：全选 → 颜色下拉中红色格（cells: [清除, 黑, 红, ...]）
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'color-test' }] }] });
+  Ed.commands.selectAll();
+  const colorBtn = [...document.querySelectorAll('.gg-tbtn')].find(b => b.title === '文字颜色');
+  colorBtn.click();
+  await sleep(60);
+  const redCell = [...document.querySelectorAll('.gg-toolbar-menu:not(.hidden) .gg-color-grid .gg-color-cell')][3];
+  redCell.click();
+  await sleep(60);
+  assert(!!document.querySelector('.ProseMirror span[style*="rgb(207, 34, 46)"], .ProseMirror span[style*="#cf222e"]'), 'H1 文字颜色未应用');
+
+  // I 高亮色：全选 → 高亮下拉第一色格（cells: [清除, 黄, ...]）
+  Ed.commands.selectAll();
+  const hlBtn = [...document.querySelectorAll('.gg-tbtn')].find(b => b.title === '高亮颜色');
+  hlBtn.click();
+  await sleep(60);
+  const hlCell = [...document.querySelectorAll('.gg-toolbar-menu:not(.hidden) .gg-color-grid .gg-color-cell')][1];
+  hlCell.click();
+  await sleep(60);
+  assert(!!document.querySelector('.ProseMirror mark'), 'I1 高亮未应用');
+
+  // J 行内代码 Ctrl+M：清除格式后全选 → 合成 Ctrl+M
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'code-test' }] }] });
+  Ed.commands.selectAll();
+  document.querySelector('.ProseMirror').dispatchEvent(new KeyboardEvent('keydown', { key: 'm', ctrlKey: true, bubbles: true }));
+  await sleep(60);
+  assert(!!document.querySelector('.ProseMirror code'), 'J1 Ctrl+M 行内代码未生效');
+
+  // K 显示所有字符（v0.16.1：每行末尾 ¶ + 空格 ·）
+  Ed.commands.setContent({ type: 'doc', content: [
+    { type: 'paragraph', content: [{ type: 'text', text: 'a b' }] },
+    { type: 'paragraph' },
+  ] });
+  const paraBtn = [...document.querySelectorAll('.gg-tbtn')].find(b => b.title.includes('显示所有字符'));
+  paraBtn.click();
+  await sleep(80);
+  assert(document.querySelectorAll('.ProseMirror .gg-ws-space').length >= 1, 'K1 空格 · 未出现');
+  assert(document.querySelectorAll('.ProseMirror .gg-ws-eol').length === 2, `K2 行尾 ¶ 应为 2 个 got ${document.querySelectorAll('.ProseMirror .gg-ws-eol').length}`);
+  paraBtn.click();   // 关闭还原
+  await sleep(40);
+
+  // P Tab 插入制表符 + 正文占满靠左 + 工具栏图标垂直对齐（v0.16.1）
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+  Ed.commands.setTextSelection(1);
+  document.querySelector('.ProseMirror').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  await sleep(60);
+  assert(Ed.state.doc.textContent.includes('\t'), 'P1 Tab 未插入制表符');
+  const docStyle = getComputedStyle(document.querySelector('.n-doc'));
+  assert(docStyle.maxWidth === 'none' && docStyle.marginLeft === '0px', `P2 正文未占满靠左 max=${docStyle.maxWidth} ml=${docStyle.marginLeft}`);
+  const tbAll = [...document.querySelectorAll('.n-toolbar .gg-tbtn')];
+  // flex 子项会被块化为 display:flex（规范行为）；对齐效果断言 align/justify 居中
+  assert(tbAll.length > 10 && tbAll.every(x => getComputedStyle(x).alignItems === 'center' && getComputedStyle(x).justifyContent === 'center'), 'P3 工具栏图标未垂直对齐');
+
+  // L 文档背景：背景菜单 → 第二预设（豆沙绿）——在刚打开的菜单范围内查询色格
+  const bgBtn = [...document.querySelectorAll('.gg-tbtn')].find(b => b.title.includes('文档背景'));
+  bgBtn.click();
+  await sleep(60);
+  const bgCell = [...document.querySelectorAll('.gg-toolbar-menu:not(.hidden) .gg-color-grid .gg-color-cell')][1];
+  bgCell.click();
+  await sleep(60);
+  const host = document.querySelector('.n-editor');
+  assert(host.style.background.includes('204, 232, 207') || host.style.background.toLowerCase().includes('cce8cf'), `L1 背景色未应用 bg="${host.style.background}"`);
+
+  // M 卡片 Enter 逃逸：光标在卡片内空段按 Enter → 移出卡片
+  Ed.commands.setContent({ type: 'doc', content: [
+    { type: 'callout', attrs: { kind: 'info' }, content: [{ type: 'paragraph' }] },
+  ] });
+  Ed.commands.setTextSelection(3);   // 卡片内空段
+  document.querySelector('.ProseMirror').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await sleep(60);
+  assert(Ed.state.doc.childCount === 2 && Ed.state.doc.lastChild.type.name === 'paragraph'
+    && Ed.state.doc.firstChild.childCount === 1, 'M1 卡片内 Enter 未逃逸到卡片下方');
+  // ↓ 键同样逃逸
+  Ed.commands.setContent({ type: 'doc', content: [
+    { type: 'callout', attrs: { kind: 'info' }, content: [{ type: 'paragraph' }] },
+  ] });
+  Ed.commands.setTextSelection(3);
+  document.querySelector('.ProseMirror').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  await sleep(60);
+  assert(Ed.state.doc.childCount === 2, 'M2 ↓ 键未逃逸');
+
+  // N 代码块语言：插入 JavaScript 代码块 → lang- 类 + 切换 python
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+  Ed.commands.setTextSelection(1);
+  Ed.commands.setCodeBlock({ language: 'javascript' });
+  await sleep(60);
+  assert(!!document.querySelector('.ProseMirror pre code.lang-javascript'), 'N1 代码块语言类缺失');
+  Ed.commands.updateAttributes('codeBlock', { language: 'python' });
+  await sleep(60);
+  assert(!!document.querySelector('.ProseMirror pre code.lang-python'), 'N2 语言切换失败');
+
+  // O 画板交互：点击放置默认尺寸图形（模拟 pointer 事件流）
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+  const sketchBtn2 = [...document.querySelectorAll('.gg-tbtn')].find(b => b.title.includes('画板'));
+  sketchBtn2.click();
+  await sleep(150);
+  const skSvg = document.querySelector('.ProseMirror .gg-sketch svg.gb-sk-svg');
+  const skRect = skSvg.getBoundingClientRect();
+  const fire = (type, x, y, target) => (target || skSvg).dispatchEvent(new PointerEvent(type, {
+    bubbles: true, clientX: x, clientY: y, pointerId: 1, isPrimary: true,
+  }));
+  // 选圆角矩形工具 → 点击画布 → 默认尺寸放置 + 自动回选择工具
+  const roundBtn = document.querySelector('.gg-sketch-bar .gg-tbtn:nth-child(2)');
+  roundBtn.click();
+  const cx = skRect.left + 60, cy = skRect.top + 40;
+  fire('pointerdown', cx, cy);
+  fire('pointerup', cx, cy);
+  await sleep(120);
+  assert(!!skSvg.querySelector('.gb-sk-shape[rx]'), 'O1 点击放置图形失败');
+  // v0.17 反馈 #8：默认尺寸缩小（round 80×34）
+  const placedEl2 = skSvg.querySelector('.gb-sk-shape[rx]');
+  assert(Number(placedEl2.getAttribute('width')) === 80 && Number(placedEl2.getAttribute('height')) === 34, `O1b 画板默认尺寸异常 w=${placedEl2.getAttribute('width')} h=${placedEl2.getAttribute('height')}`);
+  const shapeCount = skSvg.querySelectorAll('.gb-sk-shape').length;
+  // 选择工具点击图形（事件以图形元素为 target）→ 选中态
+  const sel2 = skSvg.querySelector('.gb-sk-shape');
+  const sRect = sel2.getBoundingClientRect();
+  fire('pointerdown', sRect.left + 5, sRect.top + 5, sel2);
+  await sleep(30);
+  fire('pointerup', sRect.left + 5, sRect.top + 5);
+  await sleep(60);
+  assert(skSvg.querySelector('.gb-sk-shape.sel'), 'O2 点击图形未选中');
+  assert(shapeCount >= 1, 'O3 图形数量异常');
+
+  // Q 网格吸附 + 画板内撤销（v0.16.1）
+  const placed = skSvg.querySelector('.gb-sk-shape');
+  const px = Number(placed.getAttribute('x'));
+  assert(px % 10 === 0, `Q1 网格吸附失败 x=${px}`);
+  const undoSk = [...document.querySelectorAll('.gg-sketch-bar .gg-tbtn')].find(b => b.title.includes('撤销'));
+  if (!undoSk) { finish('FAIL: no sketch undo btn'); return; }
+  undoSk.click();
+  await sleep(80);
+  assert(skSvg.querySelectorAll('.gb-sk-shape').length === shapeCount - 1, 'Q2 画板内撤销未生效');
+  // 选中态锚点存在（drawio 式边缘拖线入口）
+  const selShape = skSvg.querySelector('.gb-sk-shape');
+  if (selShape) {
+    selShape.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 0, clientY: 0, pointerId: 2 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 2 }));
+    await sleep(40);
+    assert(skSvg.querySelectorAll('.gb-sk-anchor').length === 4, `Q3 选中图形边缘锚点应为 4 got ${skSvg.querySelectorAll('.gb-sk-anchor').length}`);
+  }
+
+  // ---- 阶段 R（v0.17 反馈轮） ----
+  // R0 工具栏：插入命令按钮移除 / SVG 图标 / S·A 覆盖线
+  assert(![...document.querySelectorAll('.gg-tbtn')].some(b => b.title === '插入命令'), 'R0a 插入命令按钮应已移除');
+  const svgBtns = document.querySelectorAll('.n-toolbar .gg-tbtn svg').length;
+  assert(svgBtns >= 5, `R0b SVG 图标按钮不足 (${svgBtns})`);
+  const sBtnR = [...document.querySelectorAll('.gg-tbtn')].find(b => b.textContent === 'S');
+  const aBtnR = [...document.querySelectorAll('.gg-tbtn')].find(b => b.classList.contains('color-btn'));
+  assert(sBtnR && getComputedStyle(sBtnR).textDecorationLine === 'none', 'R0c S 删除线未改覆盖线');
+  assert(aBtnR && getComputedStyle(aBtnR).textDecorationLine === 'none', 'R0d A 下划线未改覆盖线');
+
+  // R1 删除笔记：右键 → 删除项 → 确认框（居中且在视口内）→ ✓ → notes.delete + 列表移除
+  const delTarget = [...document.querySelectorAll('.n-item')].find(x => x.textContent.includes('TODO'));
+  delTarget.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 220 }));
+  await sleep(60);
+  const delRow = [...document.querySelectorAll('.gg-menu-item')].find(x => x.textContent.includes('删除笔记'));
+  assert(!!delRow, 'R1a 右键菜单无删除项');
+  delRow.click();
+  await sleep(80);
+  const confirmBox = [...document.querySelectorAll('.gg-dialog-layer')].pop();
+  assert(!!confirmBox, 'R1b 确认对话框未出现');
+  if (confirmBox) {
+    const br = confirmBox.getBoundingClientRect();
+    assert(br.left >= 0 && br.right <= window.innerWidth && br.top >= 0 && br.bottom <= window.innerHeight, `R1c 确认框在视口外 l=${br.left} t=${br.top} r=${br.right} b=${br.bottom}`);
+    assert(confirmBox.style.left === '50%', 'R1d 确认框未居中定位');
+    const okBtn = [...confirmBox.querySelectorAll('button')].find(b => b.classList.contains('primary'));
+    okBtn.click();
+    await sleep(150);
+  }
+  assert(cmds().includes('notes.delete'), 'R1e notes.delete 未发出');
+  assert(![...document.querySelectorAll('.n-item')].some(x => x.textContent.includes('TODO')), 'R1f 列表未移除已删笔记');
+
+  // R2 图片：mock pickImage → 插入 + 选中出 4 手柄
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+  Ed.commands.setTextSelection(1);
+  const imgBtnR = [...document.querySelectorAll('.gg-tbtn')].find(b => b.title.includes('插入图片'));
+  imgBtnR.click();
+  await sleep(150);
+  const imgWrapR = document.querySelector('.ProseMirror .gg-img');
+  assert(!!imgWrapR && !!imgWrapR.querySelector('img[src^="data:image"]'), 'R2a 图片未插入');
+  Ed.commands.setNodeSelection(0);
+  await sleep(80);
+  assert(imgWrapR.classList.contains('sel') && imgWrapR.querySelectorAll('.gg-img-h').length === 4, 'R2b 选中图片四角手柄缺失');
+
+  // R3 行号：顶级块 = 1 行（段落/画板/卡片）
+  Ed.commands.setContent({ type: 'doc', content: [
+    { type: 'paragraph', content: [{ type: 'text', text: 'l1' }] },
+    { type: 'sketch' },
+    { type: 'paragraph' },
+  ] });
+  await sleep(80);
+  const lnBtnR = [...document.querySelectorAll('.gg-tbtn')].find(b => b.title.includes('显示行号'));
+  lnBtnR.click();
+  await sleep(150);
+  const numsR = document.querySelectorAll('.gg-ln-num');
+  assert(numsR.length === 3, `R3a 行号应为 3 got ${numsR.length}`);
+  assert(numsR[0].textContent === '1' && numsR[2].textContent === '3', 'R3b 行号序号错误');
+  assert(document.querySelector('.n-editor').classList.contains('ln-on'), 'R3c ln-on 类缺失');
+  lnBtnR.click();
+  await sleep(60);
+  assert(document.querySelector('.gg-ln-gutter').classList.contains('hidden'), 'R3d 行号未关闭');
+
+  // R4 AI 浮层：默认靠右上 + 拖动 + 位置记忆 + 空白点击关闭
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'ai-text' }] }] });
+  Ed.commands.selectAll();
+  localStorage.removeItem('gbNotes.aiPos');
+  const aiBtnR = [...document.querySelectorAll('.gg-tbtn')].find(b => b.classList.contains('ai-btn'));
+  aiBtnR.click();
+  await sleep(100);
+  const aiPopR = document.querySelector('.gg-ai-pop:not(.hidden)');
+  assert(!!aiPopR, 'R4a AI 浮层未打开');
+  assert(!!aiPopR?.querySelector('.gg-ai-head'), 'R4b AI 拖动标题栏缺失');
+  if (aiPopR) {
+    const hostR2 = document.querySelector('.n-editor').getBoundingClientRect();
+    const pr = aiPopR.getBoundingClientRect();
+    assert(pr.right > hostR2.left + hostR2.width * 0.6, `R4c AI 默认位置未靠右 r=${pr.right} host=${hostR2.left + hostR2.width}`);
+    const head = aiPopR.querySelector('.gg-ai-head');
+    const hx = head.getBoundingClientRect();
+    head.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: hx.left + 20, clientY: hx.top + 5, pointerId: 9 }));
+    window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: hx.left - 120, clientY: hx.top + 60, pointerId: 9 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 9 }));
+    await sleep(60);
+    const pr2 = aiPopR.getBoundingClientRect();
+    assert(Math.abs(pr2.left - pr.left) > 50, `R4d AI 拖动未生效 l=${pr.left}->${pr2.left}`);
+    assert(!!localStorage.getItem('gbNotes.aiPos'), 'R4e AI 位置未记忆');
+    document.querySelector('.ProseMirror').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 20, clientY: 320, pointerId: 3 }));
+    await sleep(40);
+    assert(!document.querySelector('.gg-ai-pop:not(.hidden)'), 'R4f 空白点击未关闭 AI 浮层');
+  }
+
+  // R5 / 菜单：ESC 与空白点击关闭
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+  Ed.commands.setTextSelection(1);
+  Ed.commands.insertContent('/');
+  await sleep(100);
+  assert(!!document.querySelector('.gg-slash:not(.hidden)'), 'R5a / 菜单未呼出');
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await sleep(40);
+  assert(!document.querySelector('.gg-slash:not(.hidden)'), 'R5b ESC 未关闭 / 菜单');
+  Ed.commands.setTextSelection(1);
+  Ed.commands.insertContent('/');
+  await sleep(100);
+  document.querySelector('.ProseMirror').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 60, clientY: 340, pointerId: 4 }));
+  await sleep(40);
+  assert(!document.querySelector('.gg-slash:not(.hidden)'), 'R5c 空白点击未关闭 / 菜单');
+
+  // ---- 阶段 T（v0.18 反馈轮：9 项） ----
+
+  // T1（#1）行号：表格每 tr 一行、代码块整体 1 行（有自己的独立行号）
+  Ed.commands.setContent({ type: 'doc', content: [
+    { type: 'paragraph', content: [{ type: 'text', text: 'a' }] },
+    { type: 'table', content: [
+      { type: 'tableRow', content: [
+        { type: 'tableHeader', content: [{ type: 'paragraph' }] },
+        { type: 'tableHeader', content: [{ type: 'paragraph' }] } ] },
+      { type: 'tableRow', content: [
+        { type: 'tableCell', content: [{ type: 'paragraph' }] },
+        { type: 'tableCell', content: [{ type: 'paragraph' }] } ] },
+    ] },
+    { type: 'codeBlock', attrs: { language: 'sql' }, content: [{ type: 'text', text: 'select\nfrom' }] },
+    { type: 'paragraph' },
+  ] });
+  await sleep(100);
+  const lnBtnT = [...document.querySelectorAll('.gg-tbtn')].find(b => b.title.includes('显示行号'));
+  lnBtnT.click();
+  await sleep(200);
+  const numsT = [...document.querySelectorAll('.gg-ln-num')].map(n => n.textContent);
+  assert(numsT.join(',') === '1,2,3,4,5', `T1a 行号应为 1-5（表格 2 行+代码块 1 行）got ${numsT}`);
+  const codeLnSpans = document.querySelectorAll('.gb-code .gb-code-ln span');
+  assert(codeLnSpans.length === 2, `T1b 代码块独立行号应为 2 got ${codeLnSpans.length}`);
+  lnBtnT.click();
+  await sleep(60);
+
+  // T2（#2）行内代码按钮为受控 SVG（⌗ 字形偏高问题）
+  const inlBtnT = [...document.querySelectorAll('.gg-tbtn')].find(b => b.title.includes('行内代码'));
+  assert(!!inlBtnT && !!inlBtnT.querySelector('svg'), 'T2 行内代码按钮未使用 SVG 图标');
+
+  // T3+#4+#5+#6 画板系列：Del 只删图形 / Enter 编辑文字 / 正交折线 / 小圆点手柄
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+  Ed.commands.setTextSelection(1);
+  const sketchBtnT = [...document.querySelectorAll('.gg-tbtn')].find(b => b.title.includes('画板'));
+  sketchBtnT.click();
+  await sleep(150);
+  const skWrap = document.querySelector('.ProseMirror .gg-sketch');
+  const skSvgT = skWrap.querySelector('svg.gb-sk-svg');
+  const skRectT = skSvgT.getBoundingClientRect();
+  const fireT = (type, x, y, target) => (target || skSvgT).dispatchEvent(new PointerEvent(type, {
+    bubbles: true, clientX: x, clientY: y, pointerId: 11, isPrimary: true,
+  }));
+  const skTool = (name) => [...skWrap.querySelectorAll('.gg-sketch-bar .gg-tbtn')].find(b => b.title === name);
+  // 放置两个圆角矩形
+  skTool('圆角矩形').click();
+  fireT('pointerdown', skRectT.left + 50, skRectT.top + 40);
+  fireT('pointerup', skRectT.left + 50, skRectT.top + 40);
+  await sleep(80);
+  skTool('圆角矩形').click();
+  fireT('pointerdown', skRectT.left + 250, skRectT.top + 40);
+  fireT('pointerup', skRectT.left + 250, skRectT.top + 40);
+  await sleep(80);
+  assert(skSvgT.querySelectorAll('.gb-sk-shape[rx]').length === 2, 'T3a 放置两个图形失败');
+  // T5（#5）箭头连线为正交折线（path ≥2 个转折段 + marker）
+  skTool('箭头连线').click();
+  const r1 = skSvgT.querySelectorAll('.gb-sk-shape[rx]')[0].getBoundingClientRect();
+  const r2 = skSvgT.querySelectorAll('.gb-sk-shape[rx]')[1].getBoundingClientRect();
+  fireT('pointerdown', r1.left + r1.width / 2, r1.top + r1.height / 2, skSvgT.querySelectorAll('.gb-sk-shape[rx]')[0]);
+  window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: r2.left + r2.width / 2, clientY: r2.top + r2.height / 2, pointerId: 11 }));
+  window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 11 }));
+  await sleep(100);
+  const arrPath = skSvgT.querySelector('path.gb-sk-shape[marker-end]');
+  assert(!!arrPath, 'T5a 箭头连线未渲染为 path');
+  if (arrPath) {
+    const d = arrPath.getAttribute('d') ?? '';
+    assert(d.startsWith('M') && (d.match(/L/g) || []).length >= 2, `T5b 连线非正交折线 d="${d}"`);
+  }
+  // T6（#6）选中图形 → 8 个小圆点（r=2.5）+ 8 个隐形命中圈（r=7）
+  const shapeT = skSvgT.querySelectorAll('.gb-sk-shape[rx]')[0];
+  fireT('pointerdown', r1.left + 6, r1.top + 6, shapeT);
+  fireT('pointerup', r1.left + 6, r1.top + 6, shapeT);
+  await sleep(60);
+  const dotsT = skSvgT.querySelectorAll('.gb-sk-dot');
+  const hitsT = skSvgT.querySelectorAll('.gb-sk-hit');
+  assert(dotsT.length === 8 && hitsT.length === 8, `T6a 手柄小圆点/命中圈应各 8 got ${dotsT.length}/${hitsT.length}`);
+  assert([...dotsT].every(d => d.getAttribute('r') === '2.5'), 'T6b 小圆点半径非 2.5');
+  assert([...hitsT].every(d => d.getAttribute('r') === '7'), 'T6c 命中圈半径非 7');
+  // T4（#4）选中后 Enter → 内联文字编辑
+  skWrap.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await sleep(80);
+  const editT = document.querySelector('input.gb-sk-edit');
+  assert(!!editT, 'T4a Enter 未打开文字编辑');
+  if (editT) {
+    editT.value = '节点A';
+    editT.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await sleep(80);
+    assert([...skSvgT.querySelectorAll('.gb-sk-label')].some(x => x.textContent === '节点A'), 'T4b 图形文字未写入');
+  }
+  // T3（#3）画板内 Delete 只删图形，不删画板节点
+  fireT('pointerdown', r1.left + 6, r1.top + 6, shapeT);
+  fireT('pointerup', r1.left + 6, r1.top + 6, shapeT);
+  await sleep(60);
+  skWrap.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+  await sleep(80);
+  assert(skSvgT.querySelectorAll('.gb-sk-shape[rx]').length === 1, 'T3a Delete 未删除选中图形');
+  assert(!!document.querySelector('.ProseMirror .gg-sketch'), 'T3b Delete 误删了整个画板');
+
+  // T7（#7）代码块：语言标签 + 实时高亮 + 独立行号 + plaintext 自动识别 + 删除按钮
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+  Ed.commands.setTextSelection(1);
+  Ed.commands.setCodeBlock({ language: 'sql' });
+  await sleep(80);
+  document.querySelector('.ProseMirror').focus();
+  document.execCommand('insertText', false, 'select name from dual');
+  await sleep(200);
+  assert(!!document.querySelector('.gb-code .hljs-keyword'), 'T7a 代码关键字未实时高亮');
+  const chipT = document.querySelector('.gb-code-lang');
+  assert(chipT && chipT.textContent === 'SQL', `T7b 语言标签异常 "${chipT?.textContent ?? ''}"`);
+  assert(document.querySelectorAll('.gb-code .gb-code-ln span').length === 1, 'T7c 代码块行号异常');
+  const monoT = getComputedStyle(document.querySelector('.gb-code pre'));
+  assert((monoT.fontFamily || '').toLowerCase().includes('consolas'), `T7d 代码块非等宽字体 ${monoT.fontFamily}`);
+  // 光标在代码块内 → 删除按钮可见（显隐挂在按钮自身 .show 上）
+  const codeWrapT = document.querySelector('.gb-code');
+  const codeDelT = codeWrapT.querySelector('.gb-nodedel');
+  assert(codeDelT.classList.contains('show') && getComputedStyle(codeDelT).display !== 'none', 'T7e 代码块删除按钮未随光标显示');
+  // plaintext 自动识别（防抖 600ms）
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+  Ed.commands.setTextSelection(1);
+  Ed.commands.setCodeBlock({ language: 'plaintext' });
+  await sleep(60);
+  document.querySelector('.ProseMirror').focus();
+  document.execCommand('insertText', false, 'SELECT * FROM DUAL');
+  await sleep(1000);
+  const chipT2 = document.querySelector('.gb-code-lang');
+  assert(chipT2 && chipT2.textContent === 'SQL', `T7f plaintext 未自动识别为 SQL "${chipT2?.textContent ?? ''}"`);
+
+  // T8（#8）信息块标题：可编辑 + 加粗 + 空占位
+  Ed.commands.setContent({ type: 'doc', content: [
+    { type: 'callout', attrs: { kind: 'info', title: '' }, content: [{ type: 'paragraph' }] },
+  ] });
+  await sleep(80);
+  const ctT = document.querySelector('.gg-callout-title');
+  assert(ctT && ctT.getAttribute('contenteditable') === 'true', 'T8a 标题不可编辑');
+  assert(ctT && !!ctT.dataset.ph, 'T8b 标题占位符缺失');
+  assert(ctT && parseInt(getComputedStyle(ctT).fontWeight, 10) >= 600, 'T8c 标题未加粗');
+  if (ctT) {
+    ctT.textContent = '重要说明';
+    ctT.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(80);
+    assert(Ed.state.doc.firstChild.attrs.title === '重要说明', 'T8d 标题未回写文档');
+    assert(getComputedStyle(ctT, '::before').content === 'none' || getComputedStyle(ctT, '::before').content.indexOf('重要') < 0, 'T8e 非空标题仍显示占位');
+  }
+
+  // T9（#9）非正文元素删除按钮：图片 / 分隔线 / 画板（NodeSelection）+ 信息块（光标进入）
+  // 图片
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+  Ed.commands.setTextSelection(1);
+  Ed.commands.insertGbImage({ src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', alt: 't' });
+  await sleep(80);
+  Ed.commands.setNodeSelection(0);
+  await sleep(60);
+  const imgWrapT = document.querySelector('.ProseMirror .gg-img');
+  assert(imgWrapT.classList.contains('sel') && getComputedStyle(imgWrapT.querySelector('.gb-nodedel')).display !== 'none', 'T9a 图片删除按钮未显示');
+  imgWrapT.querySelector('.gb-nodedel').click();
+  await sleep(60);
+  assert(!document.querySelector('.ProseMirror .gg-img'), 'T9b 图片删除失败');
+  // 分隔线
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+  Ed.commands.setTextSelection(1);
+  Ed.commands.setHorizontalRule();
+  await sleep(80);
+  let hrPos = -1;
+  Ed.state.doc.forEach((n, off) => { if (n.type.name === 'horizontalRule') hrPos = off; });
+  assert(hrPos >= 0 && !!document.querySelector('.gb-hr'), 'T9c 分隔线未渲染');
+  Ed.commands.setNodeSelection(hrPos);
+  await sleep(60);
+  const hrWrapT = document.querySelector('.gb-hr');
+  assert(hrWrapT.classList.contains('sel') && getComputedStyle(hrWrapT.querySelector('.gb-nodedel')).display !== 'none', 'T9d 分隔线删除按钮未显示');
+  hrWrapT.querySelector('.gb-nodedel').click();
+  await sleep(60);
+  assert(!document.querySelector('.ProseMirror .gb-hr'), 'T9e 分隔线删除失败');
+  // 画板节点
+  Ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+  Ed.commands.setTextSelection(1);
+  Ed.commands.insertSketch();
+  await sleep(120);
+  let skPos = -1;
+  Ed.state.doc.forEach((n, off) => { if (n.type.name === 'sketch') skPos = off; });
+  Ed.commands.setNodeSelection(skPos);
+  await sleep(60);
+  const skWrapT9 = document.querySelector('.ProseMirror .gg-sketch');
+  assert(skWrapT9.classList.contains('sel') && getComputedStyle(skWrapT9.querySelector('.gb-nodedel')).display !== 'none', 'T9f 画板删除按钮未显示');
+  skWrapT9.querySelector('.gb-nodedel').click();
+  await sleep(60);
+  assert(!document.querySelector('.ProseMirror .gg-sketch'), 'T9g 画板删除失败');
+  // 信息块（光标进入 → .cur → 删除）
+  Ed.commands.setContent({ type: 'doc', content: [
+    { type: 'paragraph' },
+    { type: 'callout', attrs: { kind: 'warn', title: 'x' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'b' }] }] },
+  ] });
+  Ed.commands.setTextSelection(Ed.state.doc.content.size - 2);
+  await sleep(80);
+  const coWrapT = document.querySelector('.ProseMirror .gg-callout');
+  const coDelT = coWrapT.querySelector('.gb-nodedel');
+  assert(coDelT.classList.contains('show') && getComputedStyle(coDelT).display !== 'none', 'T9h 信息块删除按钮未显示');
+  coWrapT.querySelector('.gb-nodedel').click();
+  await sleep(60);
+  assert(Ed.state.doc.childCount === 1 && !document.querySelector('.ProseMirror .gg-callout'), 'T9i 信息块删除失败');
+
+  finish(errs.length ? 'FAIL: ' + errs.join(' | ') : 'PASS');
+
+  function finish(result) {
+    window.__result = result;
+    document.title = 'e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>

@@ -130,6 +130,9 @@ const app: App = {
   openSettings() {
     void rpc('ui:openSettings').catch(showErr);
   },
+  openNotes() {
+    void rpc('ui:openNotes').catch(showErr);
+  },
   copy(text) {
     void rpc('ui:copy', { text }).catch(showErr);
   },
@@ -487,7 +490,9 @@ function moveDialog(srcs: string[]): Promise<string | null> {
   return new Promise(resolve => {
     const { box, body, close } = openModal(S.t('moveDlgTitle', { n: String(srcs.length) }));
     box.classList.add('gg-move-dlg');
-    let cwd = '';
+    // 初始目录=首个源文件所在目录（资源管理器"移动到"惯例；多选取第一项父目录）
+    const first = srcs[0] ?? '';
+    let cwd = first.includes('/') ? first.slice(0, first.lastIndexOf('/')) : '';
     let done = false;
     const finish = (v: string | null) => {
       if (done) return;
@@ -663,6 +668,9 @@ window.addEventListener('message', e => {
       S.lang = (m.language === 'en' ? 'en' : 'zh-CN') as Lang;
       S.t = createT(S.lang);
       S.repos = m.repos;
+      // v0.14.7：ready 可能先于 git 探测到达（reposPending=true）——外壳先行渲染，
+      // 仓库列表由随后的 reposChanged 补发；旧版扩展不带该字段时视为已就绪
+      S.reposPending = !!m.reposPending && m.repos.length === 0;
       S.version = m.version ?? '';
       S.detailPct = typeof m.detailPct === 'number' ? m.detailPct : undefined;
       S.projects = m.projects ?? [];
@@ -675,6 +683,7 @@ window.addEventListener('message', e => {
         filesview.el.style.width = S.files.paneW + 'px';
       }
       if (typeof m.sideCollapsed === 'boolean') S.sideCollapsed = m.sideCollapsed;
+      if (typeof m.workFilesW === 'number') workview.applyFilesWidth(m.workFilesW);   // 工作副本列宽跨会话恢复
       restoreSha = m.selectedSha;
       applyThemeKind();
       detail.applyHeightPct();   // 先恢复高度再渲染，避免 220px 默认值闪跳
@@ -686,8 +695,17 @@ window.addEventListener('message', e => {
       applyView();
       refreshAiModels();
       break;
+    case 'reposChanged':
+      // 仓库扫描完成（v0.14.7）：更新仓库列表并解除扫描态；空列表 → 主区显示无仓库引导
+      S.repos = m.repos;
+      S.reposPending = false;
+      toolbar.update();
+      sidebar.update();
+      list.refresh();
+      break;
     case 'repoState': {
       const st = m.state;
+      S.reposPending = false;   // 首个仓库状态到达 ⇒ 启动加载态结束（兜底，正常已由 reposChanged 解除）
       const repoChanged = st.repoId !== S.repoId;
       if (repoChanged) {
         S.repoId = st.repoId;

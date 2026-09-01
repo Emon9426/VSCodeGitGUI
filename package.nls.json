@@ -23,7 +23,7 @@
   "cfg.dateFormat.relative": "Relative time (e.g. 3 hours ago)",
   "cfg.dateFormat.iso": "ISO 8601 with timezone",
   "cfg.rowHeight": "Row height of the commit list.",
-  "cfg.graphStyle": "Graph line style: curved (short-radius corners) or angular (right-angle).",
+  "cfg.graphStyle": "Graph line style: github (GitHub-style thin lines, arc turns, hollow merge dots; default), curved (short-radius corners) or angular (right-angle).",
   "cfg.graphColumnWidth": "Width of the graph column in pixels.",
   "cfg.showRemoteChips": "Show remote-branch chips on commit rows.",
   "cfg.maxTagChips": "Maximum tag chips shown on one commit row.",
@@ -46,5 +46,10 @@
   "cmd.showFileHistory": "GitBoard: Show File History",
   "cfg.logOrder": "Commit ordering for git log. topo keeps graph lines tidy (default); date is faster on very large repos.",
   "cfg.logOrder.topo": "Topological (tidy graph lines, default)",
-  "cfg.logOrder.date": "Commit date (faster on large repos)"
+  "cfg.logOrder.date": "Commit date (faster on large repos)",
+  "viewContainer.notes": "GitBoard Quick Notes",
+  "view.notes": "Quick Notes",
+  "welcome.notes": "Quick Notes — a fast rich-text scratchpad independent of Git.\n[Open Quick Notes](command:gitboard.notes)",
+  "cmd.notes": "GitBoard: Open Quick Notes",
+  "cmd.notes.openHtml": "GitBoard: Open as Quick Note (HTML)"
 }

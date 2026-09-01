@@ -9,7 +9,7 @@ export interface ConfigDto {
   language: 'auto' | 'zh-CN' | 'en';
   dateFormat: 'datetime' | 'relative' | 'iso';
   rowHeightPx: number;            // 20 / 24 / 28
-  graphStyle: 'curved' | 'angular';
+  graphStyle: 'curved' | 'angular' | 'github';
   graphColumnWidth: number;       // 120–260
   maxTagChips: number;
   showRemoteChips: boolean;
@@ -70,15 +70,21 @@ export interface ColWidths {
 
 export type ExtEvent =
   | { t: 'ready'; config: ConfigDto; repos: RepoMeta[]; language: string; colWidths?: ColWidths; selectedSha?: string; version?: string;
+      /** 仓库扫描进行中（v0.14.7）：ready 不再等待 git 探测，外壳先行渲染；repos 由随后的 reposChanged 补发 */
+      reposPending?: boolean;
       /** 详情面板高度百分比（vh）：不同尺寸屏幕按相对高度恢复 */
       detailPct?: number;
       /** 文件页布局（v0.14）：左区面板宽度 px + 详细信息视图列宽 px 数组 */
       filesLayout?: { paneW: number; cols: number[] };
       /** 侧栏折叠状态（v0.14.1）：跨会话保持 */
       sideCollapsed?: boolean;
+      /** 工作副本文件列表宽度 px：跨会话恢复 */
+      workFilesW?: number;
       /** 已保存的工程列表 / 当前工作区命中的工程 / 工作区根路径（v0.11） */
       projects?: ProjectInfo[]; activeProjectIds?: string[]; workspaceFolders?: string[] }
   | { t: 'repoState'; state: RepoState }
+  // 仓库扫描完成（v0.14.7）：ready(reposPending) 之后异步补发发现的仓库列表（空=无 git 仓库/未找到 git）
+  | { t: 'reposChanged'; repos: RepoMeta[] }
   | { t: 'commitsAppend'; repoId: string; offset: number; commits: Commit[]; hasMore: boolean }
   | OpProgress
   | OpResult
@@ -137,6 +143,8 @@ export type WVCommand =
   | 'ui:saveColWidths'      // { widths: ColWidths }
   | 'ui:saveDetailPct'      // { pct }（详情面板高度百分比，跨屏按相对高度恢复）
   | 'ui:openSettings'
+  // 快速笔记（v0.15.1）：主面板工具栏直达笔记面板
+  | 'ui:openNotes'
   // 工作副本（Commit 功能）
   | 'work.state'            // {} -> WorkState
   | 'work.stage'            // { paths: string[] }

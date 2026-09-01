@@ -11,6 +11,7 @@ import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 import { GitExecutor } from '../../src/git/executor';
 import { GitService } from '../../src/git/service';
+import { semanticToOurs } from '../../src/git/parse';
 
 const enabled = !!process.env.GITGRAPH_SMOKE && spawnSync('git', ['--version']).status === 0;
 
@@ -82,6 +83,22 @@ describe.skipIf(!enabled)('合并冲突冒烟', () => {
     const wcDone = await svc.workingCopyOf(root);
     expect(wcDone.merging).toBe(false);
     expect(wcDone.mergeActive).toBe(false);
+  });
+
+  it('语义选侧内容级验证（v0.18.1 回归：选谁得谁）', async () => {
+    await setupConflict();
+    const checkout = async (sideTheirs: boolean) => {
+      await exec.exec(root, ['checkout', semanticToOurs('merge', sideTheirs) ? '--ours' : '--theirs', '--', 'app.ts']);
+      await exec.exec(root, ['add', '--', 'app.ts']);
+      return fs.readFileSync(path.join(root, 'app.ts'), 'utf8');
+    };
+    // 选"他人的"（sideTheirs=true）→ --theirs → 文件必须是 feature（远端侧）内容
+    expect(await checkout(true)).toContain('line2-FEATURE');
+    // 重建冲突后再选"我的"（sideTheirs=false）→ --ours → 文件必须是 main（本地侧）内容
+    await exec.exec(root, ['merge', '--abort']);
+    try { await exec.exec(root, ['merge', '--no-edit', 'feature']); } catch { /* 冲突即预期 */ }
+    expect(await checkout(false)).toContain('line2-MAIN');
+    await exec.exec(root, ['merge', '--abort']);
   });
 
   it('rebase 语义反转 + rebase --abort 还原', async () => {

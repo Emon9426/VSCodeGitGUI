@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GitBoard 图形列样式预览</title>
+<style>
+  :root {
+    --bg: #1e1e1e; --panel: #252526; --line: #3c3c3c; --fg: #cccccc; --dim: #9d9d9d;
+    --accent: #4fc1ff; --sel: #04395e; --chip: #2d2d30; --border: #3c3c3c;
+  }
+  .light {
+    --bg: #ffffff; --panel: #f8f8f8; --line: #e0e0e0; --fg: #24292f; --dim: #6e7781;
+    --accent: #0969da; --sel: #cce5ff; --chip: #eff1f3; --border: #d8dee4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; padding: 22px 26px 40px; }
+  h1 { font-size: 17px; margin-bottom: 4px; }
+  .sub { font-size: 12px; color: var(--dim); margin-bottom: 16px; }
+  .bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; font-size: 12px; }
+  .bar .sp { flex: 1; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .seg button { background: var(--chip); color: var(--fg); border: none; padding: 4px 12px; font-size: 12px; cursor: pointer; }
+  .seg button.on { background: var(--accent); color: #fff; }
+  .hint { font-size: 11.5px; color: var(--dim); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); gap: 16px; }
+  .grid.only-graph { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .card h2 { font-size: 13.5px; padding: 10px 14px 2px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .tag { font-size: 10px; color: var(--dim); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-weight: 400; }
+  .card .note { font-size: 11.5px; color: var(--dim); padding: 0 14px 10px; line-height: 1.55; }
+  .listwrap { border-top: 1px solid var(--border); max-height: 420px; overflow-y: auto; }
+  .row { display: flex; align-items: center; min-height: 24px; }
+  .row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  .row canvas { flex: none; display: block; }
+  .cols { flex: 1; min-width: 0; display: flex; gap: 10px; align-items: center; font-size: 12px; padding-right: 12px; }
+  .subj { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ref { font-size: 10.5px; border-radius: 4px; padding: 0 5px; margin-right: 5px; }
+  .ref.branch { background: color-mix(in srgb, #4fc1ff 22%, transparent); color: #4fc1ff; }
+  .ref.tag { background: color-mix(in srgb, #d29922 22%, transparent); color: #d29922; }
+  .ref.head { background: color-mix(in srgb, #3fb950 22%, transparent); color: #3fb950; }
+  .light .ref.branch { color: #0969da; background: color-mix(in srgb, #0969da 14%, transparent); }
+  .light .ref.tag { color: #9a6700; background: color-mix(in srgb, #9a6700 14%, transparent); }
+  .light .ref.head { color: #1a7f37; background: color-mix(in srgb, #1a7f37 14%, transparent); }
+  .au { flex: none; width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); font-size: 11.5px; }
+  .sh { flex: none; font-family: Consolas, monospace; color: var(--dim); font-size: 11px; }
+  .only-graph .cols { display: none; }
+</style>
+</head>
+<body>
+<h1>GitBoard 图形列样式候选</h1>
+<div class="sub">同一份模拟历史（主干 + feature/报表导出 + hotfix/支付，含两处合并与一处交叉汇入、标签与 HEAD）分别用 6 种风格渲染。几何布线沿用扩展现网算法（computeLanes 移植），仅笔触/配色/节点形态不同，切换到任一风格的改动都只落在 graphCanvas.ts 的绘制段。</div>
+<div class="bar">
+  <span class="hint">主题</span>
+  <span class="seg" id="segTheme"><button data-v="dark" class="on">深色</button><button data-v="light">浅色</button></span>
+  <span class="hint">行高</span>
+  <span class="seg" id="segRowH"><button data-v="20">紧凑 20</button><button data-v="24" class="on">标准 24</button><button data-v="28">宽松 28</button></span>
+  <span class="sp"></span>
+  <span class="seg" id="segMode"><button data-v="full" class="on">完整列表</button><button data-v="graph">仅图形列</button></span>
+</div>
+<div class="grid" id="grid"></div>
+
+<script>
+"use strict";
+/* ================= 模拟历史（topo 序：子在前） ================= */
+/* 双合并 + 交叉汇入（两个分支同一父提交 K，收编处出现肘形曲线） */
+const COMMITS = [
+  { sha: 'a0', subject: 'fix: 修复登录超时',        author: '张伟',   parents: ['b0'], refs: [{ t: 'branch', n: 'main' }, { t: 'head', n: 'HEAD' }] },
+  { sha: 'b0', subject: 'chore: 发布 v1.2.0',       author: '张伟',   parents: ['c0'], refs: [{ t: 'tag', n: 'v1.2.0' }] },
+  { sha: 'c0', subject: 'Merge feature/报表导出',   author: '张伟',   parents: ['d0', 'f0'] },
+  { sha: 'd0', subject: 'fix: 分页参数校验',         author: '李娜',   parents: ['e0'] },
+  { sha: 'e0', subject: 'refactor: 服务层拆分',      author: '张伟',   parents: ['g0'] },
+  { sha: 'g0', subject: 'Merge hotfix/支付',         author: '王强',   parents: ['h0', 'j0'] },
+  { sha: 'h0', subject: 'feat: 报表模块骨架',        author: '李娜',   parents: ['k0'] },
+  { sha: 'f0', subject: 'feat: 导出 PDF 模板',       author: '刘洋',   parents: ['i0'], refs: [{ t: 'branch', n: 'feature/报表导出' }] },
+  { sha: 'j0', subject: 'fix: 支付回调重试',         author: '王强',   parents: ['l0'], refs: [{ t: 'branch', n: 'hotfix/支付' }] },
+  { sha: 'i0', subject: 'feat: 导出 Excel',          author: '刘洋',   parents: ['m0'] },
+  { sha: 'l0', subject: 'fix: 支付超时兜底',         author: '王强',   parents: ['n0'] },
+  { sha: 'm0', subject: 'feat: 导出入口与格式选择',  author: '刘洋',   parents: ['k0'] },
+  { sha: 'n0', subject: 'fix: 支付签名校验',         author: '王强',   parents: ['k0'] },
+  { sha: 'k0', subject: 'feat: 用户中心与登录',      author: '张伟',   parents: ['o0'] },
+  { sha: 'o0', subject: 'docs: README 与架构说明',   author: '李娜',   parents: ['p0'] },
+  { sha: 'p0', subject: 'init: 初始提交',            author: '张伟',   parents: [] },
+];
+
+/* ================= computeLanes 移植（与 src/graph/lanes.ts 一致） ================= */
+function computeLanes(commits) {
+  const lanes = [], laneSeg = [], activeBelow = [], curves = [];
+  let segCount = 0;
+  for (let i = 0; i < commits.length; i++) {
+    const c = commits[i];
+    const hit = [];
+    for (let k = 0; k < lanes.length; k++) if (lanes[k] === c.sha) hit.push(k);
+    let lane;
+    if (hit.length) {
+      lane = hit[0];
+      for (const h of hit) if (h !== lane) {
+        curves.push({ row: i, fromLane: h, toLane: lane, kind: 'mergeIn', seg: laneSeg[h] ?? 0 });
+        lanes[h] = null; laneSeg[h] = null;
+      }
+    } else {
+      lane = lanes.indexOf(null);
+      if (lane === -1) { lane = lanes.length; lanes.push(null); laneSeg.push(null); }
+      laneSeg[lane] = segCount++;
+    }
+    c.lane = lane; c.seg = laneSeg[lane] ?? 0;
+    if (!c.parents.length) { lanes[lane] = null; laneSeg[lane] = null; }
+    else {
+      lanes[lane] = c.parents[0]; laneSeg[lane] = c.seg;
+      for (let p = 1; p < c.parents.length; p++) {
+        const parent = c.parents[p];
+        const existing = lanes.indexOf(parent);
+        if (existing !== -1) {
+          if (existing !== lane) curves.push({ row: i, fromLane: lane, toLane: existing, kind: 'mergeOut', seg: laneSeg[existing] ?? 0 });
+        } else {
+          let k = lanes.indexOf(null);
+          if (k === -1) { k = lanes.length; lanes.push(null); laneSeg.push(null); }
+          lanes[k] = parent; laneSeg[k] = segCount++;
+          curves.push({ row: i, fromLane: lane, toLane: k, kind: 'fork', seg: segCount - 1 });
+        }
+      }
+    }
+    const act = [];
+    for (let k = 0; k < lanes.length; k++) if (lanes[k] !== null) act.push({ lane: k, seg: laneSeg[k] ?? 0 });
+    activeBelow.push(act);
+  }
+  let laneCount = 0;
+  for (const c of commits) laneCount = Math.max(laneCount, (c.lane ?? 0) + 1);
+  for (const act of activeBelow) for (const k of act) laneCount = Math.max(laneCount, k.lane + 1);
+  return { laneCount, activeBelow, curves, segCount };
+}
+
+/* HEAD 首父链（极简聚焦风用：高亮当前检出脉络） */
+function headChain(commits) {
+  const bySha = new Map(commits.map(c => [c.sha, c]));
+  const set = new Set();
+  let cur = commits[0];
+  while (cur) { set.add(cur.sha); cur = bySha.get(cur.parents[0]); }
+  return set;
+}
+
+/* ================= 风格定义 ================= */
+const hexA = (hex, a) => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+};
+const STYLES = [
+  {
+    id: 'baseline', name: '① 现状基线（柔化曲线）', tag: '当前版本',
+    note: '现网样式：2px 彩色分段竖线 + 整行高 S 曲线换轨 + 肘形汇入；实心圆点带背景描边，HEAD 红环、合并同色外环。紧凑 lane 间距 11px。',
+    laneW: 11, lw: 2, elbow: 'bezier', fork: 'bezier',
+    palettes: {
+      dark: ['#4fc1ff', '#f0883e', '#3fb950', '#a371f7', '#d29922', '#f85149'],
+      light: ['#0969da', '#bc4c00', '#1a7f37', '#8250df', '#9a6700', '#cf222e'],
+    },
+    node: { r: 3.8, mode: 'solid', headRing: 'red', mergeRing: 'same', strokeBg: 1.5 },
+  },
+  {
+    id: 'github', name: '② GitHub 风（细线圆融）', tag: '已采纳 · v0.14.6 起默认',
+    note: 'GitHub 提交图观感：细 2px 线、低饱和蓝紫系配色；换轨用双段圆弧（起止都在节点上汇合，没有水平直段）；普通节点实心小圆，合并节点空心环，HEAD 加粗白边圆点。适合喜欢轻盈、弱化装饰的场景。',
+    laneW: 12, lw: 2, elbow: 'arc', fork: 'arc',
+    palettes: {
+      dark: ['#8957e5', '#316dca', '#2ea043', '#d29922', '#db61a2', '#e7811d'],
+      light: ['#8250df', '#0969da', '#1a7f37', '#9a6700', '#bf3989', '#bc4c00'],
+    },
+    node: { r: 3.2, mode: 'solid-hollow-merge', headRing: 'bg-thick', mergeRing: 'hollow', strokeBg: 2 },
+  },
+  {
+    id: 'kraken', name: '③ GitKraken 风（粗线大转角）', tag: '候选',
+    note: 'GitKraken 观感：3px 粗线 + 高饱和色 + 固定大半径圆角转弯（地铁弯道感）；节点全部为空心圆环（背景色内芯），HEAD 实心核加外环，合并双环。辨识度最高，粗线在深色主题下非常清晰。',
+    laneW: 13, lw: 3, elbow: 'corner', fork: 'corner', cornerR: 8,
+    palettes: {
+      dark: ['#26c6a6', '#7e57ff', '#ff7043', '#ec6ea5', '#42a5f5', '#c0ca33'],
+      light: ['#0e9384', '#6f42c1', '#e2571d', '#c2417c', '#1a6fc4', '#8a8f1d'],
+    },
+    node: { r: 4.2, mode: 'ring', headRing: 'core-ring', mergeRing: 'double', strokeBg: 2.6 },
+  },
+  {
+    id: 'minimal', name: '④ 极简聚焦（灰底蓝脉）', tag: '候选',
+    note: '只强调一条线：非 HEAD 分支段统一灰色细线（1.5px）+ 灰色小点；从 HEAD 沿第一父回溯的"当前脉络"用主题蓝加粗（2.5px）。视線不被杂色分散，审阅主线提交时最省注意力；缺点是分支身份不直观。',
+    laneW: 12, lw: 1.5, lwHead: 2.5, elbow: 'bezier', fork: 'bezier', focus: true,
+    palettes: { dark: ['#6e7681'], light: ['#8c959f'] },
+    headColor: { dark: '#4fc1ff', light: '#0969da' },
+    node: { r: 2.6, headR: 3.4, mode: 'solid', headRing: 'none', mergeRing: 'same', strokeBg: 1.4 },
+  },
+  {
+    id: 'metro', name: '⑤ 管道地铁（粗壮色带）', tag: '候选',
+    note: '4px 色带 + 大圆角（像地铁线路图）：每条分支是一条"管道"，节点是大号实心圆（背景描边加粗）。远看也清晰、缩略图级别可辨识；占用横向空间稍大（lane 15px），配合紧凑行高时视觉密度高。',
+    laneW: 15, lw: 4, elbow: 'corner', fork: 'corner', cornerR: 9,
+    palettes: {
+      dark: ['#29b6f6', '#66bb6a', '#ffa726', '#ef5350', '#ab47bc', '#26c6da'],
+      light: ['#0288d1', '#2e7d32', '#ef6c00', '#c62828', '#6a1b9a', '#0097a7'],
+    },
+    node: { r: 4.8, mode: 'solid', headRing: 'red', mergeRing: 'same', strokeBg: 2.2 },
+  },
+  {
+    id: 'aurora', name: '⑥ 渐隐流光（梯度 + 辉光）', tag: '候选',
+    note: '竖线沿"新→旧"方向透明度渐隐（1.0 → 0.35），新提交一段最亮；HEAD 节点带同色辉光。有"历史渐渐淡去"的层次感，深色主题下尤其好看；浅色主题下渐隐对比会弱一些。',
+    laneW: 12, lw: 2.4, elbow: 'bezier', fork: 'bezier', gradient: true,
+    palettes: {
+      dark: ['#4fc1ff', '#f0883e', '#3fb950', '#a371f7', '#e3b341', '#ff7b72'],
+      light: ['#0969da', '#bc4c00', '#1a7f37', '#8250df', '#9a6700', '#cf222e'],
+    },
+    node: { r: 3.6, mode: 'solid', headRing: 'glow', mergeRing: 'same', strokeBg: 1.6 },
+  },
+];
+
+/* ================= 绘制 ================= */
+const THEME = { dark: { bg: '#1e1e1e' }, light: { bg: '#ffffff' } };
+let curTheme = 'dark', curRowH = 24, onlyGraph = false;
+
+function segColor(style, theme, seg, isHeadChain) {
+  if (style.focus) return isHeadChain ? style.headColor[theme] : style.palettes[theme][0];
+  const pal = style.palettes[theme];
+  return pal[((seg % pal.length) + pal.length) % pal.length];
+}
+
+function pathFork(ctx, style, x1, x2, y0, R) {
+  const yMid = y0 + R / 2;
+  if (style.fork === 'arc') {
+    // GitHub 式双段圆弧：节点处即起弯，中段水平相接
+    const r = Math.min(R / 2.6, Math.abs(x2 - x1));
+    ctx.moveTo(x1, y0);
+    ctx.quadraticCurveTo(x1, y0 + r, x1 + Math.sign(x2 - x1) * r, yMid);
+    ctx.lineTo(x2 - Math.sign(x2 - x1) * r, yMid);
+    ctx.quadraticCurveTo(x2, yMid, x2, yMid + r);
+    ctx.lineTo(x2, y0 + R);
+  } else if (style.fork === 'corner') {
+    const cr = Math.min(style.cornerR || 8, Math.abs(x2 - x1) / 2 - 0.5, R / 2 - 1);
+    const s = Math.sign(x2 - x1);
+    ctx.moveTo(x1, y0);
+    ctx.lineTo(x1, yMid - cr);
+    ctx.quadraticCurveTo(x1, yMid, x1 + s * cr, yMid);
+    ctx.lineTo(x2 - s * cr, yMid);
+    ctx.quadraticCurveTo(x2, yMid, x2, yMid + cr);
+    ctx.lineTo(x2, y0 + R);
+  } else {
+    ctx.moveTo(x1, y0);
+    ctx.bezierCurveTo(x1, yMid, x2, yMid, x2, y0 + R);
+  }
+}
+function pathElbow(ctx, style, x1, x2, y0, R) {
+  // 汇入肘形：起于 (x1, y0-R/2) 终于节点 (x2, y0)
+  if (style.elbow === 'arc') {
+    const r = Math.min(R / 2.6, Math.abs(x2 - x1));
+    const s = Math.sign(x2 - x1);
+    ctx.moveTo(x1, y0 - R / 2);
+    ctx.lineTo(x1, y0 - r);
+    ctx.quadraticCurveTo(x1, y0, x1 + s * r, y0);
+    ctx.lineTo(x2, y0);
+  } else if (style.elbow === 'corner') {
+    const cr = Math.min(style.cornerR || 8, Math.abs(x2 - x1) - 0.5, R / 2 - 1);
+    const s = Math.sign(x2 - x1);
+    ctx.moveTo(x1, y0 - R / 2);
+    ctx.lineTo(x1, y0 - cr);
+    ctx.quadraticCurveTo(x1, y0, x1 + s * cr, y0);
+    ctx.lineTo(x2, y0);
+  } else {
+    ctx.moveTo(x1, y0 - R / 2);
+    ctx.bezierCurveTo(x1, y0, (x1 + x2) / 2, y0, x2, y0);
+  }
+}
+
+function strokeSeg(ctx, style, theme, color, yTop, yBottom) {
+  if (style.gradient) {
+    const g = ctx.createLinearGradient(0, yTop, 0, yBottom);
+    g.addColorStop(0, hexA(color, 1));
+    g.addColorStop(1, hexA(color, 0.35));
+    ctx.strokeStyle = g;
+  } else ctx.strokeStyle = color;
+  ctx.stroke();
+}
+
+/* ================= 页面装配 ================= */
+const grid = document.getElementById('grid');
+const cards = STYLES.map(style => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<h2>${style.name}<span class="tag">${style.tag}</span></h2><div class="note">${style.note}</div>`;
+  const listwrap = document.createElement('div');
+  listwrap.className = 'listwrap';
+  const rows = COMMITS.map((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'row'; row.style.minHeight = curRowH + 'px';
+    const cv = document.createElement('canvas');
+    const cols = document.createElement('div');
+    cols.className = 'cols';
+    const refs = (c.refs || []).map(q => `<span class="ref ${q.t}">${q.n}</span>`).join('');
+    cols.innerHTML = `<span class="subj">${refs}${c.subject}</span><span class="au">${c.author}</span><span class="sh">${c.sha}</span>`;
+    row.append(cv, cols);
+    listwrap.append(row);
+    return { cv, i };
+  });
+  card.append(listwrap);
+  grid.append(card);
+  return { style, card, rows };
+});
+
+function renderAll() {
+  // computeLanes 直接在提交对象上标注 lane/seg（与现网一致），不要传副本否则节点取不到段色
+  const model = computeLanes(COMMITS);
+  const hcSet = headChain(COMMITS);
+  document.querySelectorAll('.row').forEach(r => r.style.minHeight = curRowH + 'px');
+  for (const { style, rows } of cards) for (const { cv, i } of rows) {
+    // 每行一个窄条 canvas，只画本行带状区域（跨行走线由相邻条拼接）
+    drawRowStrip(cv, style, model, hcSet, i);
+  }
+}
+
+/* 单行条带绘制：把整图绘制限制在本行 [i*R, (i+1)*R) 视口，等价于现网滚动裁剪 */
+function drawRowStrip(canvas, style, model, hcSet, i) {
+  const R = curRowH, PADDING = 8, LANE_W = style.laneW;
+  const n = COMMITS.length;
+  const w = PADDING * 2 + model.laneCount * LANE_W;
+  const h = R;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, -i * R * dpr);   // 视口平移到本行（平移量须乘 dpr，否则高分屏错位）
+  ctx.clearRect(0, -i * R, w, h);
+  drawGraphInto(ctx, style, model, hcSet, w, i * R, (i + 1) * R, R, n, PADDING, LANE_W);
+}
+
+/* 与 drawGraph 相同的绘制主体，但接受任意竖向视口 [vy0, vy1)（等价现网 scrollTop 裁剪） */
+function drawGraphInto(ctx, style, model, hcSet, w, vy0, vy1, R, n, PADDING, LANE_W) {
+  const bg = THEME[curTheme].bg;
+  const yc = r => r * R + R / 2;
+  const x = lane => PADDING + lane * LANE_W;
+  const col = seg => segColor(style, curTheme, seg, false);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const curvesByRow = new Map();
+  for (const c of model.curves) {
+    if (!curvesByRow.has(c.row)) curvesByRow.set(c.row, []);
+    curvesByRow.get(c.row).push(c);
+  }
+  const first = Math.max(0, Math.floor(vy0 / R) - 1);
+  const last = Math.min(n - 1, Math.ceil(vy1 / R));
+  // 竖线
+  for (let r = Math.max(0, first); r <= Math.min(n - 2, last); r++) {
+    const yTop = yc(r), yBottom = yc(r + 1);
+    if (yBottom < vy0 - R || yTop > vy1 + R) continue;
+    const taken = new Set();
+    for (const cv of curvesByRow.get(r) ?? []) if (cv.kind !== 'mergeIn') taken.add(cv.toLane);
+    const stopEarly = new Map();
+    for (const cv of curvesByRow.get(r + 1) ?? []) if (cv.kind === 'mergeIn') stopEarly.set(cv.fromLane, yBottom - R / 2);
+    for (const a of model.activeBelow[r]) {
+      if (taken.has(a.lane)) continue;
+      const yEnd = stopEarly.get(a.lane) ?? yBottom;
+      const cm = COMMITS[r];
+      const isHc = style.focus && hcSet.has(cm.sha) && cm.lane === a.lane && cm.seg === a.seg;
+      ctx.lineWidth = isHc ? (style.lwHead || style.lw) : style.lw;
+      ctx.beginPath(); ctx.moveTo(x(a.lane), yTop); ctx.lineTo(x(a.lane), yEnd);
+      strokeSeg(ctx, style, curTheme, isHc ? style.headColor[curTheme] : col(a.seg), yTop, yEnd);
+    }
+  }
+  // 曲线
+  for (const cv of model.curves) {
+    if (cv.row < first - 1 || cv.row > last + 1) continue;
+    const cc = COMMITS[cv.row];
+    const isHcSeg = style.focus && hcSet.has(cc.sha) && cv.kind !== 'fork';
+    const color = style.focus ? (isHcSeg ? style.headColor[curTheme] : col(cv.seg)) : col(cv.seg);
+    ctx.lineWidth = style.focus && isHcSeg ? (style.lwHead || style.lw) : style.lw;
+    ctx.beginPath();
+    if (cv.kind === 'mergeIn') pathElbow(ctx, style, x(cv.fromLane), x(cv.toLane), yc(cv.row), R);
+    else pathFork(ctx, style, x(cv.fromLane), x(cv.toLane), yc(cv.row), R);
+    strokeSeg(ctx, style, curTheme, color, yc(cv.row), yc(cv.row) + R);
+  }
+  // 节点
+  for (let r = Math.max(0, first); r <= Math.min(n - 1, last); r++) {
+    const c = COMMITS[r];
+    const cy = yc(r);
+    if (cy < vy0 - R || cy > vy1 + R) continue;
+    const isHead = c.refs && c.refs.some(q => q.t === 'head');
+    const isMerge = c.parents.length > 1;
+    const isHc = hcSet.has(c.sha);
+    const color = style.focus ? (isHc ? style.headColor[curTheme] : style.palettes[curTheme][0]) : col(c.seg);
+    const cx = x(c.lane);
+    const nd = style.node;
+    const rr = isHead && nd.headR ? nd.headR : nd.r;
+    if (nd.mode === 'ring') {
+      if (isHead) {
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cx, cy, rr * 0.52, 0, 7); ctx.fill();
+        ctx.strokeStyle = color; ctx.lineWidth = nd.strokeBg; ctx.beginPath(); ctx.arc(cx, cy, rr + 1.4, 0, 7); ctx.stroke();
+      } else {
+        ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill();
+        ctx.strokeStyle = color; ctx.lineWidth = nd.strokeBg; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.stroke();
+        if (isMerge) { ctx.strokeStyle = hexA(color, 0.55); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(cx, cy, rr + 2.2, 0, 7); ctx.stroke(); }
+      }
+    } else if (nd.mode === 'solid-hollow-merge') {
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill();
+      if (isMerge) { ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(cx, cy, rr - 1.3, 0, 7); ctx.fill(); }
+      if (isHead) { ctx.strokeStyle = bg; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.arc(cx, cy, rr + 1.2, 0, 7); ctx.stroke(); }
+    } else {
+      if (nd.headRing === 'glow' && isHead) {
+        ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = 9;
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill(); ctx.restore();
+      } else {
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill();
+      }
+      if (nd.strokeBg) { ctx.strokeStyle = bg; ctx.lineWidth = nd.strokeBg; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.stroke(); }
+      if (isMerge && nd.mergeRing === 'same') {
+        ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx, cy, rr + 2, 0, 7); ctx.stroke();
+      }
+      if (isHead && nd.headRing === 'red') {
+        ctx.strokeStyle = curTheme === 'dark' ? '#f85149' : '#cf222e';
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, rr + 2.5, 0, 7); ctx.stroke();
+      }
+    }
+  }
+}
+
+/* ================= 控件 ================= */
+function bindSeg(id, fn) {
+  const seg = document.getElementById(id);
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    seg.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); fn(b.dataset.v);
+  });
+}
+bindSeg('segTheme', v => { curTheme = v; document.body.classList.toggle('light', v === 'light'); renderAll(); });
+bindSeg('segRowH', v => { curRowH = +v; renderAll(); });
+bindSeg('segMode', v => { onlyGraph = v === 'graph'; grid.classList.toggle('only-graph', onlyGraph); });
+
+renderAll();
+window.__result = 'DONE';
+document.title = 'graph-styles-e2e:' + window.__result;
+</script>
+</body>
+</html>

@@ -18,6 +18,8 @@ export interface App {
   runRefresh(): void;
   cancelOp(opId: number): void;
   openSettings(): void;
+  /** 直达快速笔记面板（v0.15.1，独立于 Git 的模块） */
+  openNotes(): void;
   copy(text: string): void;
   openDiffEditor(sha: string, path: string, worktree?: boolean): void;
   openFile(path: string): void;
@@ -92,7 +94,7 @@ export interface App {
 
 export const S = {
   config: {
-    language: 'auto', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+    language: 'auto', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'github',
     graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
     commitPageSize: 500, maxAutoLoad: 20000, fetchOnOpen: true, autoFetchInterval: 10, fetchPrune: true,
     defaultPullStrategy: 'merge', logOrder: 'topo', pullFetchSummary: true,
@@ -100,6 +102,8 @@ export const S = {
   lang: 'zh-CN' as Lang,
   t: createT('zh-CN') as Translate,
   repos: [] as RepoMeta[],
+  /** 仓库扫描进行中（v0.14.7）：ready 先行渲染，reposChanged 到达后置 false */
+  reposPending: false,
   version: '',   // 扩展版本（工具栏显示，便于确认当前构建）
   repoId: undefined as string | undefined,
   state: undefined as RepoState | undefined,

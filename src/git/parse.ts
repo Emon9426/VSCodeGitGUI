@@ -529,3 +529,11 @@ export function detectMove(entries: FileEntry[]): { from: string; to: string; co
   }
   return best;
 }
+
+/**
+ * 语义侧（UI 的"我的/他人的"）→ git 级 ours 布尔（resolveConflict 的 --ours/--theirs 用）。
+ * merge：我=stage2=--ours；rebase：我=stage3=--theirs（git 视角 ours 是重放基，与语义反转，设计方案 §4.6）。
+ */
+export function semanticToOurs(kind: 'merge' | 'rebase' | 'other', sideTheirs: boolean): boolean {
+  return kind === 'rebase' ? sideTheirs : !sideTheirs;
+}

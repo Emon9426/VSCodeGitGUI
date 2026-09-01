@@ -67,7 +67,19 @@ export function createSidebar(app: App): Sidebar {
       repoSec.list.appendChild(item);
     }
     if (!S.repos.length) {
-      repoSec.list.appendChild(el('div', 'gg-side-empty', S.t('noRepos')));
+      if (S.reposPending) {
+        // v0.14.7：仓库扫描中——轻量加载行（spinner + 文案），替代静默空文案
+        const row = el('div', 'gg-side-empty');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '6px';
+        const sp = el('span', 'gg-spinner');
+        sp.style.width = sp.style.height = '10px';
+        row.append(sp, el('span', undefined, S.t('loadingRepos')));
+        repoSec.list.appendChild(row);
+      } else {
+        repoSec.list.appendChild(el('div', 'gg-side-empty', S.t('noRepos')));
+      }
     }
 
     const st = S.state;

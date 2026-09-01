@@ -38,6 +38,7 @@ export interface OpSpec {
   srcs?: string[];             // moveFolder：多选源路径（批量 git mv）
   dst?: string;                // moveFolder：目标目录
   path?: string;               // renamePath：原路径
+  background?: boolean;        // fetch：autoFetch 静默轮询（加低速中断防挂队列）
 }
 
 export interface OpOutcome {
@@ -139,6 +140,9 @@ function buildArgs(spec: OpSpec): string[][] {
   switch (spec.kind) {
     case 'fetch': {
       const args = ['fetch', '--progress'];
+      // 后台自动获取：git 层低速中断（连续 45s <1KB/s 视为挂起）——防网络故障时
+      // fetch 无限占用串行队列，堵住用户显式操作（runner 的 exec 超时对网络类不适用）
+      if (spec.background) args.unshift('-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=45');
       if (spec.all) args.push('--all');
       if (spec.prune) args.push('--prune');
       if (!spec.all && spec.remote) args.push(spec.remote);

@@ -28,14 +28,29 @@ const ui = {
   logLevel: 'info',
 };
 
+/** 快速笔记 webview（v0.15）：独立 iife bundle（CSS 输出为 out/notes.css），含 TipTap */
+const notes = {
+  entryPoints: ['src/ui/notes/main.ts'],
+  bundle: true,
+  outfile: 'out/notes.js',
+  format: 'iife',
+  platform: 'browser',
+  target: 'chrome120',
+  sourcemap: false,
+  minify: true,
+  logLevel: 'info',
+};
+
 (async () => {
   if (watch) {
     const ctxExt = await esbuild.context(ext);
     const ctxUi = await esbuild.context(ui);
-    await Promise.all([ctxExt.watch(), ctxUi.watch()]);
+    const ctxNotes = await esbuild.context(notes);
+    await Promise.all([ctxExt.watch(), ctxUi.watch(), ctxNotes.watch()]);
   } else {
     await esbuild.build(ext);
     await esbuild.build(ui);
+    await esbuild.build(notes);
   }
 })().catch((e) => {
   console.error(e);

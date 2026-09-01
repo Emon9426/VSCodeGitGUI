@@ -76,22 +76,27 @@ export class FilesService {
   private async treeIndexOf(root: string): Promise<TreeIndex> {
     const cached = this.treeIndex.get(root);
     if (cached) return cached;
-    const out = await this.run(root, ['ls-tree', '-r', '-z', '-l', '--', 'HEAD']);
+    // 读 index 而非 HEAD 树：git mv/rm 只落 index 与工作区（未提交时 HEAD 不变），
+    // HEAD 快照会让"移动→列表仍显旧路径→再移动 bad source"（v0.18.1 修复）。
+    // ls-files --stage 输出 `mode sha stage\tpath`；冲突条目同路径多 stage 行需去重（stage>0 只留首条）。
+    const out = await this.run(root, ['ls-files', '--stage', '-z']);
     const byDir: TreeIndex['byDir'] = new Map();
     const dirs = new Set<string>();
+    const seen = new Set<string>();   // 冲突条目同路径 stage 1/2/3 三行只留一条
     for (const rec of out.split('\0')) {
       if (!rec) continue;
       const tab = rec.indexOf('\t');
       if (tab < 0) continue;
       const meta = rec.slice(0, tab).split(' ');
-      if (meta[1] !== 'blob') continue;   // 跳过 gitlink（子模块）
+      if (meta[0] === '160000') continue;   // gitlink（子模块）
       const p = unescapeGitPath(rec.slice(tab + 1));
+      if (seen.has(p)) continue;
+      seen.add(p);
       const i = p.lastIndexOf('/');
       const dir = i < 0 ? '' : p.slice(0, i);
-      const size = Number(meta[3]);
       let arr = byDir.get(dir);
       if (!arr) { arr = []; byDir.set(dir, arr); }
-      arr.push({ name: i < 0 ? p : p.slice(i + 1), path: p, gitSize: Number.isFinite(size) ? size : undefined });
+      arr.push({ name: i < 0 ? p : p.slice(i + 1), path: p });
       let d = dir;
       for (;;) {   // 所有祖先目录入集合
         dirs.add(d);

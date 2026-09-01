@@ -15,6 +15,8 @@ export interface WorkView {
   el: HTMLElement;
   update(): void;
   updateDiff(): void;
+  /** 恢复持久化的文件列表宽度（ready 时宿主下发，钳制防异常值） */
+  applyFilesWidth(w: number): void;
 }
 
 export function createWorkView(app: App): WorkView {
@@ -90,14 +92,15 @@ export function createWorkView(app: App): WorkView {
     });
   }
 
-  // 列宽拖拽（200–420，持久化到宿主）
+  // 列宽拖拽（200 起，上限=容器宽-360 保证 diff 区可用；持久化到宿主）
   const resizer = el('div', 'gg-work-resizer');
   resizer.addEventListener('pointerdown', e => {
     e.preventDefault();
     const startX = e.clientX;
     const startW = files.getBoundingClientRect().width;
     const move = (ev: PointerEvent) => {
-      const w = Math.max(200, Math.min(420, startW + ev.clientX - startX));
+      const maxW = Math.max(220, root.clientWidth - 360);
+      const w = Math.max(200, Math.min(maxW, startW + ev.clientX - startX));
       files.style.width = `${w}px`;
     };
     const up = () => {
@@ -524,5 +527,11 @@ export function createWorkView(app: App): WorkView {
   }
 
   root.append(files, diffPane);
-  return { el: outer, update, updateDiff };
+  return {
+    el: outer, update, updateDiff,
+    applyFilesWidth(w: number): void {
+      // ready 时视图可能仍隐藏（clientWidth=0），相对钳制交给 CSS max-width:calc(100% - 340px)，此处只防异常值
+      files.style.width = `${Math.max(200, Math.min(900, w))}px`;
+    },
+  };
 }

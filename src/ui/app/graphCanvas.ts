@@ -15,6 +15,12 @@ const PALETTE_VARS = [
   '--vscode-charts-purple', '--vscode-charts-yellow', '--vscode-charts-red',
 ];
 const PALETTE_FALLBACK_DARK = ['#4fc1ff', '#f0883e', '#3fb950', '#a371f7', '#d29922', '#f85149'];
+/** GitHub 风固定配色（不取主题 charts 变量，按编辑器背景明暗二选一；v0.14.6 起为默认风格） */
+const GITHUB_DARK = ['#8957e5', '#316dca', '#2ea043', '#d29922', '#db61a2', '#e7811d'];
+const GITHUB_LIGHT = ['#8250df', '#0969da', '#1a7f37', '#9a6700', '#bf3989', '#bc4c00'];
+
+/** lane 槽位宽度：github 风稍宽（12px）以容纳双段圆弧转弯 */
+const laneW = (): number => (S.config.graphStyle === 'github' ? 12 : LANE_W);
 
 export class GraphCanvas {
   readonly canvas = document.createElement('canvas');
@@ -63,7 +69,7 @@ export class GraphCanvas {
 
   private recomputeWidth(): void {
     if (this.pure) { this.lastWidth = PURE_W; return; }
-    const need = PADDING * 2 + this.laneCount * LANE_W;
+    const need = PADDING * 2 + this.laneCount * laneW();
     this.lastWidth = Math.max(this.userGraphWidth || S.config.graphColumnWidth, need);
   }
 
@@ -94,9 +100,10 @@ export class GraphCanvas {
     const first = Math.max(0, Math.floor(scrollTop / R) - 1);
     const last = Math.min(n - 1, Math.ceil((scrollTop + h) / R));
     const yc = (row: number) => row * R + R / 2 - scrollTop;
-    const x = (lane: number) => PADDING + lane * LANE_W;
+    const x = (lane: number) => PADDING + lane * laneW();
     const segColor = (seg: number) => this.colors[((seg % this.colors.length) + this.colors.length) % this.colors.length];
     const angular = S.config.graphStyle === 'angular';
+    const github = S.config.graphStyle === 'github';
 
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
@@ -144,6 +151,13 @@ export class GraphCanvas {
           ctx.moveTo(x1, y0 - R / 2);
           if (angular) {
             ctx.lineTo(x2, y0);
+          } else if (github) {
+            // GitHub 风汇入：竖线短距离后四分之一圆弧拐入节点
+            const r = Math.min(R / 2.6, Math.abs(x2 - x1));
+            const s = Math.sign(x2 - x1);
+            ctx.lineTo(x1, y0 - r);
+            ctx.quadraticCurveTo(x1, y0, x1 + s * r, y0);
+            ctx.lineTo(x2, y0);
           } else {
             ctx.bezierCurveTo(x1, y0, (x1 + x2) / 2, y0, x2, y0);
           }
@@ -157,6 +171,15 @@ export class GraphCanvas {
             ctx.lineTo(x2, y0 + R / 2);
             ctx.lineTo(x2, y1);
           } else if (x1 === x2) {
+            ctx.lineTo(x2, y1);
+          } else if (github) {
+            // GitHub 风换轨：两端四分之一圆弧 + 中段短水平，节点处即起弯
+            const r = Math.min(R / 2.6, Math.abs(x2 - x1));
+            const s = Math.sign(x2 - x1);
+            const yMid = y0 + R / 2;
+            ctx.quadraticCurveTo(x1, y0 + r, x1 + s * r, yMid);
+            ctx.lineTo(x2 - s * r, yMid);
+            ctx.quadraticCurveTo(x2, yMid, x2, yMid + r);
             ctx.lineTo(x2, y1);
           } else {
             ctx.bezierCurveTo(x1, y0 + R / 2, x2, y0 + R / 2, x2, y1);
@@ -175,8 +198,29 @@ export class GraphCanvas {
       const cx = x(c.lane ?? 0);
       const isHead = c.refs.some(ref => ref.isHead);
       const isMerge = c.parents.length > 1;
-      const radius = Math.max(2.5, Math.min(4.5, R * 0.16));
+      const radius = github ? 3.2 : Math.max(2.5, Math.min(4.5, R * 0.16));
       const color = segColor(c.seg ?? c.lane ?? 0);
+      if (github) {
+        // GitHub 风节点：实心小圆点；合并=空心环（背景内芯）；HEAD=背景色粗边强调（无红环）
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, y0, radius, 0, Math.PI * 2);
+        ctx.fill();
+        if (isMerge) {
+          ctx.fillStyle = bg;
+          ctx.beginPath();
+          ctx.arc(cx, y0, radius - 1.3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (isHead) {
+          ctx.strokeStyle = bg;
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          ctx.arc(cx, y0, radius + 1.2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        continue;
+      }
       if (isMerge && !isHead) {   // HEAD 已有更大的红环，不再叠加同色环
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.5;
@@ -262,6 +306,10 @@ export class GraphCanvas {
 
   private readColors(): void {
     const dark = isDark(cssVar('--vscode-editor-background', '#1e1e1e'));
+    if (S.config.graphStyle === 'github') {
+      this.colors = dark ? GITHUB_DARK : GITHUB_LIGHT;
+      return;
+    }
     this.colors = PALETTE_VARS.map((v, i) => {
       const val = cssVar(v, '');
       if (val) return val;

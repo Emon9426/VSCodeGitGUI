@@ -167,6 +167,9 @@ export function createToolbar(app: App): Toolbar {
   const langBtn = mkBtn('', () => app.pickLanguage());
   const gearBtn = mkBtn('⚙', () => app.openSettings());
   gearBtn.title = S.t('settings');
+  // 快速笔记直达（v0.15.1：独立于 Git 的面板，主面板内也保留显眼入口）
+  const notesBtn = mkBtn('📝', () => app.openNotes());
+  notesBtn.title = S.t('notesOpen');
   const versionLabel = el('span', 'gg-version-label', '');
 
   // 视图切换：提交图 ⇄ 纯提交列表 ⇄ 工作副本 ⇄ 文件历史（v0.14 第四视图；纯列表隐藏合并提交）
@@ -193,7 +196,8 @@ export function createToolbar(app: App): Toolbar {
   sideToggle.addEventListener('click', () => app.toggleSide());
 
   const left = el('div', 'gg-toolbar-left');
-  left.append(sideToggle, viewSeg, repoSel, branchLabel, filterSel, filterBox);
+  // v0.17 反馈 #1：📝 移到左组视图切换（🗂 文件 / ⑂ main）一带，紧邻红框位置
+  left.append(sideToggle, viewSeg, notesBtn, repoSel, branchLabel, filterSel, filterBox);
   const right = el('div', 'gg-toolbar-right');
   right.append(fetchBtn, pullBtn, pushBtn, refreshBtn, langBtn, gearBtn, versionLabel);
   root.append(left, right);

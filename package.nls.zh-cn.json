@@ -23,7 +23,7 @@
   "cfg.dateFormat.relative": "相对时间（如 3 小时前）",
   "cfg.dateFormat.iso": "ISO 8601 含时区",
   "cfg.rowHeight": "提交列表行高。",
-  "cfg.graphStyle": "图形线条风格：curved（短半径圆角）或 angular（直角折线）。",
+  "cfg.graphStyle": "图形线条风格：github（GitHub 风细线圆弧转弯、空心合并点，默认）、curved（短半径圆角）或 angular（直角折线）。",
   "cfg.graphColumnWidth": "图形列宽度（像素）。",
   "cfg.showRemoteChips": "在提交行显示远程分支徽标。",
   "cfg.maxTagChips": "单个提交行最多显示的标签徽标数。",
@@ -46,5 +46,10 @@
   "cmd.showFileHistory": "GitBoard：查看文件历史",
   "cfg.logOrder": "git log 的提交排序。topo 走线规整（默认）；date 在超大仓库上更快。",
   "cfg.logOrder.topo": "拓扑序（走线规整，默认）",
-  "cfg.logOrder.date": "时间序（大仓库更快）"
+  "cfg.logOrder.date": "时间序（大仓库更快）",
+  "viewContainer.notes": "GitBoard 快速笔记",
+  "view.notes": "快速笔记",
+  "welcome.notes": "快速笔记 —— 独立于 Git 的富文本速记本。\n[打开快速笔记](command:gitboard.notes)",
+  "cmd.notes": "GitBoard: 打开快速笔记",
+  "cmd.notes.openHtml": "GitBoard: 作为快速笔记打开（HTML）"
 }

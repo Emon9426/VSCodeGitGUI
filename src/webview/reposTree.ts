@@ -4,8 +4,8 @@
 import * as vscode from 'vscode';
 import { createT, resolveLang } from '../common/i18n';
 import type { RepoMeta } from '../common/models';
-import { GitExecutor } from '../git/executor';
-import { discoverRepos } from '../git/discovery';
+import type { GitExecutor } from '../git/executor';
+import { discoverRepos, sharedDetect } from '../git/discovery';
 import { parseStatus } from '../git/parse';
 import { builtinGitPath } from '../webview/panel';
 
@@ -39,7 +39,8 @@ export class ReposTreeProvider implements vscode.TreeDataProvider<RepoEntry> {
     try {
       if (!this.executor) {
         const cfg = vscode.workspace.getConfiguration('gitboard');
-        this.executor = await GitExecutor.detect(
+        // 共享探测（v0.14.7）：与主面板启动共用一次 detect，避免重复串行探测
+        this.executor = await sharedDetect(
           cfg.get<string>('gitPath', '') || '',
           builtinGitPath(),
         );

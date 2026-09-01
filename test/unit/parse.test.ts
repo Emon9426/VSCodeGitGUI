@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  parseLog, parseDecorations, parseForEachRef, parseStatus, parseStatusEntries, parseStatusZ, parseFiles, parseUnifiedDiff, countDiffLines,
+  parseLog, parseDecorations, parseForEachRef, parseStatus, parseStatusEntries, parseStatusZ, parseFiles, parseUnifiedDiff, countDiffLines, semanticToOurs,
 } from '../../src/git/parse';
 
 const FS = '\x1f';
@@ -220,5 +220,21 @@ describe('parseStatusZ（-z -b 一次解析：分支头 + 文件矩阵）', () =
     const { info, entries } = parseStatusZ('M  a' + NUL);
     expect(info.branch).toBeUndefined();
     expect(entries).toHaveLength(1);
+  });
+});
+
+describe('semanticToOurs 语义侧→git ours 映射（v0.18.1 修复回归）', () => {
+  // merge：我=stage2=--ours；rebase：我=stage3=--theirs（git 视角反转）
+  it('merge 场景四象限', () => {
+    expect(semanticToOurs('merge', false)).toBe(true);    // 选我的 → --ours
+    expect(semanticToOurs('merge', true)).toBe(false);    // 选他人的 → --theirs
+  });
+  it('rebase 场景四象限（语义反转）', () => {
+    expect(semanticToOurs('rebase', false)).toBe(false);  // 选我的（重放提交=:3）→ --theirs
+    expect(semanticToOurs('rebase', true)).toBe(true);    // 选他人的（基底=:2）→ --ours
+  });
+  it('other 场景按 merge 语义', () => {
+    expect(semanticToOurs('other', false)).toBe(true);
+    expect(semanticToOurs('other', true)).toBe(false);
   });
 });
