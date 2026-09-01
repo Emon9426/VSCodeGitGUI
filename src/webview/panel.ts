@@ -20,7 +20,7 @@ import { RepoWatcher } from '../git/watcher';
 import { detectMove, semanticToOurs } from '../git/parse';
 import { OpRunner, type OpSpec, type PullStrategy } from '../ops/runner';
 import { DiffContentProvider, GITBOARD_SCHEME, EMPTY_REF, gitboardUri } from './diffProvider';
-import { revealableAncestor } from './revealPath';
+import { fsExistsRobust, revealableAncestor } from './revealPath';
 import { lmApi, userMessage, classifyLmError } from '../ai/lm';
 import { buildSystemPrompt, buildUserPrompt, type CommitPromptCtx } from '../ai/prompt';
 import { buildFileTree, diffContentUsable, formatEntryList } from '../ai/tree';
@@ -353,8 +353,9 @@ export class GraphPanel {
         const rel = String(args.path);
         const root = this.currentRoot();
         const target = this.safeJoin(root, rel);
-        this.channel.appendLine(`[reveal] target=${target} exists=${fs.existsSync(target)}`);
-        if (fs.existsSync(target)) {
+        // 存在性探测用 robust 形态：严格 MAX_PATH 系统上 >259 的真实文件普通 stat 会误报不存在
+        this.channel.appendLine(`[reveal] target=${target} exists=${fsExistsRobust(target)}`);
+        if (fsExistsRobust(target)) {
           await this.revealInFileManager(target);
           this.channel.appendLine('[reveal] explorer spawned, notifying');
           // 用 VS Code 原生通知，绝无遗漏
@@ -363,8 +364,8 @@ export class GraphPanel {
         }
         // 文件已不在工作区（如浏览历史提交时已被删除）：回退到最近仍存在的父目录
         let dir = path.dirname(target);
-        while (dir !== root && !fs.existsSync(dir)) dir = path.dirname(dir);
-        if (fs.existsSync(dir)) {
+        while (dir !== root && !fsExistsRobust(dir)) dir = path.dirname(dir);
+        if (fsExistsRobust(dir)) {
           await this.revealInFileManager(dir);
           this.channel.appendLine(`[reveal] fallback dir=${dir}`);
           void vscode.window.showWarningMessage(this.t('revealParent'));
@@ -1718,11 +1719,11 @@ export class GraphPanel {
 
   /**
    * 在系统文件管理器中定位文件（选中该文件）。
-   * Windows 实测（窗口级验证，2026-08-27）：spawn explorer + 单参数 "/select,路径"（非 verbatim，
-   * libuv 对含空格参数自动整体加引号）可稳定打开窗口并选中文件；不经过 cmd.exe——
-   * cmd 中转是企业 EDR 的常见告警模式，直接 explorer 与各应用"在资源管理器中显示"同形态。
-   * explorer 正常情况退出码为 1，仅 error 事件（ENOENT 等）才回退 revealFileInOS。
-   * 长路径（>259）降级见 revealPath.ts。
+   * 不经 cmd.exe——cmd 中转是企业 EDR 的常见告警模式，直接 explorer 与各应用"在资源管理器
+   * 中显示"同形态。explorer 正常情况退出码为 1，仅 error 事件（ENOENT 等）才回退 revealFileInOS。
+   * 2026-09-01 真机矩阵（Win11 26200，见 revealPath.ts 头注释）：`/select` 与路径必须**分离传参**——
+   * concat 形态在路径含空格时被 libuv 整体加引号，explorer 拒绝解析并退化为打开 Documents；
+   * 分离形态对 ≤259 的文件/目录/空格/中文路径全部正常。长路径（>259）两形态皆挂，仍需祖先降级。
    */
   private async revealInFileManager(target: string): Promise<void> {
     const fallback = (): void => {
@@ -1732,11 +1733,9 @@ export class GraphPanel {
     try {
       if (process.platform === 'win32') {
         // 无 shell 参与，天然无元字符解释问题；仅剥离文件名中的引号防 explorer 参数解析错乱。
-        // 长路径（>259 字符）时 explorer 命令行解析失败并退化为打开默认位置，
-        // 降级选中最深可用祖先目录（实测依据见 revealPath.ts 头注释）。
         const p = revealableAncestor(target.replace(/"/g, ''));
         if (!p) { fallback(); return; }
-        const child = spawn('explorer', ['/select,' + p], { detached: true, stdio: 'ignore' });
+        const child = spawn('explorer', ['/select,', p], { detached: true, stdio: 'ignore' });
         child.once('error', () => fallback());
         child.unref();
       } else if (process.platform === 'darwin') {
