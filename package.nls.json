@@ -42,6 +42,7 @@
   "cfg.ai.useWorkspaceInstructions": "Follow workspace instruction files (.copilot/, .github/copilot-instructions.md, .github/instructions/*.instructions.md) when generating.",
   "cfg.commit.clearMessage": "Clear the commit message box after a successful commit.",
   "cfg.commit.pushAfter": "Default state of the \"Push after commit\" checkbox.",
+  "cfg.revealSelectStyle": "\"Reveal in file manager\" argument style for explorer.exe (its /select parsing varies across Windows builds). classic = single raw argument (works on all builds); separate/quoted are fallbacks for exotic environments.",
   "cmd.setLanguage": "GitBoard: Switch UI Language",
   "cmd.showFileHistory": "GitBoard: Show File History",
   "cfg.logOrder": "Commit ordering for git log. topo keeps graph lines tidy (default); date is faster on very large repos.",

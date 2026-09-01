@@ -19,7 +19,7 @@ import {
 import { docToMarkdown } from './exportMd';
 import { buildExportHtml } from './exportHtml';
 import { htmlToPdf } from './pdf';
-import { fsExistsRobust, revealableAncestor } from '../webview/revealPath';
+import { fsExistsRobust, revealableAncestor, revealSpawnForm, type RevealSelectStyle } from '../webview/revealPath';
 
 export class NotesPanel {
   static current: NotesPanel | undefined;
@@ -300,8 +300,8 @@ export class NotesPanel {
   }
 
   /**
-   * 资源管理器定位（win 用 explorer /select **分离传参** + >259 祖先降级，与主面板同策略，
-   * 实测依据见 revealPath.ts 头注释；mac/linux 系统打开器；程序名全部字面量）。
+   * 资源管理器定位（win 与主面板同策略：形态可配 + >259 祖先降级，实测依据见 revealPath.ts
+   * 头注释；mac/linux 系统打开器；程序名全部字面量）。
    * 笔记文件缺失时发提示而非静默——"点了没反应"无法与正常失败区分（Issue #2 反馈）。
    */
   private revealFile(p: string): void {
@@ -312,7 +312,10 @@ export class NotesPanel {
       }
       if (process.platform === 'win32') {
         const t = revealableAncestor(p.replace(/"/g, ''));
-        if (t) spawn('explorer', ['/select,', t], { windowsHide: true, detached: true }).unref();
+        if (!t) return;
+        const style = vscode.workspace.getConfiguration('gitboard').get<RevealSelectStyle>('revealSelectStyle') ?? 'classic';
+        const form = revealSpawnForm(t, style);
+        spawn('explorer', form.args, { windowsHide: true, detached: true, windowsVerbatimArguments: form.verbatim }).unref();
       }
       else if (process.platform === 'darwin') spawn('open', ['-R', p], { detached: true }).unref();
       else spawn('xdg-open', [path.dirname(p)], { detached: true }).unref();
