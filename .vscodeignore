@@ -15,5 +15,8 @@ GitBoard-*.html
 .mimosa/**
 .playwright-mcp/**
 .zcode/**
+AGENTS.md
+docs/**
+scripts/**
 svg2png.js
 res/screenshots/**
