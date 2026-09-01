@@ -42,6 +42,7 @@
   "cfg.ai.useWorkspaceInstructions": "生成时遵循工程指示文件（.copilot/、.github/copilot-instructions.md、.github/instructions/*.instructions.md）。",
   "cfg.commit.clearMessage": "提交成功后清空提交信息输入框。",
   "cfg.commit.pushAfter": "「提交后推送」复选框的默认状态。",
+  "cfg.revealSelectStyle": "「在资源管理器中显示」调用 explorer.exe 的传参形态（其 /select 解析随 Windows 版本而异）。classic = 无引号原样单参数（各版本通用，默认）；separate / quoted 为异构环境兜底。",
   "cmd.setLanguage": "GitBoard: 切换界面语言",
   "cmd.showFileHistory": "GitBoard：查看文件历史",
   "cfg.logOrder": "git log 的提交排序。topo 走线规整（默认）；date 在超大仓库上更快。",

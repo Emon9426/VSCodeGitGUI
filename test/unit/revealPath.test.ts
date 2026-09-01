@@ -1,12 +1,13 @@
 /**
  * revealableAncestor：Windows explorer 长路径降级（>259 上溯最深可用祖先）。
  * fsExistsRobust：>259 真实文件的 \\?\ 前缀重试探测（防严格 MAX_PATH 系统误报不存在）。
+ * revealSpawnForm：explorer /select 三种传参形态（classic/separate/quoted，随 Windows 版本漂移的兜底）。
  */
 import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { EXPLORER_MAX_PATH, fsExistsRobust, revealableAncestor } from '../../src/webview/revealPath';
+import { EXPLORER_MAX_PATH, fsExistsRobust, revealableAncestor, revealSpawnForm } from '../../src/webview/revealPath';
 
 /** 构造完整路径长度恰为 total 的文件路径（目录链 + 撑长文件名） */
 function pathOfLen(total: number, dir: string): string {
@@ -48,6 +49,27 @@ describe('revealableAncestor', () => {
     const dir = 'C:\\用户 目录\\项目 仓库';
     const p = pathOfLen(280, dir);
     expect(revealableAncestor(p)).toBe(dir);
+  });
+});
+
+describe('revealSpawnForm（/select 三形态）', () => {
+  const P = 'C:\\repo with space\\文件 名.md';
+
+  it('classic（默认）：单参数 + verbatim（命令行原样，各 Windows 版本通用）', () => {
+    expect(revealSpawnForm(P)).toEqual({ args: ['/select,' + P], verbatim: true });
+    expect(revealSpawnForm(P, 'classic')).toEqual({ args: ['/select,' + P], verbatim: true });
+  });
+
+  it('separate：/select 与路径分两个参数、非 verbatim', () => {
+    expect(revealSpawnForm(P, 'separate')).toEqual({ args: ['/select,', P], verbatim: false });
+  });
+
+  it('quoted：单参数非 verbatim（含空格时 libuv 整体加引号）', () => {
+    expect(revealSpawnForm(P, 'quoted')).toEqual({ args: ['/select,' + P], verbatim: false });
+  });
+
+  it('未知值回退 classic（配置脏值防御）', () => {
+    expect(revealSpawnForm(P, 'bogus' as never)).toEqual({ args: ['/select,' + P], verbatim: true });
   });
 });
 

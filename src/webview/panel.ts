@@ -20,7 +20,7 @@ import { RepoWatcher } from '../git/watcher';
 import { detectMove, semanticToOurs } from '../git/parse';
 import { OpRunner, type OpSpec, type PullStrategy } from '../ops/runner';
 import { DiffContentProvider, GITBOARD_SCHEME, EMPTY_REF, gitboardUri } from './diffProvider';
-import { fsExistsRobust, revealableAncestor } from './revealPath';
+import { fsExistsRobust, revealableAncestor, revealSpawnForm, type RevealSelectStyle } from './revealPath';
 import { lmApi, userMessage, classifyLmError } from '../ai/lm';
 import { buildSystemPrompt, buildUserPrompt, type CommitPromptCtx } from '../ai/prompt';
 import { buildFileTree, diffContentUsable, formatEntryList } from '../ai/tree';
@@ -1721,9 +1721,10 @@ export class GraphPanel {
    * 在系统文件管理器中定位文件（选中该文件）。
    * 不经 cmd.exe——cmd 中转是企业 EDR 的常见告警模式，直接 explorer 与各应用"在资源管理器
    * 中显示"同形态。explorer 正常情况退出码为 1，仅 error 事件（ENOENT 等）才回退 revealFileInOS。
-   * 2026-09-01 真机矩阵（Win11 26200，见 revealPath.ts 头注释）：`/select` 与路径必须**分离传参**——
-   * concat 形态在路径含空格时被 libuv 整体加引号，explorer 拒绝解析并退化为打开 Documents；
-   * 分离形态对 ≤259 的文件/目录/空格/中文路径全部正常。长路径（>259）两形态皆挂，仍需祖先降级。
+   * 传参形态 explorer 随 Windows 版本漂移（三轮实测见 revealPath.ts 头注释）：默认 classic =
+   * 单参数 + windowsVerbatimArguments（命令行原样 `explorer /select,C:\path with spaces`，
+   * 自 XP 起通用）；可用 gitboard.revealSelectStyle 切换 separate/quoted 兜底异构构建。
+   * 长路径（>259）任何形态皆挂，仍走祖先降级。
    */
   private async revealInFileManager(target: string): Promise<void> {
     const fallback = (): void => {
@@ -1735,7 +1736,9 @@ export class GraphPanel {
         // 无 shell 参与，天然无元字符解释问题；仅剥离文件名中的引号防 explorer 参数解析错乱。
         const p = revealableAncestor(target.replace(/"/g, ''));
         if (!p) { fallback(); return; }
-        const child = spawn('explorer', ['/select,', p], { detached: true, stdio: 'ignore' });
+        const style = vscode.workspace.getConfiguration('gitboard').get<RevealSelectStyle>('revealSelectStyle') ?? 'classic';
+        const form = revealSpawnForm(p, style);
+        const child = spawn('explorer', form.args, { detached: true, stdio: 'ignore', windowsVerbatimArguments: form.verbatim });
         child.once('error', () => fallback());
         child.unref();
       } else if (process.platform === 'darwin') {
