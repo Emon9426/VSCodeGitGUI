@@ -47,10 +47,5 @@
   "cmd.showFileHistory": "GitBoard: Show File History",
   "cfg.logOrder": "Commit ordering for git log. topo keeps graph lines tidy (default); date is faster on very large repos.",
   "cfg.logOrder.topo": "Topological (tidy graph lines, default)",
-  "cfg.logOrder.date": "Commit date (faster on large repos)",
-  "viewContainer.notes": "GitBoard Quick Notes",
-  "view.notes": "Quick Notes",
-  "welcome.notes": "Quick Notes — a fast rich-text scratchpad independent of Git.\n[Open Quick Notes](command:gitboard.notes)",
-  "cmd.notes": "GitBoard: Open Quick Notes",
-  "cmd.notes.openHtml": "GitBoard: Open as Quick Note (HTML)"
+  "cfg.logOrder.date": "Commit date (faster on large repos)"
 }

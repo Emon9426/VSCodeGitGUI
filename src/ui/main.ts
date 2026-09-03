@@ -130,9 +130,6 @@ const app: App = {
   openSettings() {
     void rpc('ui:openSettings').catch(showErr);
   },
-  openNotes() {
-    void rpc('ui:openNotes').catch(showErr);
-  },
   copy(text) {
     void rpc('ui:copy', { text }).catch(showErr);
   },

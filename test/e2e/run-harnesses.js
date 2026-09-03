@@ -10,7 +10,7 @@ const path = require('path');
   const b = await chromium.launch({ executablePath: exe });
   const page = await b.newPage();
   const list = ['harness.html', 'harness-boot.html', 'harness-detail.html', 'harness-files.html', 'harness-lanes.html',
-    'harness-notes.html', 'harness-op.html', 'harness-v11.html', 'harness-v13.html'];
+    'harness-op.html', 'harness-v11.html', 'harness-v13.html'];
   let fails = 0;
   for (const h of list) {
     try {

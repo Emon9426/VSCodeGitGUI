@@ -2,7 +2,7 @@
   "name": "gitboard",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.18.4",
+  "version": "0.19.0",
   "publisher": "EmonZhang3438",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -30,11 +30,6 @@
           "id": "gitboard",
           "title": "%viewContainer.name%",
           "icon": "media/gitboard.svg"
-        },
-        {
-          "id": "gitboard-notes",
-          "title": "%viewContainer.notes%",
-          "icon": "media/notes.svg"
         }
       ]
     },
@@ -44,22 +39,12 @@
           "id": "gitboard.repos",
           "name": "%view.repos%"
         }
-      ],
-      "gitboard-notes": [
-        {
-          "id": "gitboard.notesList",
-          "name": "%view.notes%"
-        }
       ]
     },
     "viewsWelcome": [
       {
         "view": "gitboard.repos",
         "contents": "%welcome.noRepos%"
-      },
-      {
-        "view": "gitboard.notesList",
-        "contents": "%welcome.notes%"
       }
     ],
     "commands": [
@@ -98,16 +83,6 @@
       {
         "command": "gitboard.showFileHistory",
         "title": "%cmd.showFileHistory%"
-      },
-      {
-        "command": "gitboard.notes",
-        "title": "%cmd.notes%",
-        "icon": "$(notebook)"
-      },
-      {
-        "command": "gitboard.notes.openHtml",
-        "title": "%cmd.notes.openHtml%",
-        "icon": "$(book)"
       }
     ],
     "keybindings": [
@@ -120,11 +95,6 @@
         "command": "gitboard.commit",
         "key": "ctrl+alt+c",
         "mac": "cmd+alt+c"
-      },
-      {
-        "command": "gitboard.notes",
-        "key": "ctrl+alt+n",
-        "mac": "cmd+alt+n"
       }
     ],
     "menus": {
@@ -159,18 +129,6 @@
           "command": "gitboard.refreshTree",
           "when": "view == gitboard.repos",
           "group": "navigation"
-        },
-        {
-          "command": "gitboard.notes",
-          "when": "view == gitboard.notesList",
-          "group": "navigation"
-        }
-      ],
-      "editor/title": [
-        {
-          "command": "gitboard.notes.openHtml",
-          "when": "resourceExtname == .html && resourceScheme == file",
-          "group": "navigation@9"
         }
       ],
       "scm/title": [
@@ -406,25 +364,5 @@
     "sharp": "^0.35.3",
     "typescript": "^5.4.5",
     "vitest": "^2.1.8"
-  },
-  "dependencies": {
-    "@tiptap/core": "^2.27.2",
-    "@tiptap/extension-code-block-lowlight": "^2.27.2",
-    "@tiptap/extension-color": "^2.27.2",
-    "@tiptap/extension-font-family": "^2.27.2",
-    "@tiptap/extension-highlight": "^2.27.2",
-    "@tiptap/extension-placeholder": "^2.27.2",
-    "@tiptap/extension-table": "^2.27.2",
-    "@tiptap/extension-table-cell": "^2.27.2",
-    "@tiptap/extension-table-header": "^2.27.2",
-    "@tiptap/extension-table-row": "^2.27.2",
-    "@tiptap/extension-task-item": "^2.27.2",
-    "@tiptap/extension-task-list": "^2.27.2",
-    "@tiptap/extension-text-style": "^2.27.2",
-    "@tiptap/extension-underline": "^2.27.2",
-    "@tiptap/pm": "^2.27.2",
-    "@tiptap/starter-kit": "^2.27.2",
-    "highlight.js": "^11.12.0",
-    "lowlight": "^3.3.0"
   }
 }

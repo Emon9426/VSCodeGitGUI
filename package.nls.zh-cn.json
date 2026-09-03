@@ -47,10 +47,5 @@
   "cmd.showFileHistory": "GitBoard：查看文件历史",
   "cfg.logOrder": "git log 的提交排序。topo 走线规整（默认）；date 在超大仓库上更快。",
   "cfg.logOrder.topo": "拓扑序（走线规整，默认）",
-  "cfg.logOrder.date": "时间序（大仓库更快）",
-  "viewContainer.notes": "GitBoard 快速笔记",
-  "view.notes": "快速笔记",
-  "welcome.notes": "快速笔记 —— 独立于 Git 的富文本速记本。\n[打开快速笔记](command:gitboard.notes)",
-  "cmd.notes": "GitBoard: 打开快速笔记",
-  "cmd.notes.openHtml": "GitBoard: 作为快速笔记打开（HTML）"
+  "cfg.logOrder.date": "时间序（大仓库更快）"
 }

@@ -143,8 +143,6 @@ export type WVCommand =
   | 'ui:saveColWidths'      // { widths: ColWidths }
   | 'ui:saveDetailPct'      // { pct }（详情面板高度百分比，跨屏按相对高度恢复）
   | 'ui:openSettings'
-  // 快速笔记（v0.15.1）：主面板工具栏直达笔记面板
-  | 'ui:openNotes'
   // 工作副本（Commit 功能）
   | 'work.state'            // {} -> WorkState
   | 'work.stage'            // { paths: string[] }

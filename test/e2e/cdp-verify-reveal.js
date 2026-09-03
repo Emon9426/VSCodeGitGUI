@@ -6,11 +6,9 @@
  *   node cdp-verify-reveal.js prepare              # 生成 %TEMP%\gb-e2e-reveal 夹具并打印启动命令
  *   node cdp-verify-reveal.js <port> spaced        # 场景① 含空格仓库（VS Code 已开在打印出的 test repo）
  *   node cdp-verify-reveal.js <port> long          # 场景② 长路径仓库（VS Code 已开在打印出的 plainrepo）
- *   node cdp-verify-reveal.js <port> notes         # 场景③ 快速笔记（任意窗口，无笔记时经 UI 新建并清理）
  * 断言：
  *   ① 含空格短路径 → 打开文件父目录而非 Documents（concat 形态 2026-09-01 实测会退化为 Documents）
  *   ② >259 长路径 → 定位最深 ≤259 祖先 + 成功 toast（无误报「已不存在」）
- *   ③ 快速笔记右键「在资源管理器中显示」→ 打开笔记目录
  * 安全约定：PowerShell 一律参数列表形态 + 模块级固定字面量命令体；HWND 列表纯数字白名单后
  * 经专用环境变量传入；本脚本自身不 spawn 任何程序。
  */
@@ -22,7 +20,7 @@ const os = require('os');
 const path = require('path');
 
 if (process.platform !== 'win32') { console.log('SKIP: 仅 Windows 真机场景'); process.exit(0); }
-// 与 cdp-verify-boot 同约定：node cdp-verify-reveal.js <port> spaced|long|notes；prepare 单独占首参
+// 与 cdp-verify-boot 同约定：node cdp-verify-reveal.js <port> spaced|long；prepare 单独占首参
 const MODE = process.argv[2] === 'prepare' ? 'prepare' : (process.argv[3] || '');
 const PORT = (() => {
   const raw = MODE === 'prepare' ? '9261' : (process.argv[2] || '9261');
@@ -113,8 +111,7 @@ function prepare() {
     + ' --extensionDevelopmentPath=' + EXT_DEV + ' --disable-workspace-trust --skip-release-notes "<dir>"');
   console.log('  场景①目录: ' + repoA);
   console.log('  场景②目录: ' + repoB);
-  console.log('[场景③] 任意目录重复上述启动命令，然后: node ' + __filename + ' ' + PORT + ' notes');
-  console.log('随后依次: node ' + __filename + ' ' + PORT + ' spaced | long | notes');
+  console.log('随后依次: node ' + __filename + ' ' + PORT + ' spaced | long');
 }
 
 /** 连接 workbench 页并点开 GitBoard 主面板，返回 { page, E, ws } */
@@ -178,8 +175,8 @@ async function revealInWorkView(E, page, rel) {
 
 (async () => {
   if (MODE === 'prepare') { prepare(); process.exit(0); }
-  if (!['spaced', 'long', 'notes'].includes(MODE)) {
-    console.log('用法: node cdp-verify-reveal.js prepare | <port> spaced|long|notes');
+  if (!['spaced', 'long'].includes(MODE)) {
+    console.log('用法: node cdp-verify-reveal.js prepare | <port> spaced|long');
     process.exit(2);
   }
   const t0 = Date.now();
@@ -218,76 +215,6 @@ async function revealInWorkView(E, page, rel) {
       }
       conn.ws.close();
     }
-  } else {
-    // notes：任意窗口 → 活动栏快速笔记 → 右键第一条 → 菜单项
-    const notesDir = path.join(os.homedir(), 'GitBoardNotes');
-    fs.mkdirSync(notesDir, { recursive: true });
-    const before = fs.readdirSync(notesDir).filter(f => f.endsWith('.gbnote.json'));
-    const b = await chromium.connectOverCDP('http://127.0.0.1:' + PORT);
-    const page = b.contexts()[0].pages().find(p => !p.url().includes('devtools')) || b.contexts()[0].pages()[0];
-    await page.bringToFront();
-    let opened = false;
-    for (let i = 0; i < 15 && !opened; i++) {
-      opened = await page.evaluate(() => {
-        const ab = document.getElementById('workbench.parts.activitybar');
-        const lis = ab && [...ab.querySelectorAll('li.action-item')];
-        const t = lis && lis.find(el => {
-          const a = el.querySelector('a');
-          return /Quick Notes|快速笔记/i.test(a?.getAttribute('aria-label') || a?.title || '');
-        });
-        if (t) { t.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); t.click(); return true; }
-        return false;
-      }).catch(() => false);
-      if (!opened) await sleep(1200);
-    }
-    check('③ 快速笔记面板打开', opened);
-    let gb = null;
-    for (let i = 0; i < 25 && !gb; i++) {
-      const ts = await (await fetch('http://127.0.0.1:' + PORT + '/json/list')).json();
-      for (const t of ts.filter(t => t.type === 'iframe' && t.webSocketDebuggerUrl)) {
-        const ws = new WebSocket(t.webSocketDebuggerUrl, { perMessageDeflate: false });
-        await new Promise(r => { ws.once('open', r); ws.once('error', r); });
-        if (ws.readyState !== 1) continue;
-        const W = (js) => `(() => { const d = globalThis.document.querySelector('#active-frame')?.contentDocument; if (!d) return null; const document = d; return (${js}); })()`;
-        if (await evalRaw(ws, W(`!!document.querySelector('.ProseMirror')`)).catch(() => false)) { gb = { ws, E: js => evalRaw(ws, W(js)) }; break; }
-        ws.close();
-      }
-      if (!gb) await sleep(800);
-    }
-    check('③ notes webview 连接', !!gb);
-    if (gb) {
-      let n = await gb.E(`document.querySelectorAll('.n-item').length`).catch(() => 0);
-      if (!n) {
-        await gb.E(`(() => { const b = [...document.querySelectorAll('button')].find(b => /＋|New|新建/.test(b.textContent||'')); if (b) { b.click(); return true; } return false; })()`);
-        await sleep(1500);
-        n = await gb.E(`document.querySelectorAll('.n-item').length`).catch(() => 0);
-      }
-      check('③ 笔记列表非空', !!n, 'count=' + n);
-      if (n) {
-        const hwnds = listWindows().map(w => w.hwnd);
-        await gb.E(`(() => { document.querySelector('.n-item').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 160, clientY: 160 })); return true; })()`);
-        await sleep(500);
-        const clicked = await gb.E(`(() => { const row = [...document.querySelectorAll('.gg-menu .gg-menu-item')].find(r => /资源管理器|file manager/i.test(r.textContent || '')); if (row) { row.click(); return true; } return false; })()`);
-        check('③ 右键菜单项点击', !!clicked);
-        await sleep(3500);
-        const fresh = listWindows().filter(w => !hwnds.includes(w.hwnd));
-        const locs = fresh.map(w => decodeURIComponent(w.loc || ''));
-        check('③ 打开笔记目录', locs.some(l => l === fileUrlOf(notesDir)), JSON.stringify(locs));
-        await sleep(300);
-        closeWindows(fresh.map(w => w.hwnd));
-      }
-      gb.ws.close();
-    }
-    // 清理本场景新建的笔记（仅纯文件名且在夹具前后差异集内，不触碰既有笔记）
-    try {
-      const root = path.resolve(notesDir);
-      for (const f of fs.readdirSync(root)) {
-        if (!f.endsWith('.gbnote.json') || before.includes(f)) continue;
-        if (/[\\/]|\.\./.test(f)) continue;   // 白名单：仅当前目录纯文件名
-        const target = path.resolve(root, f);
-        if (target.startsWith(root + path.sep)) fs.rmSync(target);
-      }
-    } catch { /* ignore */ }
   }
 
   const fails = results.filter(r => !r.pass).length;

@@ -18,8 +18,6 @@ export interface App {
   runRefresh(): void;
   cancelOp(opId: number): void;
   openSettings(): void;
-  /** 直达快速笔记面板（v0.15.1，独立于 Git 的模块） */
-  openNotes(): void;
   copy(text: string): void;
   openDiffEditor(sha: string, path: string, worktree?: boolean): void;
   openFile(path: string): void;

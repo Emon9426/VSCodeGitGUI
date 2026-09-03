@@ -482,10 +482,6 @@ export class GraphPanel {
       case 'ui:openSettings':
         await vscode.commands.executeCommand('workbench.action.openSettings', 'gitboard');
         return null;
-      case 'ui:openNotes':
-        // 直达快速笔记面板（懒加载独立模块，不经过 GraphPanel/Git 链路）
-        await vscode.commands.executeCommand('gitboard.notes');
-        return null;
 
       // ---------- 工程切换（v0.11） ----------
       case 'projects.add': {
