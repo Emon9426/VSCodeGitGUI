@@ -88,8 +88,9 @@ const app: App = {
       toast('warn', S.t('pullNoUpstream'));
       return;
     }
-    const remote = head.upstream.split('/')[0];
-    void rpc('op:pull', { remote, branch: S.state?.head.branch, strategy: S.config.defaultPullStrategy }).catch(showErr);
+    // F1（Issue #6）：不传 remote/branch——宿主按分支级配置 branch.<name>.merge 拉取，
+    // 本地名≠上游名时不再拉错同名远端旧分支
+    void rpc('op:pull', { strategy: S.config.defaultPullStrategy }).catch(showErr);
   },
   runPush() {
     const head = S.state?.branches.find(b => b.isHead);

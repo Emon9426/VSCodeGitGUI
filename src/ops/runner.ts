@@ -17,8 +17,8 @@ export interface OpSpec {
   | 'moveFolder' | 'renamePath' | 'deletePaths';   // 文件页操作（v0.14）
   /** 依 kind 不同 */
   all?: boolean;               // fetch
-  remote?: string;
-  branch?: string;
+  remote?: string;             // fetch / push（pull 不再使用：按分支级配置解析，Issue #6）
+  branch?: string;             // push
   prune?: boolean;             // fetch
   strategy?: PullStrategy;     // pull
   autostash?: boolean;         // pull
@@ -47,6 +47,8 @@ export interface OpOutcome {
   outputTail?: string;
   /** 成功时的 stdout 尾部行（pull 的 "Already up to date." 等结果判定用） */
   stdoutTail?: string;
+  /** 网络操作长时间无输出被看门狗中断（F2：panel 据此映射"网络停滞"文案） */
+  stalled?: boolean;
 }
 
 const PCT_RE = /(\d+)%/;
@@ -60,6 +62,8 @@ export class OpRunner {
     private readonly exec: GitExecutor,
     /** 队列空隙时的回调（用于 UI 释放"进行中"状态） */
     private readonly onIdle?: () => void,
+    /** 网络操作无输出空闲超时（秒，0=关闭；F2 看门狗——每次执行实时读取以热更新配置） */
+    private readonly netStallSeconds?: () => number,
   ) {}
 
   cancel(opId: number): void {
@@ -95,6 +99,8 @@ export class OpRunner {
     onProgress: (text: string, pct?: number) => void,
     buildDone: (ok: boolean) => string,
   ): Promise<OpOutcome> {
+    // F4（Issue #6）：排队期间被取消的 op 轮到时不再执行（旧版只打标记，git 命令照样跑完）
+    if (this.cancelled.delete(opId)) return { ok: false, message: 'cancelled' };
     const cmds = buildArgs(spec);
     let lastLine = '';
     // 网络/提交（hooks 可能耗时）不设超时；stage/discard 类秒级操作用默认 30s
@@ -104,7 +110,25 @@ export class OpRunner {
     // commit/continue 类可能触发 hooks 与编辑器：禁止交互式提示防挂死（提示失败改走终端）
     const env = spec.kind === 'commit' || spec.kind === 'commitNoEdit' || spec.kind === 'mergeContinue'
       ? { GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true' } : undefined;
+    // F2（Issue #6）：网络操作无输出空闲看门狗——--progress 进度行走 stderr，连接停滞（TCP 连上
+    // 但数据不动）时进度行停更，超阈值即 kill 快速失败；HTTP(S) 另有 buildArgs 的 http.lowSpeed*
+    // 兜底，此处额外覆盖 SSH 等协议与连接建立阶段。pull 的本地 merge/checkout 阶段也无 stderr，
+    // 故阈值须宽松（默认 180s，gitboard.netStallTimeout 可调，0=关闭）
+    const netKind = spec.kind === 'fetch' || spec.kind === 'pull' || spec.kind === 'push'
+      || spec.kind === 'tagPush' || spec.kind === 'tagDeleteRemote';
+    const stallMs = netKind && this.netStallSeconds ? Math.max(0, this.netStallSeconds()) * 1000 : 0;
+    let lastTick = Date.now();
+    let stalled = false;
+    let watchdog: NodeJS.Timeout | undefined;
     try {
+      if (stallMs > 0) {
+        watchdog = setInterval(() => {
+          if (Date.now() - lastTick >= stallMs) {
+            stalled = true;
+            this.children.get(opId)?.kill();
+          }
+        }, Math.min(1000, stallMs));
+      }
       let r;
       for (const args of cmds) {
         r = await this.exec.exec(root, args, {
@@ -113,6 +137,7 @@ export class OpRunner {
           env,
           registerChild: (c) => this.children.set(opId, c),
           onStderrLine: (line) => {
+            lastTick = Date.now();   // F2：进度行到达即视为活跃（含与上行重复被下方去重的场景）
             const cleaned = line.replace(/[\r ]+$/, '');
             if (!cleaned || cleaned === lastLine) return;
             lastLine = cleaned;
@@ -130,35 +155,47 @@ export class OpRunner {
       if (this.cancelled.delete(opId) || (e instanceof GitError && e.code === 'E_TIMEOUT')) {
         return { ok: false, message: 'cancelled' };
       }
+      if (stalled) {
+        return { ok: false, stalled: true, message: buildDone(false), outputTail: 'network stalled: no-output watchdog fired' };
+      }
       const tail = e instanceof GitError ? e.stderrTail : String(e);
       return { ok: false, message: buildDone(false), outputTail: tail };
+    } finally {
+      if (watchdog) clearInterval(watchdog);
     }
   }
 }
 
-function buildArgs(spec: OpSpec): string[][] {
+/** 网络命令的 git 层低速中断（F2/Issue #6）：持续低于 1KB/s 即中断——用户显式操作 60s
+ *  （后台 autoFetch 用 45s，见 fetch 分支）；HTTP(S) 生效，SSH 等协议由 runner 无输出看门狗兜底 */
+const LOW_SPEED_USER = ['-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=60'];
+
+export function buildArgs(spec: OpSpec): string[][] {
   switch (spec.kind) {
     case 'fetch': {
       const args = ['fetch', '--progress'];
       // 后台自动获取：git 层低速中断（连续 45s <1KB/s 视为挂起）——防网络故障时
       // fetch 无限占用串行队列，堵住用户显式操作（runner 的 exec 超时对网络类不适用）
       if (spec.background) args.unshift('-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=45');
+      else args.unshift(...LOW_SPEED_USER);
       if (spec.all) args.push('--all');
       if (spec.prune) args.push('--prune');
       if (!spec.all && spec.remote) args.push(spec.remote);
       return [args];
     }
     case 'pull': {
-      const args = ['pull', '--progress'];
+      // F1（Issue #6）：不传 remote/branch——按分支级配置 branch.<name>.remote/merge 解析（原生
+      // git 语义）。此前把"本地分支名"当远端分支参数显式传入，本地名≠上游名时（默认分支改名后
+      // branch -u origin/main master 等）会去拉同名的远端旧分支，git 输出 "Already up to date."
+      // 假成功（退出码 0）而对方新提交永远拉不进来
+      const args = [...LOW_SPEED_USER, 'pull', '--progress'];
       if (spec.strategy === 'rebase') args.push('--rebase');
       else if (spec.strategy === 'ff-only') args.push('--ff-only');
       if (spec.autostash) args.push('--autostash');
-      if (spec.remote) args.push(spec.remote);
-      if (spec.branch) args.push(spec.branch);
       return [args];
     }
     case 'push': {
-      const args = ['push', '--progress'];
+      const args = [...LOW_SPEED_USER, 'push', '--progress'];
       if (spec.setUpstream) args.push('-u');
       args.push(spec.remote ?? 'origin', spec.branch ?? 'HEAD');
       return [args];
@@ -223,9 +260,9 @@ function buildArgs(spec: OpSpec): string[][] {
     case 'tagDelete':
       return [['tag', '-d', spec.name ?? '']];
     case 'tagDeleteRemote':
-      return [['push', '--progress', spec.remote ?? 'origin', `:refs/tags/${spec.name ?? ''}`]];
+      return [[...LOW_SPEED_USER, 'push', '--progress', spec.remote ?? 'origin', `:refs/tags/${spec.name ?? ''}`]];
     case 'tagPush':
-      return [['push', '--progress', spec.remote ?? 'origin', `refs/tags/${spec.name ?? ''}`]];
+      return [[...LOW_SPEED_USER, 'push', '--progress', spec.remote ?? 'origin', `refs/tags/${spec.name ?? ''}`]];
     // ---------- 文件页操作（v0.14） ----------
     case 'moveFolder': {
       // 多选批量移动：逐对 git mv（命令序列由 execute 串行执行）

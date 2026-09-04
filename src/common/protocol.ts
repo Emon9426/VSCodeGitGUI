@@ -20,6 +20,8 @@ export interface ConfigDto {
   /** 后台自动获取间隔（分钟，SourceTree 式；0=关闭）——仅面板存活期间执行 */
   autoFetchInterval: number;
   fetchPrune: boolean;
+  /** 网络操作无输出空闲超时（秒；0=关闭）——F2/Issue #6 看门狗，防连接停滞无限挂起 */
+  netStallTimeout: number;
   defaultPullStrategy: 'merge' | 'rebase' | 'ff-only';
   logOrder: 'topo' | 'date';      // topo=走线规整（默认）；date=大仓库 log 更快
   // Commit 功能（v0.7）
@@ -129,7 +131,7 @@ export type WVCommand =
   | 'diff'                  // { mode:'commit'|'worktree'|'range', sha, base?, path } -> DiffPayload
   | 'setFilter'             // { ref: string | null }
   | 'op:fetch'              // { remote?: string, all?: boolean }
-  | 'op:pull'               // { remote?, branch?, strategy?, autostash? }
+  | 'op:pull'               // { strategy?, autostash? }——不传 remote/branch，按分支级配置解析（Issue #6 F1）
   | 'op:push'               // { remote, branch, setUpstream? }
   | 'op:reset'              // { sha, mode:'soft'|'mixed'|'hard' }
   | 'op:checkout'           // { ref?, sha?, detached?, trackFrom?: {name, remoteBranch} }

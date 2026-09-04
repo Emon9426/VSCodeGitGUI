@@ -42,6 +42,7 @@ function readConfig(): ConfigDto {
     fetchOnOpen: cfg.get('fetchOnOpen', true),
     autoFetchInterval: cfg.get('autoFetchInterval', 10),
     fetchPrune: cfg.get('fetchPrune', true),
+    netStallTimeout: cfg.get('netStallTimeout', 180),
     defaultPullStrategy: cfg.get('defaultPullStrategy', 'merge'),
     logOrder: cfg.get('logOrder', 'topo'),
     aiEnabled: cfg.get('ai.enabled', true),
@@ -306,7 +307,8 @@ export class GraphPanel {
         this.startOp({ kind: 'fetch', all: args.all !== false, remote: args.remote, prune: args.prune ?? this.config.fetchPrune });
         return null;
       case 'op:pull':
-        this.startOp({ kind: 'pull', remote: args.remote, branch: args.branch, strategy: (args.strategy ?? this.config.defaultPullStrategy) as PullStrategy, autostash: !!args.autostash });
+        // F1（Issue #6）：不传 remote/branch——git 按分支级配置 branch.<name>.remote/merge 拉取
+        this.startOp({ kind: 'pull', strategy: (args.strategy ?? this.config.defaultPullStrategy) as PullStrategy, autostash: !!args.autostash });
         return null;
       case 'op:push':
         this.startOp({ kind: 'push', remote: args.remote, branch: args.branch, setUpstream: !!args.setUpstream });
@@ -701,7 +703,7 @@ export class GraphPanel {
         return;
       }
       this.service = new GitService(this.executor);
-      this.runner = new OpRunner(this.executor);
+      this.runner = new OpRunner(this.executor, undefined, () => this.config.netStallTimeout);
       this.pullSummary = new PullSummaryService(this.executor);
       this.files = new FilesService(this.executor);
       this.armAutoFetch();
@@ -1151,9 +1153,27 @@ export class GraphPanel {
     }
   }
 
+  /** 同仓库同 kind 网络操作去重登记（F4/Issue #6）：进行中/排队中时忽略重复点击 */
+  private netInFlight = new Map<string, Set<string>>();
+
   private startOp(spec: OpSpec): void {
     if (!this.runner || !this.currentRepoId) return;
     const root = this.roots.get(this.currentRepoId)!;
+    // F4（Issue #6）：网络操作同类去重——慢网络下连点 Fetch/Pull/Push 只跑一个，
+    // 不再向串行队列堆积重复 op（旧版每次点击都排一个，队列被同一操作刷满）
+    const isNet = spec.kind === 'fetch' || spec.kind === 'pull' || spec.kind === 'push';
+    if (isNet) {
+      const inflight = this.netInFlight.get(root);
+      if (inflight?.has(spec.kind)) return;
+      if (inflight) inflight.add(spec.kind);
+      else this.netInFlight.set(root, new Set([spec.kind]));
+    }
+    const releaseKind = (): void => {
+      const s = this.netInFlight.get(root);
+      if (!s) return;
+      s.delete(spec.kind);
+      if (!s.size) this.netInFlight.delete(root);
+    };
     const opId = ++this.opSeq;
     const kind = spec.kind;
     const label = this.t(kind);
@@ -1161,47 +1181,65 @@ export class GraphPanel {
     this.post({ t: 'opProgress', opId, kind, text: '' });
     const refsBefore = kind === 'fetch' || kind === 'pull' ? this.snapshotRefs() : undefined;
     const headBefore = kind === 'pull' ? this.lastState?.head.sha : undefined;   // 摘要范围：pull 前后 HEAD 差
+    // F3（Issue #6）：pull 的"已是最新"反馈带上游分支名——拉错分支/远端时一眼可见
+    const upstreamBefore = kind === 'pull' ? this.lastState?.branches.find(b => b.isHead)?.upstream : undefined;
     void this.runner.run(
       root, spec, opId,
       (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
       ok => ok ? this.t(`${kind}Done`) : this.t('opFailed', { op: label }),
     ).then(async outcome => {
-      if (outcome.message === 'cancelled') {
-        this.post({ t: 'opResult', opId, kind, ok: false, message: this.t('opCancelled') });
-        return;
-      }
-      // 结果细化：让"点了但没变化"也有明确反馈（v0.7.1）
-      let message = outcome.message;
-      if (outcome.ok) {
-        if (kind === 'fetch' && refsBefore) {
-          try {
-            const after = await this.service!.refsOf(root);
-            let n = 0;
-            for (const r of after) {
-              if (refsBefore.get(r.fullName) !== r.sha) n++;
-            }
-            message = n > 0 ? this.t('fetchUpdated', { n }) : this.t('fetchUpToDate');
-          } catch { /* 保留默认消息 */ }
-        } else if (kind === 'pull' && /already up to date/i.test(outcome.stdoutTail ?? '')) {
-          message = this.t('pullUpToDate');
-        } else if (kind === 'push') {
-          message = `${this.t('pushDone')}：${spec.branch ?? 'HEAD'} → ${spec.remote ?? 'origin'}`;
+      try {
+        if (outcome.message === 'cancelled') {
+          this.post({ t: 'opResult', opId, kind, ok: false, message: this.t('opCancelled') });
+          return;
         }
-      }
-      this.post({
-        t: 'opResult', opId, kind, ok: outcome.ok,
-        message, outputTail: outcome.outputTail,
-      });
-      if (outcome.ok) {
-        this.files?.invalidateTree(root);   // commit/checkout/reset 等改变 index/HEAD → 文件页目录缓存失效
-        void this.refresh(true);   // 操作成功：强制重推（fetch/pull/push/checkout/reset 后表格必刷新）
-        void this.workStateNow().catch(() => undefined);
-        if (refsBefore && (kind === 'fetch' || kind === 'pull')) {
-          void this.collectPullSummary(root, kind, refsBefore, headBefore).catch(() => undefined);
+        // 结果细化：让"点了但没变化"也有明确反馈（v0.7.1）
+        let message = outcome.message;
+        if (outcome.ok) {
+          if (kind === 'fetch' && refsBefore) {
+            try {
+              const after = await this.service!.refsOf(root);
+              let n = 0;
+              for (const r of after) {
+                if (refsBefore.get(r.fullName) !== r.sha) n++;
+              }
+              message = n > 0 ? this.t('fetchUpdated', { n }) : this.t('fetchUpToDate');
+            } catch { /* 保留默认消息 */ }
+          } else if (kind === 'pull' && /already up to date/i.test(outcome.stdoutTail ?? '')) {
+            message = upstreamBefore ? this.t('pullUpToDateWith', { ref: upstreamBefore }) : this.t('pullUpToDate');
+            // F3（Issue #6）矛盾校验："已是最新"但上游跟踪引用仍领先 HEAD——正常流程不可达，
+            // 出现即拉取异常（如 fetch 结果与合并脱节），升级为警告引导重试
+            try {
+              const after = await this.service!.refsOf(root);
+              const upSha = after.find(r => r.fullName === `refs/remotes/${upstreamBefore ?? ''}`)?.sha;
+              if (upSha && headBefore && upSha !== headBefore) {
+                message = this.t('pullBehindWarn', { ref: upstreamBefore ?? '' });
+              }
+            } catch { /* 校验尽力而为 */ }
+          } else if (kind === 'push') {
+            message = `${this.t('pushDone')}：${spec.branch ?? 'HEAD'} → ${spec.remote ?? 'origin'}`;
+          }
+        } else if (outcome.stalled) {
+          // F2（Issue #6）：无输出看门狗触发——连接停滞快速失败并明示原因，重试即新连接
+          message = this.t('netStalled');
         }
-      } else if (kind === 'pull') {
-        // pull 失败（含冲突：git 以非零退出）也刷工作副本——前端据此弹冲突横幅引导（R3）
-        void this.workStateNow().catch(() => undefined);
+        this.post({
+          t: 'opResult', opId, kind, ok: outcome.ok,
+          message, outputTail: outcome.outputTail,
+        });
+        if (outcome.ok) {
+          this.files?.invalidateTree(root);   // commit/checkout/reset 等改变 index/HEAD → 文件页目录缓存失效
+          void this.refresh(true);   // 操作成功：强制重推（fetch/pull/push/checkout/reset 后表格必刷新）
+          void this.workStateNow().catch(() => undefined);
+          if (refsBefore && (kind === 'fetch' || kind === 'pull')) {
+            void this.collectPullSummary(root, kind, refsBefore, headBefore).catch(() => undefined);
+          }
+        } else if (kind === 'pull') {
+          // pull 失败（含冲突：git 以非零退出）也刷工作副本——前端据此弹冲突横幅引导（R3）
+          void this.workStateNow().catch(() => undefined);
+        }
+      } finally {
+        releaseKind();
       }
     });
   }
@@ -1217,7 +1255,8 @@ export class GraphPanel {
     if (kind === 'fetch') this.startOp({ kind: 'fetch', all: true, prune: this.config.fetchPrune });
     if (kind === 'pull') {
       if (!upstream) { void vscode.window.showWarningMessage(this.t('pullNoUpstream')); return; }
-      this.startOp({ kind: 'pull', remote, branch: head?.branch, strategy: this.config.defaultPullStrategy });
+      // F1（Issue #6）：不传 remote/branch，按分支级配置拉取（与原生 git pull 语义一致）
+      this.startOp({ kind: 'pull', strategy: this.config.defaultPullStrategy });
     }
     if (kind === 'push') {
       this.startOp({ kind: 'push', remote, branch: head?.branch ?? 'HEAD', setUpstream: !upstream });

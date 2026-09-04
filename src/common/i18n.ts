@@ -324,6 +324,9 @@ const zh: Record<string, string> = {
   fetchUpToDate: '获取完成：远程无新提交',
   fetchUpdated: '获取完成：{n} 个分支引用有更新',
   pullUpToDate: '拉取完成：已是最新的（无新提交）',
+  pullUpToDateWith: '拉取完成：{ref} 已是最新（无新提交）',
+  pullBehindWarn: '注意：{ref} 领先当前分支，但本次拉取未合并任何提交——请重试拉取或检查网络',
+  netStalled: '网络停滞：长时间无数据传输已自动中断，请检查网络后重试',
   refreshDone: '已刷新',
   showMoreLines: '展开剩余 {n} 行',
 
@@ -759,6 +762,9 @@ const en: Record<string, string> = {
   fetchUpToDate: 'Fetch done: remote has nothing new',
   fetchUpdated: 'Fetch done: {n} branch ref(s) updated',
   pullUpToDate: 'Pull done: already up to date',
+  pullUpToDateWith: 'Pull done: {ref} is already up to date',
+  pullBehindWarn: 'Warning: {ref} is ahead of HEAD but this pull merged nothing — retry pull or check your network',
+  netStalled: 'Network stalled: no data for a while, aborted. Check your connection and retry',
   refreshDone: 'Refreshed',
   showMoreLines: 'Show {n} more lines',
 
