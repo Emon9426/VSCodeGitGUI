@@ -16,14 +16,63 @@ export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 export const DIFF_MAX_LINES = 5000;
 
 /**
- * 作者筛选白名单：字母/数字/姓名与 email 常见符号，限长 100。
- * webview 传来的任意文本先经此清洗再拼进 git 参数（execFile 参数数组，
- * 值以等号形式整体作为选项参数，从根上杜绝选项注入）。
+ * 作者名健全性校验（原文形态）：trim + 限长 100 + 拒绝控制字符。panel.sanitizeLogFilter 存储用。
+ * （Issue #5：旧字符白名单曾静默丢弃 dependabot[bot]、含逗号/引号的名字，使作者筛选完全失效。）
  */
-const AUTHOR_RE = /^[\p{L}\p{N} .@_+'-]{1,100}$/u;
-export function safeAuthorName(s: string): string | null {
+export function cleanAuthorName(s: string): string | null {
   const t = s.trim();
-  return AUTHOR_RE.test(t) ? t : null;
+  if (!t || t.length > 100 || /[\x00-\x1f\x7f]/.test(t)) return null;
+  return t;
+}
+
+/**
+ * git --author 按 POSIX 基本正则（BRE，git regcomp 未加 REG_EXTENDED）对 "Name <email>" 整串搜索：
+ * 仅转义 BRE 元字符（\ . * [ ^ $）做字面匹配——( ) + ? | { } 在 BRE 中本就是字面量，
+ * 转义反而变成运算符致失配（实测 Git 2.49：\( 开组）。勿加 ^$ 锚定（匹配目标含 email 尾巴）。
+ */
+export function escapeAuthorRegex(s: string): string {
+  return s.replace(/[\\.*[\]^$]/g, '\\$&');
+}
+
+/**
+ * 作者筛选参数安全形态：cleanAuthorName 校验 + 正则转义，供 commitsPage 拼进 '--author='
+ * （execFile 参数数组 + 等号前缀整体单参数，无 shell 注入面）。
+ */
+export function safeAuthorName(s: string): string | null {
+  const t = cleanAuthorName(s);
+  return t === null ? null : escapeAuthorRegex(t);
+}
+
+/** 带日期窗口时的补扫上限（panel.commitsFill 用；防 0 命中窗口无界扫描，到达后如实报 hasMore 供续扫） */
+export const SCAN_CAP = 20_000;
+
+/** 作者日期窗口（本地时区日界）——与列表显示的 %ad 同口径 */
+export interface AuthorDateWindow {
+  contains(c: Commit): boolean;
+}
+
+/** YYYY-MM-DD → 本地时区当日起点（00:00:00.000）/终点（23:59:59.999）时刻；非法格式返回 undefined */
+export function dayBoundMs(ymd: string, endOfDay: boolean): number | undefined {
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return undefined;
+  const t = (endOfDay ? new Date(+m[1], +m[2] - 1, +m[3], 23, 59, 59, 999) : new Date(+m[1], +m[2] - 1, +m[3])).getTime();
+  return Number.isNaN(t) ? undefined : t;
+}
+
+/** 构造作者日期窗口；两端均缺省时返回 undefined（无过滤） */
+export function authorDateWindow(since: string, until: string): AuthorDateWindow | undefined {
+  const sinceMs = dayBoundMs(since, false);
+  const untilMs = dayBoundMs(until, true);
+  if (sinceMs === undefined && untilMs === undefined) return undefined;
+  return {
+    contains(c: Commit): boolean {
+      const t = Date.parse(c.author?.date ?? '');
+      if (Number.isNaN(t)) return true;   // 日期解析失败宁可保留显示
+      if (sinceMs !== undefined && t < sinceMs) return false;
+      if (untilMs !== undefined && t > untilMs) return false;
+      return true;
+    },
+  };
 }
 
 export class GitService {
@@ -61,8 +110,17 @@ export class GitService {
     return r.stdout.split('\n').map(s => s.trim()).filter(Boolean);
   }
 
-  /** 分页获取提交；LogFilter = ref（null 时 --all）+ 作者多选 + 时间段 + 纯提交；order：topo（默认，走线规整）/ date（大仓库更快） */
-  async commitsPage(root: string, filter: LogFilter, offset: number, limit: number, ctx?: { localBranches: Set<string>; remoteBranches: Set<string> }, order: 'topo' | 'date' = 'topo'): Promise<{ commits: Commit[]; hasMore: boolean }> {
+  /**
+   * 分页获取提交；LogFilter = ref（null 时 --all）+ 作者多选（git 侧转义后 OR）+ 时间段 + 纯提交。
+   * order：topo（默认，走线规整）/ date（大仓库更快）。
+   *
+   * 时间段过滤在宿主侧按作者日期（%ad，与列表显示同口径）进行——git --since/--until 按
+   * 提交者日期过滤，rebase/cherry-pick 后与显示口径错位，且存在遍历剪枝（tip 提交者日期
+   * 早于 since 时整链被剪，Issue #5）。因此带日期窗口时 scanOffset（git --skip 偏移）≠
+   * 过滤产出计数：产出可能不足 limit，由 panel.commitsFill 循环补扫凑页（SCAN_CAP 封顶），
+   * 调用方须持久化返回的 scanned 作为后续调用的 scanOffset（panel.scanCursors）。
+   */
+  async commitsPage(root: string, filter: LogFilter, scanOffset: number, limit: number, ctx?: { localBranches: Set<string>; remoteBranches: Set<string> }, order: 'topo' | 'date' = 'topo'): Promise<{ commits: Commit[]; hasMore: boolean; scanned: number }> {
     // 纯提交视图强制日期序：去掉合并提交后拓扑序会把平行支线排成时间倒错
     // （如 B 合并 A 的场景，A 反而排在 B 前）
     const ord = filter.noMerges ? 'date' : order;
@@ -70,31 +128,31 @@ export class GitService {
       'log',
       ...(ord === 'topo' ? ['--topo-order'] : ['--date-order']),
       '--date=iso-strict', `--pretty=format:${LOG_FORMAT}`,
-      '-n', String(limit), '--skip', String(offset),
+      '-n', String(limit), '--skip', String(scanOffset),
     ];
     if (filter.noMerges) args.push('--no-merges');
     if (filter.ref) args.push(filter.ref); else args.push('--all');
-    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
     for (const a of filter.authors) {
       const name = safeAuthorName(a);
-      if (name) args.push('--author=' + name);   // 等号形式：值整体作为选项参数，多个 --author 为或关系
+      // 等号形式：值整体作为选项参数（execFile 无 shell，无注入面）；多个 --author 为或关系
+      if (name) args.push('--author=' + name);
     }
-    if (DATE_RE.test(filter.since)) args.push(`--since=${filter.since} 00:00:00`);
-    if (DATE_RE.test(filter.until)) args.push(`--until=${filter.until} 23:59:59`);
     try {
       const r = await this.exec.exec(root, args, { timeoutMs: 60_000 });
-      const commits = parseLog(r.stdout, ctx ?? {});
-      return { commits, hasMore: commits.length === limit };
+      const page = parseLog(r.stdout, ctx ?? {});
+      const win = authorDateWindow(filter.since, filter.until);
+      const commits = win ? page.filter(c => win.contains(c)) : page;
+      return { commits, hasMore: page.length === limit, scanned: scanOffset + page.length };
     } catch (e) {
       if (e instanceof GitError && /does not have any commits yet|ambiguous argument/i.test(e.message)) {
-        return { commits: [], hasMore: false };
+        return { commits: [], hasMore: false, scanned: scanOffset };
       }
       throw e;
     }
   }
 
-  /** 汇总某仓库当前呈现所需全部数据（首屏页）；pre 允许复用外层已取的 status 与排序设置（少跑一次） */
-  async buildState(root: string, repoId: string, filter: LogFilter, pageSize: number, stateVersion: number, pre?: { statusInfo?: StatusInfo; order?: 'topo' | 'date' }): Promise<RepoState> {
+  /** 汇总某仓库当前呈现所需全部数据（首屏页）；pre 允许复用外层已取的 status 与排序设置（少跑一次）。scanned = 首屏扫描深度（带日期窗口时补页/续扫的游标，Issue #5） */
+  async buildState(root: string, repoId: string, filter: LogFilter, pageSize: number, stateVersion: number, pre?: { statusInfo?: StatusInfo; order?: 'topo' | 'date' }): Promise<{ state: RepoState; scanned: number }> {
     const [refs, status, headSha] = await Promise.all([
       this.refsOf(root),
       pre?.statusInfo ? Promise.resolve(pre.statusInfo) : this.statusFullOf(root).then(s => s.info),
@@ -106,10 +164,10 @@ export class GitService {
       localBranches: new Set(tree.branches.map(b => b.name)),
       remoteBranches: new Set(tree.remotes.flatMap(g => g.branches.map(b => b.name))),
     };
-    const { commits, hasMore } = headSha
+    const { commits, hasMore, scanned } = headSha
       ? await this.commitsPage(root, filter, 0, pageSize, ctx, pre?.order ?? 'topo')
-      : { commits: [] as Commit[], hasMore: false };
-    return {
+      : { commits: [] as Commit[], hasMore: false, scanned: 0 };
+    const state: RepoState = {
       repoId,
       head: { sha: headSha ?? '', branch: headBranch, detached: status.detached },
       branches: tree.branches,
@@ -123,6 +181,7 @@ export class GitService {
       hasMore,
       stateVersion,
     };
+    return { state, scanned };
   }
 
   /** 提交详情：变更文件（merge 按 first-parent 口径，root 用 --empty 基线）；两次 diff-tree 并行（v0.7.2） */

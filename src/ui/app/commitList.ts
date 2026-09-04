@@ -250,7 +250,9 @@ export function createCommitList(app: App): CommitList {
     for (let i = 0; i < pool.length; i++) {
       const row = pool[i];
       if (i >= need) {
-        if ((row as any)._idx !== -1) { row.style.display = 'none'; (row as any)._idx = -1; delete row.dataset.sha; }
+        // 按 display 现状判断而非 _idx：invalidateRows()（每次 refresh）只清 _idx 不隐藏行，
+        // 若以 _idx!==-1 为守卫，筛选等使列表收缩的刷新后 surplus 陈旧行将永不被隐藏（Issue #5）
+        if (row.style.display !== 'none') { row.style.display = 'none'; (row as any)._idx = -1; delete row.dataset.sha; }
         continue;
       }
       const idx = firstB + i;
