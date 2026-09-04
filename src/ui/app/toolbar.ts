@@ -138,6 +138,11 @@ export function createToolbar(app: App): Toolbar {
     applySoon();
   });
 
+  // 选起始日期时自动带入截止 = 起始（Issue #5）：仅截止为空时带入，不覆盖用户已选值；
+  // 注册在 applySoon/updateClearVis 之前，防抖发送与 × 按钮可见性读到带入后的值
+  sinceInput.addEventListener('change', () => {
+    if (sinceInput.value && !untilInput.value) untilInput.value = sinceInput.value;
+  });
   sinceInput.addEventListener('change', applySoon);
   untilInput.addEventListener('change', applySoon);
   function updateClearVis(): void {

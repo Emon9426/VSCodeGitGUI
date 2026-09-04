@@ -284,6 +284,8 @@ npm run build && npm run package
 
 ### 更新日志
 
+**v0.19.1**（2026-09-04）：修复筛选功能三缺陷（[#5](https://github.com/Emon9426/VSCodeGitGUI/issues/5)）——①按作者筛选无效：含 `[]`、逗号等字符的作者名（如 `dependabot[bot]`）曾因字符白名单被静默丢弃导致筛选不生效，现放宽校验并按 git 基本正则转义后精确匹配；②按日期筛选错位：git 的 `--since/--until` 按提交者日期过滤而列表显示作者日期，rebase/cherry-pick 过的仓库两边对不上，现改为按作者日期（与显示同口径）在扩展侧过滤，分页改为扫描游标续扫；③新增：选择起始日期时自动带入截止日期 = 起始日期。
+
 **v0.19.0**（2026-09-03）：**「快速笔记」整体迁移为独立插件 QuickNotes**——GitBoard 回归纯 Git 工具，安装包随之移除 TipTap 等前端依赖、更轻量。笔记数据与默认目录（`~/GitBoardNotes`）保持不变，导出的 HTML 仍可往返编辑；`Ctrl+Alt+N` 快捷键与活动栏入口随功能移至新插件。
 
 **v0.18.x**
@@ -478,6 +480,7 @@ Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angul
 
 ### Changelog
 
+- **v0.19.1** (2026-09-04): fixed the three filter defects ([#5](https://github.com/Emon9426/VSCodeGitGUI/issues/5)) — ① author filter had no effect: names with `[]`, commas, etc. (e.g. `dependabot[bot]`) were silently dropped by a character whitelist, so no `--author` was ever passed; validation is now relaxed and names are escaped as git basic-regex literals; ② date filter mismatched the visible range: git's `--since/--until` filter on the committer date while the list shows the author date, so rebased/cherry-picked repos drifted — filtering now happens on the author date (same basis as the display) with a scan-cursor based pagination; ③ new: picking a start date auto-fills the end date to match.
 - **v0.19.0** (2026-09-03): **Quick Notes moved out into the standalone QuickNotes extension** — GitBoard is a pure Git tool again and the package drops TipTap and other web-view dependencies. Note data and the default folder (`~/GitBoardNotes`) are unchanged, exported HTML still round-trips; `Ctrl+Alt+N` and the activity-bar entry moved with the feature.
 - **v0.18.4** (2026-09-02): docs — full README restructure (issue-feedback section & contact info up front, changelog extracted into its own section, a dedicated Quick Notes section and a reveal troubleshooting FAQ).
 - **v0.18.3** (2026-09-02): "Reveal in file manager" still failed on some Windows builds (explorer's `/select` parsing drifts across versions) — switched to the classic raw single-argument form (universal since XP) and added the `gitboard.revealSelectStyle` fallback setting.

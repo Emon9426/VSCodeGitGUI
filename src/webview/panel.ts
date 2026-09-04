@@ -13,7 +13,7 @@ import { MERGE_MAX_BYTES, MERGE_MAX_LINES, RENAME_SEP } from '../common/models';
 import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, WVRequest } from '../common/protocol';
 import { GitError, GitExecutor, isGitError } from '../git/executor';
 import { discoverRepos, repoIdOf, sharedDetect } from '../git/discovery';
-import { GitService, EMPTY_TREE, safeAuthorName } from '../git/service';
+import { GitService, EMPTY_TREE, SCAN_CAP, authorDateWindow, cleanAuthorName } from '../git/service';
 import { FilesService, safeRelPath } from '../git/files';
 import { PullSummaryService } from '../git/summary';
 import { RepoWatcher } from '../git/watcher';
@@ -76,7 +76,7 @@ function sanitizeLogFilter(src: any): LogFilter {
   const raw: unknown[] = Array.isArray(src?.authors) ? src.authors : [];
   const authors = [...new Set(
     raw
-      .map(a => safeAuthorName(String(a)))
+      .map(a => cleanAuthorName(String(a)))
       .filter((a): a is string => !!a),
   )].slice(0, 50);
   const since = typeof src?.since === 'string' && DATE_RE.test(src.since) ? src.since : '';
@@ -112,6 +112,8 @@ export class GraphPanel {
   private commitCache = new Map<string, Map<string, Commit>>();
   /** 各仓库已加载提交深度（同 filter 才复用）：refresh 时补页到此深度，列表不因刷新截断回首页 */
   private loadedCounts = new Map<string, { count: number; filterKey: string }>();
+  /** 各仓库扫描游标（同 filter 才复用）：带日期窗口时 git --skip 偏移 ≠ 过滤产出计数（Issue #5） */
+  private scanCursors = new Map<string, { filterKey: string; scanned: number }>();
   private lastState?: RepoState;
   private opSeq = 0;
   private autoFetchDone = false;
@@ -812,13 +814,15 @@ export class GraphPanel {
       // 一次 status 同时喂 buildState（分支信息）与工作副本矩阵（v0.7.2 少跑一次）
       const status = await this.service.statusFullOf(root);
       const filter = this.filters.get(repoId) ?? DEFAULT_FILTER;
-      const state = await this.service.buildState(root, repoId, filter, this.config.commitPageSize, version, {
+      const { state, scanned: scanned0 } = await this.service.buildState(root, repoId, filter, this.config.commitPageSize, version, {
         statusInfo: status.info,
         order: this.config.logOrder,
       });
+      const fk = JSON.stringify(filter);
+      // 扫描游标（Issue #5）：带日期窗口时补页/续扫须从扫描深度（≠产出计数）继续
+      this.scanCursors.set(repoId, { filterKey: fk, scanned: scanned0 });
       // 已加载深度补齐：用户加载过多页时，按当前 refs 快照补页到原深度再推送——
       // 避免列表被刷新截断回首页（滚动位置 clamp + 新旧快照混拼都会造成"提交缺失"）
-      const fk = JSON.stringify(filter);
       const loaded = this.loadedCounts.get(repoId);
       const target = loaded && loaded.filterKey === fk ? loaded.count : 0;
       const needMore = target > state.commits.length && state.hasMore;
@@ -831,8 +835,11 @@ export class GraphPanel {
         try { fp0 = this.refsFingerprintOf(await this.service.refsOf(root)); } catch { /* 校验尽力而为 */ }
         const extra: Commit[] = [];
         let more = state.hasMore;
+        let scanned = scanned0;
         while (state.commits.length + extra.length < target && more) {
-          const page = await this.service.commitsPage(root, filter, state.commits.length + extra.length, this.config.commitPageSize, ctx, this.config.logOrder);
+          const page = await this.commitsFill(root, filter, scanned, this.config.commitPageSize, ctx, this.config.logOrder);
+          scanned = page.scanned;
+          this.scanCursors.set(repoId, { filterKey: fk, scanned });
           if (!page.commits.length) { more = false; break; }
           extra.push(...page.commits);
           more = page.hasMore;
@@ -887,9 +894,15 @@ export class GraphPanel {
       remoteBranches: new Set(this.lastState?.remotes.flatMap(g => g.branches.map(b => b.name)) ?? []),
     };
     const filter = this.filters.get(repoId) ?? DEFAULT_FILTER;
+    const fk = JSON.stringify(filter);
+    // 扫描游标（Issue #5）：带日期窗口时续扫偏移 ≠ 产出计数；无游标（同 filter 首查）回退产出计数——
+    // 无窗口时两者恒等，语义不变
+    const cursor = this.scanCursors.get(repoId);
+    const scanOffset = cursor && cursor.filterKey === fk ? cursor.scanned : offset;
     let fp0 = '';
     try { fp0 = this.refsFingerprintOf(await this.service.refsOf(root)); } catch { /* 校验尽力而为 */ }
-    const { commits, hasMore } = await this.service.commitsPage(root, filter, offset, this.config.commitPageSize, ctx, this.config.logOrder);
+    const { commits, hasMore, scanned } = await this.commitsFill(root, filter, scanOffset, this.config.commitPageSize, ctx, this.config.logOrder);
+    this.scanCursors.set(repoId, { filterKey: fk, scanned });
     // 在途期间 refs 已变：此页与首页不同快照，拼接会错位（缺提交/重复）——不推送，
     // 主动驱动一轮强制刷新（watcher 可能丢事件，repoState 到达可复位前端加载状态并重建列表）
     try {
@@ -898,11 +911,36 @@ export class GraphPanel {
         return null;
       }
     } catch { /* 校验尽力而为 */ }
-    this.loadedCounts.set(repoId, { count: offset + commits.length, filterKey: JSON.stringify(filter) });
+    this.loadedCounts.set(repoId, { count: offset + commits.length, filterKey: fk });
     const cache = this.commitCache.get(repoId);
     for (const c of commits) cache?.set(c.sha, c);
     this.post({ t: 'commitsAppend', repoId, offset, commits, hasMore });
     return { commits: commits.map(c => c.sha), hasMore };
+  }
+
+  /**
+   * 凑页补扫（Issue #5）：时间段过滤在宿主侧按作者日期进行后，单次 commitsPage 的产出
+   * 可能不足 limit（窗口内提交稀疏），循环续扫直到凑满 / 扫尽 / 达 SCAN_CAP（上限截断时
+   * 如实返回 hasMore，前端下次 loadMore 从 scanCursors 续扫）。
+   * 无日期窗口时单发即精确（git 侧过滤与 -n/--skip 同管道），直接走 commitsPage。
+   */
+  private async commitsFill(root: string, filter: LogFilter, scanOffset: number, limit: number, ctx: { localBranches: Set<string>; remoteBranches: Set<string> }, order: 'topo' | 'date'): Promise<{ commits: Commit[]; hasMore: boolean; scanned: number }> {
+    if (!authorDateWindow(filter.since, filter.until)) {
+      return this.service!.commitsPage(root, filter, scanOffset, limit, ctx, order);
+    }
+    const collected: Commit[] = [];
+    let scan = scanOffset;
+    let hasMore = true;
+    while (true) {
+      const page = await this.service!.commitsPage(root, filter, scan, limit, ctx, order);
+      scan = page.scanned;
+      collected.push(...page.commits);
+      hasMore = page.hasMore;
+      if (!hasMore) break;                                   // 历史扫尽
+      if (collected.length >= limit) break;                  // 凑满一页产出
+      if (scan - scanOffset >= SCAN_CAP) break;              // 补扫上限
+    }
+    return { commits: collected, hasMore, scanned: scan };
   }
 
   /** refs 快照指纹：全部 ref 的 sha 串联（loadMore 在途漂移检测用，实时读取而非 lastState 缓存） */
