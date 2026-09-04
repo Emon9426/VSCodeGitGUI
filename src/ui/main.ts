@@ -643,6 +643,9 @@ function applyThemeKind(): void {
 let restoreSha: string | undefined;   // Webview 重建后恢复选中的提交
 /** 在途分页请求锚点：repoId + offset + 发起时的列表尾 sha，三者与当前列表一致才允许拼接 */
 let pendingLoad: { repoId: string | undefined; offset: number; anchor: string | undefined } | undefined;
+/** 连续空页计数（Issue #5）：带日期窗口时补扫达 SCAN_CAP 会返回空页+hasMore=true（如实续扫），
+ *  自动加载在 syncRows 内触发、空列表下条件恒真——连续 ≥2 次空页即熔断，防无限打满扫描块 */
+let emptyAppendStreak = 0;
 /** 「拉取并推送」链条：pull 完成且无冲突时自动续推（R3/决议 #3 的事前引导侧） */
 let pendingPushAfterPull = false;
 
@@ -727,6 +730,7 @@ window.addEventListener('message', e => {
       S.state = st;
       S.commits = st.commits;
       S.graph = computeLanes(st.commits);
+      emptyAppendStreak = 0;   // 列表整体重建：空页熔断计数随新快照复位
       // 列表已整体重建：作废在途分页请求（其页属旧快照，拼接必错位）
       pendingLoad = undefined;
       if (st.logFilter) S.logFilter = st.logFilter;
@@ -762,11 +766,16 @@ window.addEventListener('message', e => {
       pendingLoad = undefined;
       if (anchored) {
         if (m.commits.length) {
+          emptyAppendStreak = 0;
           S.commits.push(...m.commits);
           S.graph = computeLanes(S.commits);
+        } else {
+          emptyAppendStreak++;
         }
         if (S.state) {
-          S.state.hasMore = m.commits.length ? m.hasMore : false;   // 空页即末页：终止后续自动加载
+          // 空页语义（Issue #5）：真扫尽时宿主 hasMore 本为 false（与 v0.7.2「空页即末页」等价）；
+          // 补扫达 SCAN_CAP 的空页 hasMore=true——首次保留续扫通道，连续第二次空页熔断自动加载
+          S.state.hasMore = m.commits.length ? m.hasMore : (emptyAppendStreak >= 2 ? false : m.hasMore);
           S.state.commitsLoaded = S.commits.length;
         }
         list.appended();

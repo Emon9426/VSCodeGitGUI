@@ -71,15 +71,15 @@ describe('authorDateWindow：作者日期窗口过滤', () => {
     expect(authorDateWindow('bad', 'bad')).toBeUndefined();
   });
 
-  it('窗口按作者日期（含时区偏移解析）保留/排除', () => {
+  it('窗口按作者日期保留/排除（本地日界；用本地 Date 推导绝对时刻，任意时区机器均成立）', () => {
     const w = authorDateWindow('2026-01-01', '2026-01-31')!;
-    expect(w.contains(mk('2026-01-15T10:00:00+08:00'))).toBe(true);   // 窗口内（rebase 型：作者旧）
-    expect(w.contains(mk('2026-01-31T23:59:59+08:00'))).toBe(true);   // 截止日末端含
-    expect(w.contains(mk('2026-01-31T23:59:59.999+08:00'))).toBe(true);
-    expect(w.contains(mk('2026-02-01T00:00:00+08:00'))).toBe(false);  // 次日零点排除
-    expect(w.contains(mk('2025-12-31T23:59:59+08:00'))).toBe(false);  // 起始日前排除
-    // 提交者日期在窗口、作者日期不在（git --since 按提交者日期时的错位方向）→ 按作者日期排除
-    expect(w.contains(mk('2026-01-15T10:00:00+08:00'))).toBe(true);
+    const local = (y: number, mth: number, d: number, h = 0, min = 0, s = 0, ms = 0) =>
+      new Date(y, mth - 1, d, h, min, s, ms).toISOString();
+    expect(w.contains(mk(local(2026, 1, 15, 10)))).toBe(true);                    // 窗口内（rebase 型：作者旧）
+    expect(w.contains(mk(local(2026, 1, 1)))).toBe(true);                         // 起始日零点含
+    expect(w.contains(mk(local(2026, 1, 31, 23, 59, 59, 500)))).toBe(true);       // 截止日末端含（.999 界内）
+    expect(w.contains(mk(local(2026, 2, 1)))).toBe(false);                        // 次日零点排除
+    expect(w.contains(mk(local(2025, 12, 31, 23, 59, 59, 999)))).toBe(false);     // 起始日前一毫秒排除
   });
 
   it('跨时区偏移按绝对时刻比较', () => {
@@ -99,12 +99,13 @@ describe('authorDateWindow：作者日期窗口过滤', () => {
     expect(w.contains({} as Commit)).toBe(true);   // author 缺失
   });
 
-  it('只有一端时单边生效', () => {
+  it('只有一端时单边生效（本地日界；用本地 Date 推导，任意时区机器均成立）', () => {
+    const local = (y: number, mth: number, d: number, h = 0) => new Date(y, mth - 1, d, h).toISOString();
     const sinceOnly = authorDateWindow('2026-08-01', '')!;
-    expect(sinceOnly.contains(mk('2026-07-31T23:59:59+08:00'))).toBe(false);
-    expect(sinceOnly.contains(mk('2026-12-31T00:00:00+08:00'))).toBe(true);
+    expect(sinceOnly.contains(mk(local(2026, 7, 31, 23)))).toBe(false);
+    expect(sinceOnly.contains(mk(local(2026, 12, 31)))).toBe(true);
     const untilOnly = authorDateWindow('', '2026-08-01')!;
-    expect(untilOnly.contains(mk('2026-08-02T00:00:00+08:00'))).toBe(false);
-    expect(untilOnly.contains(mk('2020-01-01T00:00:00+08:00'))).toBe(true);
+    expect(untilOnly.contains(mk(local(2026, 8, 2)))).toBe(false);
+    expect(untilOnly.contains(mk(local(2020, 1, 1)))).toBe(true);
   });
 });

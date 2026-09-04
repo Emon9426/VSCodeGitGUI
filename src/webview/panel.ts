@@ -840,7 +840,7 @@ export class GraphPanel {
           const page = await this.commitsFill(root, filter, scanned, this.config.commitPageSize, ctx, this.config.logOrder);
           scanned = page.scanned;
           this.scanCursors.set(repoId, { filterKey: fk, scanned });
-          if (!page.commits.length) { more = false; break; }
+          if (!page.commits.length) { more = page.hasMore; break; }   // 空产出：如实保留扫描状态（cap 截断时 true，区别于扫尽）
           extra.push(...page.commits);
           more = page.hasMore;
         }
@@ -850,6 +850,9 @@ export class GraphPanel {
             state.commits.push(...extra);
             state.hasMore = more;
             state.commitsLoaded = state.commits.length;
+          } else {
+            // 漂移丢弃 extra：游标回拨到首页扫描深度，防深游标+浅列表造成后续续扫缺口
+            this.scanCursors.set(repoId, { filterKey: fk, scanned: scanned0 });
           }
         } catch { /* 校验尽力而为 */ }
       }
@@ -899,9 +902,17 @@ export class GraphPanel {
     // 无窗口时两者恒等，语义不变
     const cursor = this.scanCursors.get(repoId);
     const scanOffset = cursor && cursor.filterKey === fk ? cursor.scanned : offset;
+    // 状态快照令牌（Issue #5）：fill 在途期间发生过 doRefresh（stateVersions 自增，如筛选变更/刷新）
+    // 则本页与游标属旧快照——不可覆写 scanCursors/loadedCounts（旧 filterKey 覆写新值会造成续扫
+    // 重复/缺口），丢弃本页并强制重推，由刷新机制重建
+    const ver0 = this.stateVersions.get(repoId) ?? 0;
     let fp0 = '';
     try { fp0 = this.refsFingerprintOf(await this.service.refsOf(root)); } catch { /* 校验尽力而为 */ }
     const { commits, hasMore, scanned } = await this.commitsFill(root, filter, scanOffset, this.config.commitPageSize, ctx, this.config.logOrder);
+    if ((this.stateVersions.get(repoId) ?? 0) !== ver0) {
+      void this.refresh(true);
+      return null;
+    }
     this.scanCursors.set(repoId, { filterKey: fk, scanned });
     // 在途期间 refs 已变：此页与首页不同快照，拼接会错位（缺提交/重复）——不推送，
     // 主动驱动一轮强制刷新（watcher 可能丢事件，repoState 到达可复位前端加载状态并重建列表）
