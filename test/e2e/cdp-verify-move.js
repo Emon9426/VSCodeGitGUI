@@ -127,7 +127,7 @@ async function attach() {
     await sleep(2500);
     const after = await E(`(() => ({
       dlgStillOpen: !!document.querySelector('.gg-move-dlg'),
-      toast: document.querySelector('.gg-toast')?.textContent.trim().slice(0, 120) || null,
+      toast: document.querySelector('.gg-notif')?.textContent.trim().slice(0, 120) || null,
       errDialog: document.querySelector('.gg-modal-overlay')?.textContent.trim().slice(0, 160) || null,
     }))()`);
     log(`[${tag}] after:`, JSON.stringify(after));

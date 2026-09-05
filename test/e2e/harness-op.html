@@ -83,7 +83,7 @@
   window.__send({ t: 'opResult', opId: 1, kind: 'pull', ok: true });
   await twoFrames(); await sleep(60);
   check('完成态 done', row().classList.contains('done'));
-  check('完成图标 ✓', row().querySelector('.gg-opstatus-icon')?.textContent === '✓');
+  check('完成图标 ✓（S4 SVG 化）', row().querySelector('.gg-opstatus-icon svg') !== null);
   check('完成后仍可见', visible(row()));
 
   // 3) 0.8s 后自动收起

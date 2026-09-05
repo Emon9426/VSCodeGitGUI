@@ -9,7 +9,7 @@ import type { FileItem } from '../../common/models';
 import { S, type App } from '../state';
 import { el, formatDateTime } from '../util';
 import { rpc } from '../rpc';
-import { fileTypeInfo, fileIconSvg } from '../icons';
+import { fileTypeInfo, fileIconSvg, iconSvg } from '../icons';
 import { showContextMenu, toast } from './overlays';
 
 type SortKey = 'name' | 'date' | 'type' | 'size';
@@ -24,10 +24,10 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
   const vsw = el('span', 'gg-files-vsw');
   const bTile = el('button', 'gg-files-vbtn') as HTMLButtonElement;
   bTile.title = S.t('filesViewTile');
-  bTile.textContent = '▦';
+  bTile.appendChild(iconSvg('panel'));
   const bDet = el('button', 'gg-files-vbtn') as HTMLButtonElement;
   bDet.title = S.t('filesViewDet');
-  bDet.textContent = '☰';
+  bDet.appendChild(iconSvg('list'));
   bTile.addEventListener('click', () => { S.files.view = 'tile'; update(); });
   bDet.addEventListener('click', () => { S.files.view = 'det'; update(); });
   vsw.append(bTile, bDet);
@@ -36,15 +36,16 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
 
   // ---------- 地址栏：面包屑 ⇄ 编辑态 ----------
   const addr = el('div', 'gg-files-addr');
-  const addrIco = el('span', 'gg-files-addr-ico', '🗂');
+  const addrIco = el('span', 'gg-files-addr-ico');
+  addrIco.appendChild(iconSvg('folderClock'));
   const crumbs = el('span', 'gg-files-crumbs');
   const addrSpace = el('span', 'gg-files-addr-space');
   const bEdit = el('button', 'gg-files-abtn') as HTMLButtonElement;
   bEdit.title = S.t('filesAddrEdit') + ' (Ctrl+L)';
-  bEdit.textContent = '✎';
+  bEdit.appendChild(iconSvg('pencil'));
   const bCopyAddr = el('button', 'gg-files-abtn') as HTMLButtonElement;
   bCopyAddr.title = S.t('copyPath');
-  bCopyAddr.textContent = '⧉';
+  bCopyAddr.appendChild(iconSvg('copy'));
   const addrInput = document.createElement('input');
   addrInput.className = 'gg-files-addr-input';
   addrInput.placeholder = S.t('filesAddrPh');
@@ -59,29 +60,30 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
   });
   root.append(addr);
 
-  // ---------- 命令条：删除 / 移动 / 重命名 / 复制 + 过滤 ----------
+  // ---------- 命令条：删除 / 移动 / 重命名 / 复制 + 过滤（S4：SVG 图标 + label） ----------
   const cmdbar = el('div', 'gg-files-cmdbar');
-  const bDel = el('button', 'gg-files-cbtn danger') as HTMLButtonElement;
-  bDel.textContent = '🗑 ' + S.t('filesDelete');
+  const mkCbtn = (icon: Parameters<typeof iconSvg>[0], danger = false): HTMLButtonElement => {
+    const b = el('button', 'gg-files-cbtn has-ic' + (danger ? ' danger' : '')) as HTMLButtonElement;
+    b.append(iconSvg(icon), el('span'));
+    return b;
+  };
+  const bDel = mkCbtn('trash', true);
   bDel.title = 'Del';
-  const bMove = el('button', 'gg-files-cbtn') as HTMLButtonElement;
-  bMove.textContent = '✂ ' + S.t('filesMove');
-  const bRen = el('button', 'gg-files-cbtn') as HTMLButtonElement;
-  bRen.textContent = '🗎 ' + S.t('filesRename');
+  const bMove = mkCbtn('movePath');
+  const bRen = mkCbtn('docRename');
   bRen.title = 'F2';
-  const bCopy = el('button', 'gg-files-cbtn') as HTMLButtonElement;
-  bCopy.textContent = '⧉ ' + S.t('copyPath');
+  const bCopy = mkCbtn('copy');
   const flt = el('span', 'gg-files-flt');
-  flt.textContent = '🔍';
+  flt.appendChild(iconSvg('search'));
   const fltInput = document.createElement('input');
   fltInput.placeholder = S.t('filesFilterPh');
   fltInput.addEventListener('input', () => { S.files.filter = fltInput.value; renderList(); });
   flt.append(fltInput);
   cmdbar.append(bDel, bMove, bRen, bCopy, el('span', 'gg-files-cmdsp'), flt);
   root.append(cmdbar);
-  bDel.addEventListener('click', () => { if (S.files.sel.length) app.folderDelete([...S.files.sel]); });
-  bMove.addEventListener('click', () => { if (S.files.sel.length) app.folderMove([...S.files.sel]); });
-  bRen.addEventListener('click', () => { if (S.files.sel.length === 1) app.folderRename(S.files.sel[0]); });
+  bDel.addEventListener('click', () => { if (S.files.sel.length && !fileOpBusy()) app.folderDelete([...S.files.sel]); });
+  bMove.addEventListener('click', () => { if (S.files.sel.length && !fileOpBusy()) app.folderMove([...S.files.sel]); });
+  bRen.addEventListener('click', () => { if (S.files.sel.length === 1 && !fileOpBusy()) app.folderRename(S.files.sel[0]); });
   bCopy.addEventListener('click', () => { if (S.files.sel.length) app.copy(S.files.sel.join('\n')); });
 
   // ---------- 列表区 ----------
@@ -93,13 +95,27 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
   let sortAsc = true;
 
   // ---------- 渲染 ----------
+  /** B6（Issue #18）：文件命令（本地道串行）在途 → 禁用防重复入队/撞锁 */
+  const FILE_OP_KINDS = new Set(['moveFolder', 'renamePath', 'deletePaths']);
+  const fileOpBusy = (): boolean => [...S.activeOps.values()].some(o => FILE_OP_KINDS.has(o.kind));
+
   function update(): void {
     bTile.classList.toggle('on', S.files.view === 'tile');
     bDet.classList.toggle('on', S.files.view === 'det');
-    bDel.classList.toggle('dis', !S.files.sel.length);
-    bMove.classList.toggle('dis', !S.files.sel.length);
-    bRen.classList.toggle('dis', S.files.sel.length !== 1);
+    const busy = fileOpBusy();
+    bDel.classList.toggle('dis', !S.files.sel.length || busy);
+    bMove.classList.toggle('dis', !S.files.sel.length || busy);
+    bRen.classList.toggle('dis', S.files.sel.length !== 1 || busy);
     bCopy.classList.toggle('dis', !S.files.sel.length);
+    bDel.title = busy ? S.t('filesOpBusy') : 'Del';
+    bMove.title = busy ? S.t('filesOpBusy') : '';
+    bRen.title = busy ? S.t('filesOpBusy') : 'F2';
+    // 命令条 label（语言/选中态刷新）
+    const n = S.files.sel.length;
+    bDel.querySelector('span')!.textContent = n ? `${S.t('filesDelete')}（${n}）` : S.t('filesDelete');
+    bMove.querySelector('span')!.textContent = n ? `${S.t('filesMove')}（${n}）` : S.t('filesMove');
+    bRen.querySelector('span')!.textContent = S.t('filesRename');
+    bCopy.querySelector('span')!.textContent = S.t('copyPath');
     renderCrumbs();
     renderList();
   }
@@ -111,7 +127,11 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
       c.addEventListener('click', () => app.filesNavigate(p));
       return c;
     };
-    crumbs.append(mk('🏠', '', S.files.cwd === ''));
+    const homeCrumb = mk('', '', S.files.cwd === '');
+    homeCrumb.title = S.t('filesRootCrumb');
+    homeCrumb.classList.add('home');
+    homeCrumb.appendChild(iconSvg('home'));
+    crumbs.append(homeCrumb);
     let acc = '';
     for (const seg of S.files.cwd ? S.files.cwd.split('/') : []) {
       acc = acc ? acc + '/' + seg : seg;
@@ -186,12 +206,13 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
         renderList();
         hooks?.onSelection?.();
       }
+      const busy = fileOpBusy();   // 审查 P2-3：右键菜单危险项与按钮/快捷键同口径门控
       showContextMenu([
         { label: S.t('filesOpen'), run: () => (it.isDir ? app.filesNavigate(it.path) : app.openFile(it.path)) },
         { label: S.t('filesViewHist'), run: () => app.filesSelect(it.path, it.isDir) },
-        { label: S.t('filesRename'), run: () => app.folderRename(it.path) },
-        { label: S.t('filesMove'), run: () => app.folderMove([it.path]) },
-        { label: S.t('filesDelete'), danger: true, run: () => app.folderDelete([it.path]) },
+        { label: S.t('filesRename'), run: () => app.folderRename(it.path), disabled: busy },
+        { label: S.t('filesMove'), run: () => app.folderMove([it.path]), disabled: busy },
+        { label: S.t('filesDelete'), danger: true, run: () => app.folderDelete([it.path]), disabled: busy },
         { sep: true },
         { label: S.t('copyPath'), run: () => app.copy(it.path) },
         { label: S.t('revealInFM'), run: () => app.revealInFM(it.path) },
@@ -359,13 +380,13 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
     window.addEventListener('mouseup', up);
   });
 
-  // 快捷键：F2 重命名 / Del 删除 / Ctrl+L 地址栏（仅文件视图激活时）
+  // 快捷键：F2 重命名 / Del 删除 / Ctrl+L 地址栏（仅文件视图激活时；审查 P2-3：与按钮同口径在途门控）
   document.addEventListener('keydown', e => {
     if (S.view !== 'files') return;
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    if (e.key === 'F2') { e.preventDefault(); if (S.files.sel.length === 1) app.folderRename(S.files.sel[0]); }
-    else if (e.key === 'Delete') { e.preventDefault(); if (S.files.sel.length) app.folderDelete([...S.files.sel]); }
+    if (e.key === 'F2') { e.preventDefault(); if (S.files.sel.length === 1 && !fileOpBusy()) app.folderRename(S.files.sel[0]); }
+    else if (e.key === 'Delete') { e.preventDefault(); if (S.files.sel.length && !fileOpBusy()) app.folderDelete([...S.files.sel]); }
     else if (e.ctrlKey && e.key.toLowerCase() === 'l') { e.preventDefault(); addrEdit(); }
   });
 

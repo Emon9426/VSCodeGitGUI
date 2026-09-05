@@ -1,6 +1,7 @@
-/** 右键菜单、对话框、toast（浮层，挂在 document.body）。 */
+/** 右键菜单、对话框、通知（浮层，挂在 document.body）。 */
 import { S } from '../state';
 import { el, clearChildren } from '../util';
+import { iconSvg, type IconName } from '../icons';
 
 export interface MenuItem {
   label?: string;
@@ -75,8 +76,9 @@ export function confirmDialog(
     const btns = el('div', 'gg-modal-btns');
     const cancel = el('button', 'gg-btn', S.t('cancel'));
     const ok = el('button', danger ? 'gg-btn danger' : 'gg-btn primary', okLabel);
-    cancel.addEventListener('click', () => { close(); resolve(false); });
-    ok.addEventListener('click', () => { close(); resolve(true); });
+    // B4（Issue #18）：确认/取消首点即禁用——双击间隔内不再重复触发动作（防 index.lock 类二次提交）
+    cancel.addEventListener('click', () => { ok.disabled = true; cancel.disabled = true; close(); resolve(false); });
+    ok.addEventListener('click', () => { ok.disabled = true; cancel.disabled = true; close(); resolve(true); });
     btns.append(cancel, ok);
     box.appendChild(btns);
     ok.focus();
@@ -142,19 +144,24 @@ export function tagDialog(
   });
 }
 
-/** reset 模式选择（设计方案 6.5：hard 需强确认） */
+/** reset 模式选择（设计方案 6.5：hard 需强确认；Issue #18 S6：警示图标 + 不可撤销副行） */
 export function resetDialog(sha: string, dirtyCount: number, t: (k: string, p?: Record<string, string | number>) => string): Promise<ResetMode | null> {
   return new Promise(resolve => {
     const { box, body, close } = openModal(t('resetTitle', { sha: sha.slice(0, 7) }));
     const modes: ResetMode[] = ['soft', 'mixed', 'hard'];
     let selected: ResetMode = 'mixed';
     const warn = el('div', 'gg-modal-warn');
+    const warnIc = iconSvg('warnTriangle');
+    warnIc.classList.add('gg-ic-inline');
+    const warnCol = el('div');
+    const warnTitle = el('div', 'gg-modal-warn-t');
+    const warnSub = el('div', 'gg-modal-warn-s');
+    warnCol.append(warnTitle, warnSub);
+    warn.append(warnIc, warnCol);
     const renderWarn = () => {
-      clearChildren(warn);
-      warn.className = 'gg-modal-warn' + (selected === 'hard' ? ' show' : '');
-      if (selected === 'hard' && dirtyCount > 0) {
-        warn.textContent = t('hardWarning', { n: dirtyCount });
-      }
+      warn.classList.toggle('show', selected === 'hard');
+      warnTitle.textContent = selected === 'hard' && dirtyCount > 0 ? t('hardWarning', { n: dirtyCount }) : '';
+      warnSub.textContent = selected === 'hard' ? t('hardIrreversible') : '';
     };
     for (const mode of modes) {
       const id = `gg-reset-${mode}`;
@@ -186,25 +193,125 @@ export function resetDialog(sha: string, dirtyCount: number, t: (k: string, p?: 
   });
 }
 
-// ---------------- Toast ----------------
+// ---------------- Notification（Issue #18 S2：右下通知，替代旧 toast） ----------------
 
-export function toast(level: 'info' | 'warn' | 'error', message: string, action?: { label: string; run: () => void }): void {
-  const host = document.querySelector('.gg-toasts') ?? (() => {
-    const h = el('div', 'gg-toasts');
-    document.body.appendChild(h);
-    return h;
-  })();
-  const item = el('div', `gg-toast ${level}`);
-  item.appendChild(el('span', 'gg-toast-text', message));
-  if (action) {
-    const btn = el('button', 'gg-toast-btn', action.label);
-    btn.addEventListener('click', () => { action.run(); item.remove(); });
-    item.appendChild(btn);
+export type NotifyLevel = 'info' | 'success' | 'warn' | 'error';
+
+export interface NotifyOpts {
+  title: string;
+  body?: string;
+  /** 技术详情（git 输出尾等）：默认折叠，mono 展示（最多内部滚动） */
+  detail?: string;
+  actions?: { label: string; run(): void; primary?: boolean }[];
+}
+
+/** 停留时长（Issue #18 §2.2）：error 常驻（仅手动关闭或触发动作后关闭） */
+const NOTIFY_MS: Record<NotifyLevel, number> = { info: 4000, success: 5000, warn: 8000, error: 0 };
+const NOTIFY_ICON: Record<NotifyLevel, IconName> = { info: 'info', success: 'checkCircle', warn: 'warnTriangle', error: 'errorX' };
+const NOTIFY_MAX = 4;
+
+let notifHost: HTMLElement | undefined;
+/** 超限折叠计数：最早的非常驻通知让位给新通知，计数行提示还有多少条 */
+let notifHidden = 0;
+
+function notifHostEl(): HTMLElement {
+  if (!notifHost) {
+    notifHost = el('div', 'gg-notifs');
+    document.body.appendChild(notifHost);
   }
-  const closeBtn = el('button', 'gg-toast-x', '×');
-  closeBtn.addEventListener('click', () => item.remove());
-  item.appendChild(closeBtn);
-  host.appendChild(item);
-  setTimeout(() => item.classList.add('fade'));
-  setTimeout(() => item.remove(), 8000);
+  return notifHost;
+}
+
+function refreshNotifCounter(): void {
+  const h = notifHost!;
+  let c = h.querySelector('.gg-notifs-more');
+  if (notifHidden > 0) {
+    if (!c) { c = el('div', 'gg-notifs-more'); h.appendChild(c); }
+    c.textContent = S.t('notifMore', { n: notifHidden });
+  } else c?.remove();
+}
+
+/** 堆叠上限：常驻 error 不挤；可见清零时计数一并复位 */
+function trimNotifications(): void {
+  if (!notifHost) return;
+  const items = [...notifHost.querySelectorAll('.gg-notif')];
+  let excess = items.length - NOTIFY_MAX;
+  if (excess > 0) {
+    for (const it of items) {
+      if (excess <= 0) break;
+      if (it.classList.contains('error')) continue;
+      it.remove();
+      notifHidden++;
+      excess--;
+    }
+  }
+  if (!notifHost.querySelectorAll('.gg-notif').length) notifHidden = 0;
+  refreshNotifCounter();
+}
+
+export function notify(level: NotifyLevel, opts: NotifyOpts): void {
+  const h = notifHostEl();
+  const item = el('div', `gg-notif ${level}`);
+  const head = el('div', 'gg-notif-head');
+  head.appendChild(iconSvg(NOTIFY_ICON[level]));
+  head.appendChild(el('span', 'gg-notif-title', opts.title));
+  const x = el('button', 'gg-notif-x', '×');
+  x.title = S.t('cancel');
+  head.appendChild(x);
+  item.appendChild(head);
+  if (opts.body) item.appendChild(el('div', 'gg-notif-body', opts.body));
+  if (opts.actions?.length) {
+    const acts = el('div', 'gg-notif-acts');
+    for (const a of opts.actions) {
+      const b = el('button', 'gg-btn small' + (a.primary ? ' primary' : ''), a.label);
+      b.addEventListener('click', () => { item.remove(); trimNotifications(); a.run(); });
+      acts.appendChild(b);
+    }
+    item.appendChild(acts);
+  }
+  if (opts.detail) {
+    const d = el('details', 'gg-notif-detail');
+    d.appendChild(el('summary', undefined, S.t('gitOutput')));
+    d.appendChild(el('pre', undefined, opts.detail));
+    item.appendChild(d);
+  }
+  const remove = () => { item.remove(); trimNotifications(); };
+  x.addEventListener('click', remove);
+  h.insertBefore(item, h.querySelector('.gg-notifs-more') ?? null);
+  trimNotifications();
+  const ms = NOTIFY_MS[level];
+  if (ms > 0) {
+    setTimeout(() => item.classList.add('fade'), ms - 350);
+    setTimeout(remove, ms);
+  }
+}
+
+/** 旧签名兼容入口（info/warn/error 单行消息）：内部转发 Notification */
+export function toast(level: 'info' | 'warn' | 'error', message: string, action?: { label: string; run: () => void }): void {
+  notify(level, { title: message, actions: action ? [action] : undefined });
+}
+
+// ---------------- Banner（Issue #18 S3：页面内横幅统一组件） ----------------
+
+export type BannerVariant = 'info' | 'success' | 'warn' | 'danger' | 'accent';
+
+const BANNER_ICON: Record<BannerVariant, IconName> = {
+  info: 'info', success: 'checkCircle', warn: 'warnTriangle', danger: 'warnTriangle', accent: 'movePath',
+};
+
+/**
+ * 统一横幅骨架：图标(语义色) + [标题(前景·600) / 正文(描述色)] + 右侧动作区。
+ * 语义配方（§1）：浅语义底 10% + 语义色边框 42% + 图标全色 + 标题前景色。
+ */
+export function mkBanner(variant: BannerVariant): { el: HTMLElement; title: HTMLElement; body: HTMLElement; acts: HTMLElement } {
+  const root = el('div', `gg-banner ${variant}`);
+  const ic = iconSvg(BANNER_ICON[variant]);
+  ic.classList.add('gg-banner-ic');
+  const text = el('div', 'gg-banner-text');
+  const title = el('div', 'gg-banner-t');
+  const body = el('div', 'gg-banner-b');
+  text.append(title, body);
+  const acts = el('div', 'gg-banner-acts');
+  root.append(ic, text, acts);
+  return { el: root, title, body, acts };
 }

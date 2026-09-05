@@ -19,8 +19,8 @@ import { createOpStatus } from './app/opStatus';
 import { createFilesView } from './app/filesView';
 import { createFilePanel } from './app/filePanel';
 import { showPullSummary } from './app/pullSummary';
-import { confirmDialog, promptDialog, resetDialog, toast, openModal } from './app/overlays';
-import { fileIconSvg } from './icons';
+import { confirmDialog, promptDialog, resetDialog, toast, notify, openModal } from './app/overlays';
+import { fileIconSvg, iconSvg } from './icons';
 
 // ---------- App 实现 ----------
 
@@ -121,9 +121,8 @@ const app: App = {
     void rpc('op:push', { remote, branch }).catch(showErr);
   },
   runRefresh() {
-    void rpc('refresh')
-      .then(() => toast('info', S.t('refreshDone')))
-      .catch(showErr);
+    // 成功反馈收敛（Issue #18 决议 2）：进度行绿闪 + 按钮闪绿足够，不再弹庆祝 toast
+    void rpc('refresh').catch(showErr);
   },
   cancelOp(opId) {
     void rpc('op:cancel', { opId }).catch(showErr);
@@ -484,7 +483,16 @@ const app: App = {
 
 function showErr(e: unknown): void {
   const msg = e instanceof Error ? e.message : String(e);
-  toast('error', msg);
+  notify('error', { title: msg });
+}
+
+/** 可重试的网络类操作（Issue #18 S2：错误通知附「重试」） */
+const RETRYABLE_KINDS = new Set(['fetch', 'pull', 'push', 'refresh']);
+function retryOp(kind: string): void {
+  if (kind === 'fetch') app.runFetch();
+  else if (kind === 'pull') app.runPull();
+  else if (kind === 'push') app.runPush();
+  else if (kind === 'refresh') app.runRefresh();
 }
 
 /** 移动目标选择对话框（webview 内实现——原生 showOpenDialog 在部分环境静默取消，已弃用）：
@@ -523,7 +531,10 @@ function moveDialog(srcs: string[]): Promise<string | null> {
         c.addEventListener('click', () => { cwd = p; load(); });
         return c;
       };
-      crumbs.append(mk('🏠 ' + S.t('filesRootCrumb'), '', cwd === ''));
+      const home = mk('', '', cwd === '');
+      home.title = S.t('filesRootCrumb');
+      home.appendChild(iconSvg('home'));
+      crumbs.append(home, el('span', undefined, S.t('filesRootCrumb')));
       let acc = '';
       for (const seg of cwd ? cwd.split('/') : []) {
         acc = acc ? acc + '/' + seg : seg;
@@ -766,6 +777,7 @@ window.addEventListener('message', e => {
       S.state = st;
       S.commits = st.commits;
       S.graph = computeLanes(st.commits);
+      if (!repoChanged) commitBar.checkAmendBase();   // B5：amend 期间 HEAD 前进 → 自动退出修订
       emptyAppendStreak = 0;   // 列表整体重建：空页熔断计数随新快照复位
       // 列表已整体重建：作废在途分页请求（其页属旧快照，拼接必错位）
       pendingLoad = undefined;
@@ -834,7 +846,7 @@ window.addEventListener('message', e => {
       }
       toolbar.updateProgress();
       if (!m.ok) {
-        // R3 事后兜底：push 被拒（non-fast-forward / fetch first / rejected）→ 引导先拉取
+        // R3 事后兜底：push 被拒（non-fast-forward / fetch first / rejected）→ 引导先拉取（决策对话保留模态）
         if (m.kind === 'push' && m.outputTail && /non-fast-forward|fetch first|rejected|failed to push/i.test(m.outputTail)) {
           void confirmDialog(
             S.t('pushRejectedTitle'),
@@ -846,14 +858,21 @@ window.addEventListener('message', e => {
             pendingPushAfterPull = true;
             app.runPull();
           });
-        } else if (m.outputTail) {
-          void confirmDialog(S.t('error'), `${m.message ?? ''}\n\n${m.outputTail}`, S.t('close'));
         } else {
-          toast('error', m.message ?? S.t('error'));
+          // Issue #18 S2：操作失败改为常驻错误通知（标题+人话原因+折叠的 git 输出+重试），
+          // 不再弹阻塞式确认框平铺 stderr；可重试操作必带「重试」
+          notify('error', {
+            title: S.t('opFailedTitle', { op: S.t(m.kind) }),
+            body: m.message || undefined,
+            detail: m.outputTail || undefined,
+            actions: RETRYABLE_KINDS.has(m.kind)
+              ? [{ label: S.t('retry'), primary: true, run: () => retryOp(m.kind) }]
+              : undefined,
+          });
         }
       } else if (m.message) {
-        // 操作后校验警示（Issue #6 后续）：黄色 toast 区别于常规成功提示
-        toast(m.verify === 'warn' ? 'warn' : 'info', m.message);
+        // 操作后校验警示（Issue #6 后续）：warn 通知；常规成功消息（如"已是最新的"）按纯告知 info 4s
+        notify(m.verify === 'warn' ? 'warn' : 'info', { title: m.message });
       }
       // Issue #7 乐观态收口：冲突解决 op 落定即解除行内 ⏳——成功走 prune（文件已离开冲突组），
       // 失败按 opResult.paths 精确解除（文件仍在冲突组，prune 删不掉；审查 P1-1：否则行永久禁点）
@@ -870,7 +889,7 @@ window.addEventListener('message', e => {
       if (m.kind === 'mergeAbort') pendingPushAfterResolve = false;
       break;
     case 'notify':
-      toast(m.level, m.message);
+      notify(m.level, { title: m.message });
       break;
     case 'projectsChanged':
       S.projects = m.projects;

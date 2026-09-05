@@ -9,6 +9,7 @@ import type { MergeSession, MergeSessionAny } from '../../common/models';
 import { S } from '../state';
 import { el, clearChildren } from '../util';
 import { rpc } from '../rpc';
+import { iconSvg } from '../icons';
 import { confirmDialog, showContextMenu } from './overlays';
 import { parseMergeResult, serializeMergeResult, type ConflictChunk, type ParsedMerge } from '../merge/parse';
 
@@ -396,7 +397,11 @@ export function createMergeView(app: { setView(view: 'graph' | 'work'): void }):
     const box = el('div', 'gg-merge-special');
     const path = s.path;
     if ('tooLarge' in s && s.tooLarge) {
-      box.appendChild(el('div', 'gg-merge-special-title', '⚠ ' + S.t('mergeTooLargeTitle')));
+      const warnTitle = el('div', 'gg-merge-special-title');
+      const warnIc = iconSvg('warnTriangle');
+      warnIc.classList.add('gg-ic-inline');
+      warnTitle.append(warnIc, el('span', undefined, S.t('mergeTooLargeTitle')));
+      box.appendChild(warnTitle);
       box.appendChild(el('div', 'gg-merge-special-text',
         S.t('mergeTooLargeText', { lines: String(s.lines), size: fmtBytes(s.bytes), limitLines: '16000', limitSize: '2 MB' })));
       const btns = el('div', 'gg-merge-special-btns');
