@@ -157,8 +157,8 @@
   await twoFrames();
   assert('返回历史列表', document.querySelectorAll('.gg-fp-row').length === 5);
 
-  // 6. 详情就地展开（ⓘ → commitDiff mock）
-  const infoBtns = [...document.querySelectorAll('.gg-fp-act')].filter(b => b.textContent === 'ⓘ');
+  // 6. 详情就地展开（info 图标按钮 → commitDiff mock；S4 起 SVG 化，按 title 定位）
+  const infoBtns = [...document.querySelectorAll('.gg-fp-act')].filter(b => /详情|Detail/i.test(b.title || ''));
   infoBtns[0].click();
   await sleep(300);
   assert('详情块展开', document.querySelector('.gg-fp-detail') !== null);

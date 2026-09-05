@@ -366,6 +366,8 @@ export function createCommitBar(app: App): CommitBar {
     if (w.aiMeta) {
       // meta 行借用计数位展示（极简）
       count.title = w.aiMeta;
+    } else {
+      count.title = '';   // 审查备注：aiMeta 清空后不残留上一次 AI 结果的悬停提示
     }
     refreshCount();
   }

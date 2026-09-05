@@ -25,7 +25,8 @@ export function createToolbar(app: App): Toolbar {
   const branchLabel = el('span', 'gg-branch-label');
   const branchIc = iconSvg('branch');
   const branchText = el('span');
-  branchLabel.append(branchIc, branchText);
+  const branchBadge = el('span', 'gg-dirty-badge hidden');   // 常驻元素（审查 P2-1：追加式会随 update 无界堆积）
+  branchLabel.append(branchIc, branchText, branchBadge);
   const filterSel = el('select', 'gg-select gg-filter-sel') as HTMLSelectElement;
   filterSel.addEventListener('change', () => {
     app.setFilter(filterSel.value || null);
@@ -266,7 +267,7 @@ export function createToolbar(app: App): Toolbar {
         repoSel.appendChild(opt);
       }
     }
-    // 当前分支标识（分支图标常驻，S4；detached 时图标隐藏只显 sha）
+    // 当前分支标识（分支图标常驻，S4；detached 时图标隐藏只显 sha；徽标为常驻元素仅改文本）
     const st = S.state;
     if (st) {
       branchIc.classList.toggle('hidden', !!st.head.detached);
@@ -274,11 +275,14 @@ export function createToolbar(app: App): Toolbar {
         ? `${S.t('detachedHead')} · ${st.head.sha.slice(0, 7)}`
         : (st.head.branch ?? '');
       if (st.status.dirtyCount > 0) {
-        const badge = el('span', 'gg-dirty-badge', S.t('dirtyCount', { n: st.status.dirtyCount }));
-        branchLabel.appendChild(badge);
+        branchBadge.textContent = S.t('dirtyCount', { n: st.status.dirtyCount });
+        branchBadge.classList.remove('hidden');
+      } else {
+        branchBadge.classList.add('hidden');
       }
     } else {
       branchText.textContent = '';
+      branchBadge.classList.add('hidden');
     }
     // 过滤下拉
     filterSel.textContent = '';

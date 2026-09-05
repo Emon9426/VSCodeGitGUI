@@ -206,12 +206,13 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
         renderList();
         hooks?.onSelection?.();
       }
+      const busy = fileOpBusy();   // 审查 P2-3：右键菜单危险项与按钮/快捷键同口径门控
       showContextMenu([
         { label: S.t('filesOpen'), run: () => (it.isDir ? app.filesNavigate(it.path) : app.openFile(it.path)) },
         { label: S.t('filesViewHist'), run: () => app.filesSelect(it.path, it.isDir) },
-        { label: S.t('filesRename'), run: () => app.folderRename(it.path) },
-        { label: S.t('filesMove'), run: () => app.folderMove([it.path]) },
-        { label: S.t('filesDelete'), danger: true, run: () => app.folderDelete([it.path]) },
+        { label: S.t('filesRename'), run: () => app.folderRename(it.path), disabled: busy },
+        { label: S.t('filesMove'), run: () => app.folderMove([it.path]), disabled: busy },
+        { label: S.t('filesDelete'), danger: true, run: () => app.folderDelete([it.path]), disabled: busy },
         { sep: true },
         { label: S.t('copyPath'), run: () => app.copy(it.path) },
         { label: S.t('revealInFM'), run: () => app.revealInFM(it.path) },
@@ -379,13 +380,13 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
     window.addEventListener('mouseup', up);
   });
 
-  // 快捷键：F2 重命名 / Del 删除 / Ctrl+L 地址栏（仅文件视图激活时）
+  // 快捷键：F2 重命名 / Del 删除 / Ctrl+L 地址栏（仅文件视图激活时；审查 P2-3：与按钮同口径在途门控）
   document.addEventListener('keydown', e => {
     if (S.view !== 'files') return;
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    if (e.key === 'F2') { e.preventDefault(); if (S.files.sel.length === 1) app.folderRename(S.files.sel[0]); }
-    else if (e.key === 'Delete') { e.preventDefault(); if (S.files.sel.length) app.folderDelete([...S.files.sel]); }
+    if (e.key === 'F2') { e.preventDefault(); if (S.files.sel.length === 1 && !fileOpBusy()) app.folderRename(S.files.sel[0]); }
+    else if (e.key === 'Delete') { e.preventDefault(); if (S.files.sel.length && !fileOpBusy()) app.folderDelete([...S.files.sel]); }
     else if (e.ctrlKey && e.key.toLowerCase() === 'l') { e.preventDefault(); addrEdit(); }
   });
 

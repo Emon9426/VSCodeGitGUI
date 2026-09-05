@@ -83,8 +83,9 @@ export function createCommitList(app: App): CommitList {
   function timeWidths(): { full: number; compact: number } {
     const key = `${S.config.dateFormat}|${S.lang}`;
     if (timeWidthCache.key !== key) {
+      // relative 取最长样例（审查备注：分钟级文案比周/年更宽，临界宽度下防截断）
       const sample = S.config.dateFormat === 'relative'
-        ? (S.lang === 'en' ? '51 weeks ago' : '51 周前')
+        ? (S.lang === 'en' ? '51 minutes ago' : '51 分钟前')
         : '2026-09-05 23:59:59';
       timeWidthCache = { key, full: measureTimeWidth(sample), compact: measureTimeWidth('09-05 23:59') };
     }
@@ -382,6 +383,8 @@ export function createCommitList(app: App): CommitList {
     },
     configChanged() {
       lastGraph = undefined;
+      // 审查 P2-2：dateFormat/语言切换改变行内时间文本（同档换格式不触发三态机失效）——强制重填可视行
+      invalidateRows();
       for (let i = 0; i < colKeys.length; i++) {
         headCells[i].firstChild!.textContent = S.t(colKeys[i]);
       }

@@ -261,11 +261,11 @@ export function createFilePanel(app: App) {
       const acts = el('span', 'gg-fp-acts');
       const aInfo = el('button', 'gg-fp-act') as HTMLButtonElement;
       aInfo.title = S.t('filesDetail');
-      aInfo.textContent = 'ⓘ';
+      aInfo.appendChild(iconSvg('info'));
       aInfo.addEventListener('click', e => { e.stopPropagation(); toggleDetail(it); });
       const aVer = el('button', 'gg-fp-act') as HTMLButtonElement;
       aVer.title = S.t('filesOpenVer');
-      aVer.textContent = '📄';
+      aVer.appendChild(iconSvg('goToFile'));
       aVer.addEventListener('click', e => { e.stopPropagation(); app.openFileAt(it.sha, it.path); });
       acts.append(aInfo, aVer);
       row.append(ck, tl, msg);
