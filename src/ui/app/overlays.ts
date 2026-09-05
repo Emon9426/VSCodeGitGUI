@@ -1,6 +1,7 @@
-/** 右键菜单、对话框、toast（浮层，挂在 document.body）。 */
+/** 右键菜单、对话框、通知（浮层，挂在 document.body）。 */
 import { S } from '../state';
 import { el, clearChildren } from '../util';
+import { iconSvg, type IconName } from '../icons';
 
 export interface MenuItem {
   label?: string;
@@ -186,25 +187,100 @@ export function resetDialog(sha: string, dirtyCount: number, t: (k: string, p?: 
   });
 }
 
-// ---------------- Toast ----------------
+// ---------------- Notification（Issue #18 S2：右下通知，替代旧 toast） ----------------
 
-export function toast(level: 'info' | 'warn' | 'error', message: string, action?: { label: string; run: () => void }): void {
-  const host = document.querySelector('.gg-toasts') ?? (() => {
-    const h = el('div', 'gg-toasts');
-    document.body.appendChild(h);
-    return h;
-  })();
-  const item = el('div', `gg-toast ${level}`);
-  item.appendChild(el('span', 'gg-toast-text', message));
-  if (action) {
-    const btn = el('button', 'gg-toast-btn', action.label);
-    btn.addEventListener('click', () => { action.run(); item.remove(); });
-    item.appendChild(btn);
+export type NotifyLevel = 'info' | 'success' | 'warn' | 'error';
+
+export interface NotifyOpts {
+  title: string;
+  body?: string;
+  /** 技术详情（git 输出尾等）：默认折叠，mono 展示（最多内部滚动） */
+  detail?: string;
+  actions?: { label: string; run(): void; primary?: boolean }[];
+}
+
+/** 停留时长（Issue #18 §2.2）：error 常驻（仅手动关闭或触发动作后关闭） */
+const NOTIFY_MS: Record<NotifyLevel, number> = { info: 4000, success: 5000, warn: 8000, error: 0 };
+const NOTIFY_ICON: Record<NotifyLevel, IconName> = { info: 'info', success: 'checkCircle', warn: 'warnTriangle', error: 'errorX' };
+const NOTIFY_MAX = 4;
+
+let notifHost: HTMLElement | undefined;
+/** 超限折叠计数：最早的非常驻通知让位给新通知，计数行提示还有多少条 */
+let notifHidden = 0;
+
+function notifHostEl(): HTMLElement {
+  if (!notifHost) {
+    notifHost = el('div', 'gg-notifs');
+    document.body.appendChild(notifHost);
   }
-  const closeBtn = el('button', 'gg-toast-x', '×');
-  closeBtn.addEventListener('click', () => item.remove());
-  item.appendChild(closeBtn);
-  host.appendChild(item);
-  setTimeout(() => item.classList.add('fade'));
-  setTimeout(() => item.remove(), 8000);
+  return notifHost;
+}
+
+function refreshNotifCounter(): void {
+  const h = notifHost!;
+  let c = h.querySelector('.gg-notifs-more');
+  if (notifHidden > 0) {
+    if (!c) { c = el('div', 'gg-notifs-more'); h.appendChild(c); }
+    c.textContent = S.t('notifMore', { n: notifHidden });
+  } else c?.remove();
+}
+
+/** 堆叠上限：常驻 error 不挤；可见清零时计数一并复位 */
+function trimNotifications(): void {
+  if (!notifHost) return;
+  const items = [...notifHost.querySelectorAll('.gg-notif')];
+  let excess = items.length - NOTIFY_MAX;
+  if (excess > 0) {
+    for (const it of items) {
+      if (excess <= 0) break;
+      if (it.classList.contains('error')) continue;
+      it.remove();
+      notifHidden++;
+      excess--;
+    }
+  }
+  if (!notifHost.querySelectorAll('.gg-notif').length) notifHidden = 0;
+  refreshNotifCounter();
+}
+
+export function notify(level: NotifyLevel, opts: NotifyOpts): void {
+  const h = notifHostEl();
+  const item = el('div', `gg-notif ${level}`);
+  const head = el('div', 'gg-notif-head');
+  head.appendChild(iconSvg(NOTIFY_ICON[level]));
+  head.appendChild(el('span', 'gg-notif-title', opts.title));
+  const x = el('button', 'gg-notif-x', '×');
+  x.title = S.t('cancel');
+  head.appendChild(x);
+  item.appendChild(head);
+  if (opts.body) item.appendChild(el('div', 'gg-notif-body', opts.body));
+  if (opts.actions?.length) {
+    const acts = el('div', 'gg-notif-acts');
+    for (const a of opts.actions) {
+      const b = el('button', 'gg-btn small' + (a.primary ? ' primary' : ''), a.label);
+      b.addEventListener('click', () => { item.remove(); trimNotifications(); a.run(); });
+      acts.appendChild(b);
+    }
+    item.appendChild(acts);
+  }
+  if (opts.detail) {
+    const d = el('details', 'gg-notif-detail');
+    d.appendChild(el('summary', undefined, S.t('gitOutput')));
+    d.appendChild(el('pre', undefined, opts.detail));
+    item.appendChild(d);
+  }
+  const remove = () => { item.remove(); trimNotifications(); };
+  x.addEventListener('click', remove);
+  h.insertBefore(item, h.querySelector('.gg-notifs-more') ?? null);
+  trimNotifications();
+  const ms = NOTIFY_MS[level];
+  if (ms > 0) {
+    setTimeout(() => item.classList.add('fade'), ms - 350);
+    setTimeout(remove, ms);
+  }
+}
+
+/** 旧签名兼容入口（info/warn/error 单行消息）：内部转发 Notification */
+export function toast(level: 'info' | 'warn' | 'error', message: string, action?: { label: string; run: () => void }): void {
+  notify(level, { title: message, actions: action ? [action] : undefined });
 }

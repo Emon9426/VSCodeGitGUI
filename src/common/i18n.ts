@@ -22,6 +22,11 @@ const zh: Record<string, string> = {
   copyBranchName: '复制分支名',
   copyPath: '复制路径',
   error: '错误',
+  // Notification（Issue #18 S2）
+  opFailedTitle: '{op}失败',
+  retry: '重试',
+  gitOutput: 'git 输出',
+  notifMore: '还有 {n} 条更早通知',
 
   fetch: 'Fetch',
   pull: 'Pull',
@@ -472,6 +477,11 @@ const en: Record<string, string> = {
   copyBranchName: 'Copy branch name',
   copyPath: 'Copy path',
   error: 'Error',
+  // Notification (Issue #18 S2)
+  opFailedTitle: '{op} failed',
+  retry: 'Retry',
+  gitOutput: 'git output',
+  notifMore: '{n} earlier notifications',
 
   fetch: 'Fetch',
   pull: 'Pull',
