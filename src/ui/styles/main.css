@@ -894,6 +894,10 @@ button.danger:hover { background: #c62121; }
 .gg-work-row.conflict { background: color-mix(in srgb, var(--vscode-charts-red) 6%, transparent); }
 .gg-work-row.conflict:hover { background: color-mix(in srgb, var(--vscode-charts-red) 12%, transparent); }
 .gg-work-row.conflict.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+/* 冲突解决乐观态（Issue #7）：点选边后行内 ⏳ + 按钮禁点 */
+.gg-work-row.conflict.resolving { opacity: 0.72; }
+.gg-work-row.conflict.resolving .gg-st.C { color: var(--vscode-charts-yellow); }
+.gg-work-row.conflict.resolving button:disabled { opacity: 0.55; cursor: default; }
 .gg-side-add {
   float: right; border: none; background: transparent; cursor: pointer;
   color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1; padding: 0 2px;

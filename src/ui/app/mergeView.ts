@@ -19,6 +19,8 @@ export interface MergeView {
   /** workState 变化：文件已全部解决时自动流转/收尾 */
   update(): void;
   isOpen(): boolean;
+  /** 冲突解决 op 落定（Issue #7）：解除整文件/特殊会话按钮的 pending 态（main.ts opResult 调用） */
+  resolveSettled(): void;
 }
 
 type ChunkSource = 'mine' | 'theirs' | 'both' | 'none' | 'manual';
@@ -43,6 +45,8 @@ export function createMergeView(app: { setView(view: 'graph' | 'work'): void }):
   const chunkStates = new Map<number, ChunkState>();
   let editingChunk = -1;             // textarea 编辑中的块索引
   let dirty = false;                 // 有已解决块尚未写回
+  /** 整文件/特殊会话解决 op 进行中（Issue #7）：按钮禁点防连击，resolveSettled 解除 */
+  let pendingResolve = false;
 
   // ---------- DOM ----------
   const top = el('div', 'gg-merge-top');
@@ -400,10 +404,11 @@ export function createMergeView(app: { setView(view: 'graph' | 'work'): void }):
       const theirs = el('button', 'gg-btn', S.t('mergeWholeTheirs'));
       const open = el('button', 'gg-btn', S.t('mergeOpenVscode'));
       const stage = el('button', 'gg-btn primary', S.t('mergeStageResolved'));
-      mine.addEventListener('click', () => void rpc('merge.resolve', { path, side: 'mine' }).catch(showErrLocal));
-      theirs.addEventListener('click', () => void rpc('merge.resolve', { path, side: 'theirs' }).catch(showErrLocal));
+      mine.addEventListener('click', () => dispatchResolve(() => rpc('merge.resolve', { path, side: 'mine' })));
+      theirs.addEventListener('click', () => dispatchResolve(() => rpc('merge.resolve', { path, side: 'theirs' })));
       open.addEventListener('click', () => void rpc('ui:openDiffEditor', { sha: 'HEAD', base: 'HEAD', path, worktree: true }).catch(showErrLocal));
       stage.addEventListener('click', () => { void rpc('work.stage', { paths: [path] }).catch(showErrLocal); close(); });
+      if (pendingResolve) { mine.disabled = true; theirs.disabled = true; }
       btns.append(mine, theirs, open, stage);
       box.appendChild(btns);
     } else if ('binary' in s && s.binary) {
@@ -418,7 +423,8 @@ export function createMergeView(app: { setView(view: 'graph' | 'work'): void }):
       }
       if (s.deletedSide) {
         const del = el('button', 'gg-btn danger', S.t('mergeDeletedAccept'));
-        del.addEventListener('click', () => { void rpc('merge.deleteAccept', { path, side: s.deletedSide === 'mine' ? 'mine' : 'theirs' }).catch(showErrLocal); });
+        del.addEventListener('click', () => dispatchResolve(() => rpc('merge.deleteAccept', { path, side: s.deletedSide === 'mine' ? 'mine' : 'theirs' })));
+        if (pendingResolve) del.disabled = true;
         cards.appendChild(el('div', 'gg-merge-card-solo')).appendChild(del);
       }
       box.appendChild(cards);
@@ -432,9 +438,10 @@ export function createMergeView(app: { setView(view: 'graph' | 'work'): void }):
         : { side: 'mine' as const, label: S.t('mergeDeletedKeepMine') };
       mineCard.appendChild(el('div', 'gg-merge-card-t', keep.label));
       const keepBtn = el('button', 'gg-btn primary', keep.label);
-      keepBtn.addEventListener('click', () => { void rpc('merge.deleteAccept', { path, side: keep.side }).catch(showErrLocal); });
+      keepBtn.addEventListener('click', () => dispatchResolve(() => rpc('merge.deleteAccept', { path, side: keep.side })));
       const delBtn = el('button', 'gg-btn danger', S.t('mergeDeletedAccept'));
-      delBtn.addEventListener('click', () => { void rpc('merge.deleteAccept', { path, side: s.deletedSide === 'mine' ? 'mine' : 'theirs' }).catch(showErrLocal); });
+      delBtn.addEventListener('click', () => dispatchResolve(() => rpc('merge.deleteAccept', { path, side: s.deletedSide === 'mine' ? 'mine' : 'theirs' })));
+      if (pendingResolve) { keepBtn.disabled = true; delBtn.disabled = true; }
       mineCard.append(keepBtn, delBtn);
       cards.appendChild(mineCard);
       box.appendChild(cards);
@@ -448,15 +455,31 @@ export function createMergeView(app: { setView(view: 'graph' | 'work'): void }):
     card.appendChild(el('div', 'gg-merge-card-t', title));
     card.appendChild(el('div', 'gg-merge-card-m', size !== undefined ? fmtBytes(size) : ''));
     const pick = el('button', 'gg-btn primary', side === 'mine' ? S.t('mergeWholeMine') : S.t('mergeWholeTheirs'));
-    pick.addEventListener('click', () => { void rpc('merge.resolve', { path, side }).catch(showErrLocal); });
+    pick.addEventListener('click', () => dispatchResolve(() => rpc('merge.resolve', { path, side })));
     const prev = el('button', 'gg-btn', S.t('mergeBinaryPreview'));
-    prev.addEventListener('click', () => { void rpc('merge.previewBinary', { path, side }).catch(showErrLocal); });
+    prev.addEventListener('click', () => void rpc('merge.previewBinary', { path, side }).catch(showErrLocal));
+    if (pendingResolve) { pick.disabled = true; prev.disabled = true; }
     card.append(pick, prev);
     return card;
   }
 
   function showErrLocal(e: unknown): void {
     void confirmDialog(S.t('error'), e instanceof Error ? e.message : String(e), S.t('close'));
+  }
+
+  /** 整文件/特殊会话解决派发（Issue #7）：置 pending 防连击，RPC 直发错误回显并复位 */
+  function dispatchResolve(fn: () => Promise<unknown>): void {
+    if (pendingResolve) return;
+    pendingResolve = true;
+    void fn().catch(e => { pendingResolve = false; showErrLocal(e); renderCurrent(); });
+    renderCurrent();
+  }
+
+  /** 按当前会话类型重渲染（pending 态变化后刷新按钮禁用） */
+  function renderCurrent(): void {
+    if (!sessionAny || root.classList.contains('hidden')) return;
+    if (!session && sessionAny) renderSpecial();
+    else if (session && parsed) render();
   }
 
   // ---------- 顶部操作 ----------
@@ -493,8 +516,8 @@ export function createMergeView(app: { setView(view: 'graph' | 'work'): void }):
     const path = (sessionAny as { path: string }).path;
     const rect = (e.target as HTMLElement).getBoundingClientRect();
     showContextMenu([
-      { label: S.t('mergeWholeMine'), run: () => void rpc('merge.resolve', { path, side: 'mine' }).catch(showErrLocal) },
-      { label: S.t('mergeWholeTheirs'), run: () => void rpc('merge.resolve', { path, side: 'theirs' }).catch(showErrLocal) },
+      { label: S.t('mergeWholeMine'), run: () => dispatchResolve(() => rpc('merge.resolve', { path, side: 'mine' })) },
+      { label: S.t('mergeWholeTheirs'), run: () => dispatchResolve(() => rpc('merge.resolve', { path, side: 'theirs' })) },
     ], rect.left, rect.bottom + 4);
   });
 
@@ -525,12 +548,16 @@ export function createMergeView(app: { setView(view: 'graph' | 'work'): void }):
       if (!ok) return;
       const path = session!.path;
       const content = serializeMergeResult(parsed!, resolvedMap());
+      // Issue #7（§8.5 Accept and Finish）：确认后 spinner + 禁点，防连点重复提交
+      finishBtn.disabled = true;
+      finishBtn.textContent = S.t('workResolving');
       try {
         await rpc('merge.save', { path, content, stage: true });
         if (!isRebase) { close(); return; }
         await rpc('merge.finish');
         close();
       } catch (err) { showErrLocal(err); }
+      updateChrome();
     });
   });
 
@@ -569,5 +596,12 @@ export function createMergeView(app: { setView(view: 'graph' | 'work'): void }):
     updateChrome();
   }
 
-  return { el: root, open, update, isOpen: () => !root.classList.contains('hidden') };
+  /** 冲突解决 op 落定（Issue #7）：解除 pending 态并刷新按钮 */
+  function resolveSettled(): void {
+    if (!pendingResolve) return;
+    pendingResolve = false;
+    renderCurrent();
+  }
+
+  return { el: root, open, update, isOpen: () => !root.classList.contains('hidden'), resolveSettled };
 }

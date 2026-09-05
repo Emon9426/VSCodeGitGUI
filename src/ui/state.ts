@@ -126,8 +126,8 @@ export const S = {
   detailPct: undefined as number | undefined,
   /** 侧栏折叠（工程/仓库/分支/远程向左收起；ready 时由扩展侧持久化值覆盖） */
   sideCollapsed: false,
-  /** 进行中的操作（opId → 最近进度） */
-  activeOps: new Map<number, { kind: string; text: string; pct?: number }>(),
+  /** 进行中的操作（opId → 最近进度；queued=排队中位次，Issue #7） */
+  activeOps: new Map<number, { kind: string; text: string; pct?: number; queued?: boolean; position?: number }>(),
 
   // ---------- 工程切换（v0.11） ----------
   projects: [] as ProjectInfo[],
@@ -182,6 +182,9 @@ export const S = {
     pushAfter: false,
     amend: false,
     amendSha: '',
+    /** 冲突解决乐观态（Issue #7）：点「我的/对方的」即入集合，行内转 ⏳ 禁点；
+     *  opResult/workState 双保险清理——网络再差点击也有即时反馈 */
+    resolving: new Set<string>(),
   },
 
   resetList(): void {

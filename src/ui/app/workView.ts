@@ -197,10 +197,12 @@ export function createWorkView(app: App): WorkView {
     return [...st.conflicts, ...st.staged, ...st.unstaged].filter(match);
   }
 
-  /** 冲突行：状态码 ⚠ + 文件名 + 行内「合并…」与「我的/他人的」二选一（语义侧，扩展侧映射 ours/theirs） */
+  /** 冲突行：状态码 ⚠ + 文件名 + 行内「合并…」与「我的/他人的」二选一（语义侧，扩展侧映射 ours/theirs）；
+   *  resolving 乐观态（Issue #7）：点选边后行内 ⏳ + 按钮禁点，opResult/workState 解除 */
   function conflictRow(e: FileEntry, mergeKind: 'merge' | 'rebase' | 'other'): HTMLElement {
-    const r = el('div', 'gg-work-row conflict' + (e.path === S.work.selectedPath ? ' selected' : ''));
-    r.appendChild(el('span', 'gg-st C', 'C'));
+    const resolving = S.work.resolving.has(e.path);
+    const r = el('div', 'gg-work-row conflict' + (e.path === S.work.selectedPath ? ' selected' : '') + (resolving ? ' resolving' : ''));
+    r.appendChild(el('span', 'gg-st C', resolving ? '⏳' : 'C'));
     const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
     const pathEl = el('span', 'gg-work-fpath');
     pathEl.appendChild(el('b', undefined, base(e.path)));
@@ -212,6 +214,13 @@ export function createWorkView(app: App): WorkView {
     mergeBtn.addEventListener('click', ev => { ev.stopPropagation(); app.openMerge(e.path); });
     const mineLabel = mergeKind === 'merge' ? S.t('resolveOurs') : mergeKind === 'rebase' ? S.t('resolveOurs') : S.t('resolveOursOther');
     const theirsLabel = mergeKind === 'other' ? S.t('resolveTheirsOther') : S.t('resolveTheirs');
+    // 删除侧防御（审查 P1-1 配套）：该侧 stage 不存在时选边必失败（checkout 报 does not have our version），
+    // 隐藏失效按钮引导走「合并…」（其删除侧会话有保留/采纳删除正确路径）；DD 双删两侧都藏
+    const code = e.conflictCode ?? 'UU';
+    const usDeleted = code === 'DU' || code === 'DD';
+    const themDeleted = code === 'UD' || code === 'DD';
+    const mineGone = code === 'DD' || (mergeKind === 'rebase' ? themDeleted : usDeleted);
+    const theirsGone = code === 'DD' || (mergeKind === 'rebase' ? usDeleted : themDeleted);
     const oursBtn = el('button', 'gg-btn tiny', mineLabel);
     const theirsBtn = el('button', 'gg-btn tiny', theirsLabel);
     oursBtn.title = mergeKind === 'rebase' ? S.t('resolveOursRebaseTip') : S.t('resolveOursTip');
@@ -219,7 +228,8 @@ export function createWorkView(app: App): WorkView {
     // 语义侧调用（merge: mine=--ours；rebase: mine=--theirs，反转由扩展侧完成）
     oursBtn.addEventListener('click', ev => { ev.stopPropagation(); app.mergeResolve(e.path, false); });
     theirsBtn.addEventListener('click', ev => { ev.stopPropagation(); app.mergeResolve(e.path, true); });
-    btns.append(mergeBtn, oursBtn, theirsBtn);
+    if (resolving) { oursBtn.disabled = true; theirsBtn.disabled = true; mergeBtn.disabled = true; }
+    btns.append(mergeBtn, ...(mineGone ? [] : [oursBtn]), ...(theirsGone ? [] : [theirsBtn]));
     r.appendChild(btns);
     r.addEventListener('click', () => selectEntry(e));
     return r;

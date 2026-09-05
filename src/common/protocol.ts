@@ -53,6 +53,10 @@ export interface OpProgress {
   kind: OpKind;
   text: string;       // 最近一行进度（已本地化前缀）
   pct?: number;       // 0–100
+  /** 排队中（Issue #7 双队列）：入队未执行的可见性——本地 op 入队即有反馈，不再"点了没反应" */
+  queued?: boolean;
+  /** 同道同仓库前方排队的 op 数（queued=true 时有效） */
+  position?: number;
 }
 
 export interface OpResult {
@@ -64,6 +68,8 @@ export interface OpResult {
   outputTail?: string;   // 失败时的 stderr/stdout 尾部
   /** 操作后校验（Issue #6 后续）：warn=退出码 0 但状态与意图不符（黄色警示）；pass/unknown 不打扰 */
   verify?: 'pass' | 'warn' | 'unknown';
+  /** 涉及的文件路径（Issue #7）：冲突解决类失败时前端精确解除行内乐观态 */
+  paths?: string[];
 }
 
 /** 用户自定义列宽（持久化于 globalState，时间为自适应剩余列不持久化） */

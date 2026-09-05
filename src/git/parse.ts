@@ -1,7 +1,7 @@
 /**
  * git 输出解析器（纯函数，设计方案 13.1 单测对象）。
  */
-import { RENAME_SEP } from '../common/models';
+import { RENAME_SEP, MERGE_MAX_LINES, MERGE_MAX_BYTES } from '../common/models';
 import type { Commit, RefChip, BranchInfo, TagInfo, RemoteGroup, FileChange, FileStatus, UnifiedDiff, DiffHunk, DiffLine, FileEntry, FileHistoryItem, PathChain } from '../common/models';
 
 export const FS = '\x1f';   // 字段分隔符
@@ -536,4 +536,52 @@ export function detectMove(entries: FileEntry[]): { from: string; to: string; co
  */
 export function semanticToOurs(kind: 'merge' | 'rebase' | 'other', sideTheirs: boolean): boolean {
   return kind === 'rebase' ? sideTheirs : !sideTheirs;
+}
+
+/**
+ * 合并会话分类（Issue #7 抽取自 panel.mergeSessionOf，纯函数可单测）：
+ * 二进制（NUL 检测）/ 超限（16000 行 / 2MB，决议 #5）/ 删除侧（XY 码 + rebase 反转）。
+ * 注意 tooLarge 优先于 binary 判定（超限二进制按超限会话处理，与既有行为一致）。
+ */
+export interface MergeSessionClass {
+  binary: boolean;
+  tooLarge: boolean;
+  /** 双侧行数/字节的较大值（超限会话展示用） */
+  lines: number;
+  bytes: number;
+  /** 语义侧（mine/theirs）在该冲突中是否不存在 */
+  mineGone: boolean;
+  theirsGone: boolean;
+  /** 文本会话删除侧：DD（双删）= undefined（只剩采纳删除）；无删除 = undefined */
+  deletedSideText: 'mine' | 'theirs' | undefined;
+  /** 二进制会话删除侧：DD 按 'theirs'（panel 既有行为） */
+  deletedSideBinary: 'mine' | 'theirs' | undefined;
+}
+
+export function classifyMergeSession(
+  kind: 'merge' | 'rebase' | 'other',
+  code: string,
+  mine: string,
+  theirs: string,
+): MergeSessionClass {
+  const usDeleted = code === 'DU' || code === 'DD';
+  const themDeleted = code === 'UD' || code === 'DD';
+  const rebase = kind === 'rebase';
+  const mineGone = code === 'DD' ? true : (rebase ? themDeleted : usDeleted);
+  const theirsGone = code === 'DD' ? true : (rebase ? usDeleted : themDeleted);
+  const mineBytes = Buffer.byteLength(mine, 'utf8');
+  const theirsBytes = Buffer.byteLength(theirs, 'utf8');
+  const mineLines = mine ? mine.split('\n').length : 0;
+  const theirsLines = theirs ? theirs.split('\n').length : 0;
+  const lines = Math.max(mineLines, theirsLines);
+  const bytes = Math.max(mineBytes, theirsBytes);
+  const tooLarge = bytes > MERGE_MAX_BYTES || lines > MERGE_MAX_LINES;
+  // 二进制：现存侧内容含 NUL → 只二选一 + 系统预览（gone 侧无内容不参与判定）
+  const NUL = String.fromCharCode(0);
+  const binary = (!mineGone && mine.includes(NUL)) || (!theirsGone && theirs.includes(NUL));
+  return {
+    binary, tooLarge, lines, bytes, mineGone, theirsGone,
+    deletedSideText: code === 'DD' ? undefined : (mineGone ? 'mine' : theirsGone ? 'theirs' : undefined),
+    deletedSideBinary: code === 'DD' ? 'theirs' : (mineGone ? 'mine' : theirsGone ? 'theirs' : undefined),
+  };
 }
