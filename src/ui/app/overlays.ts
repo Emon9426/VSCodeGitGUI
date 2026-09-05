@@ -144,19 +144,24 @@ export function tagDialog(
   });
 }
 
-/** reset 模式选择（设计方案 6.5：hard 需强确认） */
+/** reset 模式选择（设计方案 6.5：hard 需强确认；Issue #18 S6：警示图标 + 不可撤销副行） */
 export function resetDialog(sha: string, dirtyCount: number, t: (k: string, p?: Record<string, string | number>) => string): Promise<ResetMode | null> {
   return new Promise(resolve => {
     const { box, body, close } = openModal(t('resetTitle', { sha: sha.slice(0, 7) }));
     const modes: ResetMode[] = ['soft', 'mixed', 'hard'];
     let selected: ResetMode = 'mixed';
     const warn = el('div', 'gg-modal-warn');
+    const warnIc = iconSvg('warnTriangle');
+    warnIc.classList.add('gg-ic-inline');
+    const warnCol = el('div');
+    const warnTitle = el('div', 'gg-modal-warn-t');
+    const warnSub = el('div', 'gg-modal-warn-s');
+    warnCol.append(warnTitle, warnSub);
+    warn.append(warnIc, warnCol);
     const renderWarn = () => {
-      clearChildren(warn);
-      warn.className = 'gg-modal-warn' + (selected === 'hard' ? ' show' : '');
-      if (selected === 'hard' && dirtyCount > 0) {
-        warn.textContent = t('hardWarning', { n: dirtyCount });
-      }
+      warn.classList.toggle('show', selected === 'hard');
+      warnTitle.textContent = selected === 'hard' && dirtyCount > 0 ? t('hardWarning', { n: dirtyCount }) : '';
+      warnSub.textContent = selected === 'hard' ? t('hardIrreversible') : '';
     };
     for (const mode of modes) {
       const id = `gg-reset-${mode}`;

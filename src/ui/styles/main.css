@@ -662,8 +662,12 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-modal-label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
 .gg-input { padding: 5px 8px; }
 .gg-radio-row { display: flex; align-items: center; gap: 8px; padding: 5px 2px; font-size: 12px; }
-.gg-modal-warn { display: none; margin-top: 8px; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
-.gg-modal-warn.show { display: block; color: var(--vscode-charts-red); background: color-mix(in srgb, var(--vscode-charts-red) 12%, transparent); border: 1px solid color-mix(in srgb, var(--vscode-charts-red) 40%, transparent); }
+/* 模态警示（Issue #18 S6：统一语义配方——图标红 + 标题前景 + 副行描述色） */
+.gg-modal-warn { display: none; margin-top: 8px; padding: 8px 12px; border-radius: var(--gg-r-m); font-size: 12px; gap: 8px; align-items: flex-start; }
+.gg-modal-warn.show { display: flex; color: var(--vscode-foreground); background: var(--gg-err-bg); border: 1px solid var(--gg-err-bd); }
+.gg-modal-warn .gg-ic-inline { color: var(--gg-err); margin: 1px 0 0; }
+.gg-modal-warn-t { font-weight: 600; }
+.gg-modal-warn-s { color: var(--gg-t2); margin-top: 2px; font-size: 11px; }
 .gg-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
 /* Pull/Fetch 摘要弹窗（v0.13）：作者 → 目录 → 文件三层分组；行内 打开/定位 按钮 */

@@ -33,6 +33,7 @@ const zh: Record<string, string> = {
   opRunning: '执行中…',
   amendHeadMoved: 'HEAD 已前进，已退出修订（Amend）模式',
   filesOpBusy: '文件操作执行中…',
+  hardIrreversible: '此操作不可通过 GitBoard 撤销',
 
   fetch: 'Fetch',
   pull: 'Pull',
@@ -497,6 +498,7 @@ const en: Record<string, string> = {
   opRunning: 'Running…',
   amendHeadMoved: 'HEAD has moved; amend mode cancelled',
   filesOpBusy: 'File operation in progress…',
+  hardIrreversible: 'This cannot be undone in GitBoard',
 
   fetch: 'Fetch',
   pull: 'Pull',
