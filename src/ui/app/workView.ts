@@ -194,12 +194,15 @@ export function createWorkView(app: App): WorkView {
     return [...st.conflicts, ...st.staged, ...st.unstaged].filter(match);
   }
 
-  /** 冲突行：状态码 ⚠ + 文件名 + 行内「合并…」与「我的/他人的」二选一（语义侧，扩展侧映射 ours/theirs）；
-   *  resolving 乐观态（Issue #7）：点选边后行内 ⏳ + 按钮禁点，opResult/workState 解除 */
+  /** 冲突行：状态码 + 文件名 + 行内「合并…」与「我的/他人的」二选一（语义侧，扩展侧映射 ours/theirs）；
+   *  resolving 乐观态（Issue #7）：点选边后行内 spinner + 按钮禁点，opResult/workState 解除 */
   function conflictRow(e: FileEntry, mergeKind: 'merge' | 'rebase' | 'other'): HTMLElement {
     const resolving = S.work.resolving.has(e.path);
     const r = el('div', 'gg-work-row conflict' + (e.path === S.work.selectedPath ? ' selected' : '') + (resolving ? ' resolving' : ''));
-    r.appendChild(el('span', 'gg-st C', resolving ? '⏳' : 'C'));
+    const stCell = el('span', 'gg-st C');
+    if (resolving) stCell.appendChild(el('span', 'gg-spinner gg-st-spin'));
+    else stCell.textContent = 'C';
+    r.appendChild(stCell);
     const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
     const pathEl = el('span', 'gg-work-fpath');
     pathEl.appendChild(el('b', undefined, base(e.path)));
@@ -355,7 +358,11 @@ export function createWorkView(app: App): WorkView {
       dstats.textContent = '';
       clearChildren(dbox);
       const empty = el('div', 'gg-work-clean');
-      empty.appendChild(el('div', 'gg-work-clean-icon', '✓'));
+      const okIc = iconSvg('checkCircle');
+      okIc.classList.add('gg-work-clean-svg');
+      const okWrap = el('div', 'gg-work-clean-icon');
+      okWrap.appendChild(okIc);
+      empty.appendChild(okWrap);
       empty.appendChild(el('div', 'gg-work-clean-title', S.t('workClean')));
       if (st.headShortSha) {
         const last = el('div', 'gg-work-clean-last', `${S.t('workLastCommit')} ${st.headShortSha} · ${st.headSubject}`);
@@ -363,8 +370,10 @@ export function createWorkView(app: App): WorkView {
         empty.appendChild(last);
       }
       const btns = el('div', 'gg-work-clean-btns');
-      const pull = el('button', 'gg-btn small', `↓ ${S.t('pull')}`);
-      const push = el('button', 'gg-btn small', `↑ ${S.t('push')}`);
+      const pull = el('button', 'gg-btn small has-ic');
+      pull.append(iconSvg('pullDown'), el('span', undefined, S.t('pull')));
+      const push = el('button', 'gg-btn small has-ic');
+      push.append(iconSvg('pushUp'), el('span', undefined, S.t('push')));
       pull.addEventListener('click', () => app.runPull());
       push.addEventListener('click', () => app.runPush());
       // B2（Issue #18）：未完成合并 → 干净空态的 Push 同步禁用（与工具栏口径一致）

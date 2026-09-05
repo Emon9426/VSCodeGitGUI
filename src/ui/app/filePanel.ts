@@ -7,7 +7,7 @@
 import type { DiffPayload, FileHistoryItem } from '../../common/models';
 import { S, type App } from '../state';
 import { el, formatDateTime } from '../util';
-import { fileIconSvg } from '../icons';
+import { fileIconSvg, iconSvg } from '../icons';
 import { renderDiff } from '../diff/render';
 import { confirmDialog, toast, mkBanner } from './overlays';
 
@@ -78,7 +78,8 @@ export function createFilePanel(app: App) {
   const diffWrap = el('div', 'gg-fp-diff hidden');
   const diffHead = el('div', 'gg-fp-diffhead');
   const backBtn = el('button', 'gg-fp-back') as HTMLButtonElement;
-  backBtn.textContent = '⟵ ' + S.t('filesBack');
+  const backLabel = el('span');
+  backBtn.append(iconSvg('chevronLeft'), backLabel);
   backBtn.addEventListener('click', () => {
     S.files.diff = undefined;
     S.files.diffPair = undefined;
@@ -98,6 +99,7 @@ export function createFilePanel(app: App) {
   }
 
   function update(): void {
+    backLabel.textContent = S.t('filesBack');
     // 横幅
     const mb = S.files.moveBanner;
     banner.el.classList.toggle('hidden', !mb);
@@ -177,11 +179,11 @@ export function createFilePanel(app: App) {
     multi.append(el('h3', undefined, S.t('filesSelMulti', { n: String(S.files.sel.length) })));
     multi.append(el('div', 'gg-fp-multi-sub', S.t('filesMultiHint')));
     const ops = el('div', 'gg-fp-multi-ops');
-    const bDel = el('button', 'gg-files-cbtn danger') as HTMLButtonElement;
-    bDel.textContent = `🗑 ${S.t('filesDelete')}（${S.files.sel.length}）`;
+    const bDel = el('button', 'gg-files-cbtn danger has-ic') as HTMLButtonElement;
+    bDel.append(iconSvg('trash'), el('span', undefined, `${S.t('filesDelete')}（${S.files.sel.length}）`));
     bDel.addEventListener('click', () => app.folderDelete([...S.files.sel]));
-    const bMove = el('button', 'gg-files-cbtn') as HTMLButtonElement;
-    bMove.textContent = `✂ ${S.t('filesMove')}（${S.files.sel.length}）`;
+    const bMove = el('button', 'gg-files-cbtn has-ic') as HTMLButtonElement;
+    bMove.append(iconSvg('movePath'), el('span', undefined, `${S.t('filesMove')}（${S.files.sel.length}）`));
     bMove.addEventListener('click', () => app.folderMove([...S.files.sel]));
     ops.append(bDel, bMove);
     multi.append(ops);
@@ -224,7 +226,7 @@ export function createFilePanel(app: App) {
       if (idx === items.length - 1) row.classList.add('last');
       // 勾选框（恰好 2 条，第 3 个挤掉最早）
       const ck = el('span', 'gg-fp-ck' + (S.files.picked.some(p => p.sha === it.sha) ? ' on' : ''));
-      ck.textContent = S.files.picked.some(p => p.sha === it.sha) ? '✓' : '';
+      ck.textContent = S.files.picked.some(p => p.sha === it.sha) ? '✓' : '';   // 文本对勾（非 emoji，跨平台稳定）
       ck.addEventListener('click', e => {
         e.stopPropagation();
         const i = S.files.picked.findIndex(p => p.sha === it.sha);

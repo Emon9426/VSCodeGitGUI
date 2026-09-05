@@ -46,7 +46,8 @@ export function createDetailPanel(app: App): DetailPanel {
   left.append(summary, msgBlock, filesHead, filesList);
   const diffHead = el('div', 'gg-diff-head');
   const diffPath = el('span', 'gg-diff-path');
-  const diffRevealBtn = el('button', 'gg-btn small', '📂');
+  const diffRevealBtn = el('button', 'gg-btn small');
+  setIcon(diffRevealBtn, 'folder');
   const diffVscodeBtn = el('button', 'gg-icon-btn');   // 在 VS Code 中打开工作区文件
   setIcon(diffVscodeBtn, 'goToFile');
   const diffModeBtn = el('button', 'gg-btn small');

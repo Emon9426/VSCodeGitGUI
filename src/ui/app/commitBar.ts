@@ -7,7 +7,6 @@ import { el, debounce } from '../util';
 import { rpc } from '../rpc';
 import { showContextMenu, toast, mkBanner } from './overlays';
 import { iconSvg } from '../icons';
-
 export interface CommitBar {
   el: HTMLElement;
   update(): void;
@@ -29,11 +28,17 @@ export interface CommitBar {
 export function createCommitBar(app: App): CommitBar {
   const root = el('div', 'gg-cbar');
 
-  // 行 1：AI 操作行
+  // 行 1：AI 操作行（S4：sparkle 图标 + label，文本不再整体重写）
   const airow = el('div', 'gg-cbar-row');
-  const aiBtn = el('button', 'gg-ai-btn', '✨ AI');
+  const aiBtn = el('button', 'gg-ai-btn has-ic');
+  const aiIc = iconSvg('sparkle');
+  const aiLabel = el('span');
+  aiBtn.append(aiIc, aiLabel);
   const modelSel = el('select', 'gg-cbar-select') as HTMLSelectElement;
-  const recentBtn = el('button', 'gg-btn small');
+  const recentBtn = el('button', 'gg-btn small has-ic');
+  const recentIc = iconSvg('clock');
+  const recentLabel = el('span');
+  recentBtn.append(recentIc, recentLabel);
   const count = el('span', 'gg-cbar-count');
   airow.append(aiBtn, modelSel, recentBtn, count);
 
@@ -323,7 +328,7 @@ export function createCommitBar(app: App): CommitBar {
 
   function update(): void {
     const w = S.work;
-    aiBtn.textContent = w.aiBusy ? `◉ ${S.t('aiGenerating')}…` : (w.aiMeta ? `↻ ${S.t('aiRegenerate')}` : `✨ ${S.t('aiGenerate')}`);
+    aiLabel.textContent = w.aiBusy ? `${S.t('aiGenerating')}…` : (w.aiMeta ? S.t('aiRegenerate') : S.t('aiGenerate'));
     aiBtn.classList.toggle('busy', w.aiBusy);
     // B1（Issue #18）：冲突/未完成合并期间禁用 AI 生成（上下文含冲突标记无意义），title 给原因
     const blocked = blockReason();
@@ -347,7 +352,7 @@ export function createCommitBar(app: App): CommitBar {
       w.aiModelId = w.aiModels.find(x => x.isDefault)?.id ?? w.aiModels[0].id;
     }
 
-    recentBtn.textContent = `🕘 ${S.t('recentMsg')}`;
+    recentLabel.textContent = S.t('recentMsg');
     input.placeholder = S.t('commitPlaceholder');
     pushLabel.querySelector('span')!.textContent = S.t('pushAfter');
     pushChk.checked = w.pushAfter;

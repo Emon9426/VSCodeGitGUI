@@ -20,7 +20,7 @@ import { createFilesView } from './app/filesView';
 import { createFilePanel } from './app/filePanel';
 import { showPullSummary } from './app/pullSummary';
 import { confirmDialog, promptDialog, resetDialog, toast, notify, openModal } from './app/overlays';
-import { fileIconSvg } from './icons';
+import { fileIconSvg, iconSvg } from './icons';
 
 // ---------- App 实现 ----------
 
@@ -531,7 +531,10 @@ function moveDialog(srcs: string[]): Promise<string | null> {
         c.addEventListener('click', () => { cwd = p; load(); });
         return c;
       };
-      crumbs.append(mk('🏠 ' + S.t('filesRootCrumb'), '', cwd === ''));
+      const home = mk('', '', cwd === '');
+      home.title = S.t('filesRootCrumb');
+      home.appendChild(iconSvg('home'));
+      crumbs.append(home, el('span', undefined, S.t('filesRootCrumb')));
       let acc = '';
       for (const seg of cwd ? cwd.split('/') : []) {
         acc = acc ? acc + '/' + seg : seg;
