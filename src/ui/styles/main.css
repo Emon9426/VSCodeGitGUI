@@ -2,6 +2,35 @@
 
 * { box-sizing: border-box; }
 
+/* ---------------- 设计令牌（Issue #18 §1）----------------
+   4px 间距网格 / 字号 5 档 / 圆角 3 档 / 语义色统一配方（底 10% + 边框 42% + 图标全色）。
+   语义色只出现在图标、边框与浅底；标题与正文永远用前景/描述色——商务克制的层次来源。 */
+:root {
+  --gg-sp-1: 4px; --gg-sp-2: 8px; --gg-sp-3: 12px; --gg-sp-4: 16px;
+  --gg-fs-xs: 10.5px; --gg-fs-s: 11px; --gg-fs-m: 12px; --gg-fs-l: 13px; --gg-fs-xl: 14px;
+  --gg-r-s: 4px; --gg-r-m: 6px; --gg-r-l: 8px;
+  --gg-info: var(--vscode-charts-blue, #3794ff);
+  --gg-ok: var(--vscode-charts-green, #89d185);
+  --gg-warn: var(--vscode-charts-yellow, #cca700);
+  --gg-err: var(--vscode-charts-red, #f14c4c);
+  --gg-accent: var(--vscode-charts-purple, #b180d7);
+  --gg-info-bg: color-mix(in srgb, var(--gg-info) 10%, transparent);
+  --gg-info-bd: color-mix(in srgb, var(--gg-info) 42%, transparent);
+  --gg-ok-bg: color-mix(in srgb, var(--gg-ok) 10%, transparent);
+  --gg-ok-bd: color-mix(in srgb, var(--gg-ok) 42%, transparent);
+  --gg-warn-bg: color-mix(in srgb, var(--gg-warn) 10%, transparent);
+  --gg-warn-bd: color-mix(in srgb, var(--gg-warn) 42%, transparent);
+  --gg-err-bg: color-mix(in srgb, var(--gg-err) 10%, transparent);
+  --gg-err-bd: color-mix(in srgb, var(--gg-err) 42%, transparent);
+  --gg-accent-bg: color-mix(in srgb, var(--gg-accent) 10%, transparent);
+  --gg-accent-bd: color-mix(in srgb, var(--gg-accent) 42%, transparent);
+  /* 文字三档：主=foreground（继承）/ 次=描述色 / 弱=描述色×75% */
+  --gg-t2: var(--vscode-descriptionForeground, #9d9d9d);
+  --gg-t3: color-mix(in srgb, var(--vscode-descriptionForeground, #9d9d9d) 75%, transparent);
+  --gg-h-toolbar: 40px; --gg-h-sechead: 30px; --gg-h-subhead: 26px; --gg-h-status: 24px;
+  --gg-disabled-opacity: 0.45;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -270,15 +299,17 @@ button.danger:hover { background: #c62121; }
 .gg-list-header,
 .gg-row {
   display: grid;
-  /* 图形列固定 = Canvas 绘制宽（applyWidths 同步注入 --c-graph）：
-     Canvas 曲线 x 坐标按 lane 均匀分布不可截断，列若收缩必被溢出叠印——
-     空间不足由其余列按最小宽收缩承担 */
+  /* 图形列固定 = Canvas 绘制宽（applyWidths 同步注入 --c-graph）：Canvas 曲线 x 坐标按 lane 均匀
+     分布不可截断，列不参与收缩。
+     时间列保底（Issue #18 S1）：min = applyWidths 按 dateFormat 实测注入的 --c-time-min，
+     任何窗口宽下完整显示；空间不足由 msg 列（本就 ellipsis）收缩承担。
+     最后更新于 2026-09：原 `minmax(60px, 1fr)` 在窄窗被压至 60px 导致 datetime 截断（Issue #18）。 */
   grid-template-columns:
     var(--c-graph, 150px)
     minmax(140px, var(--c-msg, 460px))
     minmax(70px, var(--c-author, 120px))
     minmax(60px, var(--c-sha, 90px))
-    minmax(60px, 1fr);
+    minmax(var(--c-time-min, 140px), 1fr);
 }
 .gg-list-header {
   flex: none;
@@ -297,6 +328,8 @@ button.danger:hover { background: #c62121; }
   color: var(--vscode-descriptionForeground);
   overflow: hidden;
 }
+/* 时间列表头与数据列同为右对齐（Issue #18 S1：原表头左对齐与数据右对齐头身错位） */
+.gg-col-h:last-child { text-align: right; }
 .gg-col-resizer {
   position: absolute;
   top: 0;
