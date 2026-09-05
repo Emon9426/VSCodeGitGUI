@@ -80,16 +80,18 @@ export function createOpStatus(app: App): OpStatus {
       startTimer();
     }
     root.classList.remove('off', 'done');
-    icon.textContent = KIND_ICON[op.kind] ?? '⏳';
+    // Issue #7 排队态：入队未执行——⏳ + 位次，明确「点上了、在第几位」；执行开始由后续 opProgress 切换
+    const queued = op.queued === true;
+    icon.textContent = queued ? '⏳' : (KIND_ICON[op.kind] ?? '⏳');
     name.textContent = S.t(op.kind);
     const hasPct = typeof op.pct === 'number' && op.pct >= 0;
     bar.classList.toggle('indet', !hasPct);
     fill.style.width = hasPct ? `${Math.min(100, op.pct!)}%` : '';
     pct.textContent = hasPct ? `${Math.min(100, op.pct!)}%` : '';
-    text.textContent = op.text || '';
-    text.classList.toggle('empty', !op.text);
+    text.textContent = queued ? S.t('opQueued', { n: op.position ?? 1 }) : (op.text || '');
+    text.classList.toggle('empty', !queued && !op.text);
     time.textContent = startedAt ? fmtElapsed(Date.now() - startedAt) : '';
-    const cancellable = !NO_CANCEL.has(op.kind);
+    const cancellable = !NO_CANCEL.has(op.kind) && !queued;
     cancel.classList.toggle('hidden', !cancellable);
     cancel.title = S.t('cancel');
   }

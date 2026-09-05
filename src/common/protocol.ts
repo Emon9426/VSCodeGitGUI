@@ -53,6 +53,10 @@ export interface OpProgress {
   kind: OpKind;
   text: string;       // 最近一行进度（已本地化前缀）
   pct?: number;       // 0–100
+  /** 排队中（Issue #7 双队列）：入队未执行的可见性——本地 op 入队即有反馈，不再"点了没反应" */
+  queued?: boolean;
+  /** 同道同仓库前方排队的 op 数（queued=true 时有效） */
+  position?: number;
 }
 
 export interface OpResult {

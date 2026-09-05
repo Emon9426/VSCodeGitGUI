@@ -3,7 +3,7 @@
  * 每仓库写操作串行队列、进度流式转发、可取消。
  */
 import type { ChildProcess } from 'child_process';
-import { GitError, type GitExecutor } from '../git/executor';
+import { GitError, type ExecOpts, type ExecResult, type GitExecutor } from '../git/executor';
 
 export type ResetMode = 'soft' | 'mixed' | 'hard';
 export type PullStrategy = 'merge' | 'rebase' | 'ff-only';
@@ -53,8 +53,16 @@ export interface OpOutcome {
 
 const PCT_RE = /(\d+)%/;
 
+/** 网络操作集合（Issue #7 双队列）：fetch/pull/push 及远端标签操作走网络道，其余走本地道 */
+const NET_KINDS = new Set<OpSpec['kind']>(['fetch', 'pull', 'push', 'tagPush', 'tagDeleteRemote']);
+
 export class OpRunner {
-  private readonly queues = new Map<string, Promise<void>>();
+  /** 本地道：stage/unstage/discard/resolveConflict/commit 等秒级操作，串行保证 git 写安全 */
+  private readonly localQueues = new Map<string, Promise<void>>();
+  /** 网络道：fetch/pull/push 等长耗时操作，挂起时不再堵住本地道（Issue #7 根因） */
+  private readonly netQueues = new Map<string, Promise<void>>();
+  /** 各道排队深度（root\0lane → 未完成 op 数）：onQueued 位次与 laneBusy 的数据源 */
+  private readonly laneDepth = new Map<string, number>();
   private readonly children = new Map<number, ChildProcess>();
   private readonly cancelled = new Set<number>();
 
@@ -71,22 +79,40 @@ export class OpRunner {
     this.children.get(opId)?.kill();
   }
 
-  /** 串行入队并执行；onProgress 收到本地化文本与可选百分比 */
+  /** 该道是否有执行中/排队中的 op（autoFetch 让路判定用） */
+  laneBusy(root: string, lane: 'net' | 'local'): boolean {
+    const q = lane === 'net' ? this.netQueues : this.localQueues;
+    return q.has(root);
+  }
+
+  /** 串行入队并执行；onProgress 收到本地化文本与可选百分比；
+   *  onQueued(position) 入队即回调（同道同仓库前方排队数，0=立即执行）；
+   *  onStart 轮到执行时回调（UI 从「排队中」切回执行态）。 */
   async run(
     root: string,
     spec: OpSpec,
     opId: number,
     onProgress: (text: string, pct?: number) => void,
     buildDone: (ok: boolean) => string,
+    onQueued?: (position: number) => void,
+    onStart?: () => void,
   ): Promise<OpOutcome> {
-    const prev = this.queues.get(root) ?? Promise.resolve();
-    const task = prev.catch(() => undefined).then(() => this.execute(root, spec, opId, onProgress, buildDone));
+    const lane: 'net' | 'local' = NET_KINDS.has(spec.kind) ? 'net' : 'local';
+    const queue = lane === 'net' ? this.netQueues : this.localQueues;
+    const dkey = root + '\u0000' + lane;
+    const ahead = this.laneDepth.get(dkey) ?? 0;
+    onQueued?.(ahead);
+    const prev = queue.get(root) ?? Promise.resolve();
+    this.laneDepth.set(dkey, ahead + 1);
+    const task = prev.catch(() => undefined).then(() => onStart?.()).then(() => this.execute(root, spec, opId, onProgress, buildDone));
     let release: () => void;
     const gate = new Promise<void>(r => { release = r; });
-    this.queues.set(root, gate as Promise<void>);
+    queue.set(root, gate as Promise<void>);
     const result = await task;
     release!();
-    if (this.queues.get(root) === gate) this.queues.delete(root);
+    const rest = (this.laneDepth.get(dkey) ?? 1) - 1;
+    if (rest > 0) this.laneDepth.set(dkey, rest); else this.laneDepth.delete(dkey);
+    if (queue.get(root) === gate) queue.delete(root);
     if (this.children.get(opId)) this.children.delete(opId);
     this.onIdle?.();
     return result;
@@ -131,7 +157,7 @@ export class OpRunner {
       }
       let r;
       for (const args of cmds) {
-        r = await this.exec.exec(root, args, {
+        r = await this.execWithLockRetry(root, args, {
           timeoutMs: noTimeout ? 0 : undefined,
           maxBytes: 4 * 1024 * 1024,
           env,
@@ -164,8 +190,21 @@ export class OpRunner {
       if (watchdog) clearInterval(watchdog);
     }
   }
-}
 
+  /** 单命令执行 + index.lock 撞锁重试（Issue #7 双队列）：本地道与网络道 pull 的本地阶段并行时，
+   *  git 的 index 锁可能瞬时冲突——退避 400ms 后对同一条命令重试一次（命令序列粒度：前序命令不重跑），仍失败原样抛出 */
+  private async execWithLockRetry(root: string, args: string[], opts: ExecOpts): Promise<ExecResult> {
+    try {
+      return await this.exec.exec(root, args, opts);
+    } catch (e) {
+      if (e instanceof GitError && e.code === 'E_GIT_EXIT' && (e.stderrTail ?? '').includes('index.lock')) {
+        await new Promise(r => setTimeout(r, 400));
+        return await this.exec.exec(root, args, opts);
+      }
+      throw e;
+    }
+  }
+}
 /** 网络命令的 git 层低速中断（F2/Issue #6）：持续低于 1KB/s 即中断——用户显式操作 60s
  *  （后台 autoFetch 用 45s，见 fetch 分支）；HTTP(S) 生效，SSH 等协议由 runner 无输出看门狗兜底 */
 const LOW_SPEED_USER = ['-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=60'];

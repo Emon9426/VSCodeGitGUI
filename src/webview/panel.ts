@@ -9,7 +9,7 @@ import { spawn } from 'child_process';
 import * as vscode from 'vscode';
 import { createT, resolveLang, type Lang, type Translate } from '../common/i18n';
 import type { Commit, FileEntry, LogFilter, MergeSessionAny, ProjectInfo, PullFileStat, RepoMeta, RepoState, WorkState } from '../common/models';
-import { MERGE_MAX_BYTES, MERGE_MAX_LINES, RENAME_SEP } from '../common/models';
+import { RENAME_SEP } from '../common/models';
 import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, WVRequest } from '../common/protocol';
 import { GitError, GitExecutor, isGitError } from '../git/executor';
 import { discoverRepos, repoIdOf, sharedDetect } from '../git/discovery';
@@ -17,7 +17,7 @@ import { GitService, EMPTY_TREE, SCAN_CAP, authorDateWindow, cleanAuthorName } f
 import { FilesService, safeRelPath } from '../git/files';
 import { PullSummaryService } from '../git/summary';
 import { RepoWatcher } from '../git/watcher';
-import { detectMove, semanticToOurs } from '../git/parse';
+import { classifyMergeSession, detectMove, semanticToOurs } from '../git/parse';
 import { OpRunner, type OpSpec, type PullStrategy } from '../ops/runner';
 import { OpVerifier, type VerifyResult } from '../ops/verify';
 import { DiffContentProvider, GITBOARD_SCHEME, EMPTY_REF, gitboardUri } from './diffProvider';
@@ -1097,9 +1097,18 @@ export class GraphPanel {
     if (this.disposed || !this.runner || !this.currentRepoId) return;
     if (!this.lastState?.remotes.length) return;   // 无远程：本轮跳过
     const root = this.roots.get(this.currentRepoId)!;
+    // Issue #7 方案 C（修复 #16 绕过缺陷）：后台获取是低优先级任务——
+    // 网络道忙（用户显式 fetch/pull/push 进行中或排队）或 fetch 已在途时整轮让路，
+    // 不再向队列堆积后台任务堵住本地操作
+    const spec: OpSpec = { kind: 'fetch', all: true, prune: this.config.fetchPrune, background: true };
+    if (this.runner.laneBusy(root, 'net')) {
+      this.channel.appendLine('[autofetch] net lane busy, skipped');
+      return;
+    }
+    if (!this.enqueueNet(root, spec)) return;
     const opId = ++this.opSeq;
     void this.runner.run(
-      root, { kind: 'fetch', all: true, prune: this.config.fetchPrune, background: true }, opId,
+      root, spec, opId,
       () => undefined,   // 不转发进度：后台行为保持安静
       () => '',
     ).then(outcome => {
@@ -1108,6 +1117,7 @@ export class GraphPanel {
       } else if (outcome.message !== 'cancelled') {
         this.channel.appendLine(`[autofetch] failed: ${(outcome.outputTail ?? outcome.message ?? '').slice(0, 200)}`);
       }
+      this.releaseNetKind(root, spec);
     });
   }
 
@@ -1161,6 +1171,24 @@ export class GraphPanel {
   /** 同仓库同 kind 网络操作去重登记（F4/Issue #6）：进行中/排队中时忽略重复点击 */
   private netInFlight = new Map<string, Set<string>>();
 
+  /** 网络操作统一登记入口（Issue #7 方案 C，修复 #16 绕过缺陷）：
+   *  startOp 与 autoFetchTick 共用——同 kind 在途时返回 false 不再入队 */
+  private enqueueNet(root: string, spec: OpSpec): boolean {
+    if (spec.kind !== 'fetch' && spec.kind !== 'pull' && spec.kind !== 'push') return true;
+    const inflight = this.netInFlight.get(root);
+    if (inflight?.has(spec.kind)) return false;
+    if (inflight) inflight.add(spec.kind);
+    else this.netInFlight.set(root, new Set([spec.kind]));
+    return true;
+  }
+
+  private releaseNetKind(root: string, spec: OpSpec): void {
+    const s = this.netInFlight.get(root);
+    if (!s) return;
+    s.delete(spec.kind);
+    if (!s.size) this.netInFlight.delete(root);
+  }
+
   /** 操作后校验警告文案（Issue #6 后续）：按 reason 选 i18n 键与参数 */
   private verifyWarnText(kind: string, v: VerifyResult): string {
     switch (v.reason) {
@@ -1180,19 +1208,8 @@ export class GraphPanel {
     const root = this.roots.get(this.currentRepoId)!;
     // F4（Issue #6）：网络操作同类去重——慢网络下连点 Fetch/Pull/Push 只跑一个，
     // 不再向串行队列堆积重复 op（旧版每次点击都排一个，队列被同一操作刷满）
-    const isNet = spec.kind === 'fetch' || spec.kind === 'pull' || spec.kind === 'push';
-    if (isNet) {
-      const inflight = this.netInFlight.get(root);
-      if (inflight?.has(spec.kind)) return;
-      if (inflight) inflight.add(spec.kind);
-      else this.netInFlight.set(root, new Set([spec.kind]));
-    }
-    const releaseKind = (): void => {
-      const s = this.netInFlight.get(root);
-      if (!s) return;
-      s.delete(spec.kind);
-      if (!s.size) this.netInFlight.delete(root);
-    };
+    if (!this.enqueueNet(root, spec)) return;
+    const releaseKind = (): void => this.releaseNetKind(root, spec);
     const opId = ++this.opSeq;
     const kind = spec.kind;
     const label = this.t(kind);
@@ -1377,10 +1394,13 @@ export class GraphPanel {
     const opId = ++this.opSeq;
     const kind = spec.kind;
     const quiet = spec.kind === 'stage' || spec.kind === 'unstage';
-    if (!quiet) this.post({ t: 'opProgress', opId, kind, text: '' });
+    // Issue #7 方案 B：本地 op 入队即有进度（quiet 仅收窄为「成功不弹 toast」）；
+    // 排队位次 >0 时显示「排队中」，轮到执行时切回执行态
     void this.runner.run(root, spec, opId,
       (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
       ok => ok ? this.t(`${kind}Done`) : this.t('opFailed', { op: this.t(kind) }),
+      position => { if (position > 0) this.post({ t: 'opProgress', opId, kind, text: '', queued: true, position }); },
+      () => this.post({ t: 'opProgress', opId, kind, text: '' }),
     ).then(outcome => {
       if (quiet && outcome.ok) {
         this.post({ t: 'opResult', opId, kind, ok: true });   // 无 message：前端进度条收起且不弹 toast
@@ -1409,12 +1429,16 @@ export class GraphPanel {
     if (!paths.length || !this.runner || !this.currentRepoId) return;
     const root = this.roots.get(this.currentRepoId)!;
     const opId = ++this.opSeq;
-    void this.runner.run(root, { kind: 'resolveConflict', paths, ours }, opId,
-      (text, pct) => this.post({ t: 'opProgress', opId, kind: 'resolveConflict', text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
+    const kind = 'resolveConflict';
+    void this.runner.run(root, { kind, paths, ours }, opId,
+      (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
       ok => ok ? this.t('resolveConflictDone') : this.t('opFailed', { op: this.t('resolveConflict') }),
+      // Issue #7 方案 B：入队即反馈——排队位次可见，轮到执行时切回执行态
+      position => { if (position > 0) this.post({ t: 'opProgress', opId, kind, text: '', queued: true, position }); },
+      () => this.post({ t: 'opProgress', opId, kind, text: '' }),
     ).then(async outcome => {
       // 成功静默（列表即时刷新即反馈），失败弹 toast
-      this.post({ t: 'opResult', opId, kind: 'resolveConflict', ok: outcome.ok, message: outcome.ok ? undefined : outcome.message });
+      this.post({ t: 'opResult', opId, kind, ok: outcome.ok, message: outcome.ok ? undefined : outcome.message, outputTail: outcome.ok ? undefined : outcome.outputTail });
       await this.workStateNow().catch(() => undefined);
     });
   }
@@ -1451,30 +1475,28 @@ export class GraphPanel {
     const theirs = theirsRaw ?? '';
     const mineBytes = Buffer.byteLength(mine, 'utf8');
     const theirsBytes = Buffer.byteLength(theirs, 'utf8');
-    const mineLines = mine ? mine.split('\n').length : 0;
-    const theirsLines = theirs ? theirs.split('\n').length : 0;
+    // 会话分类（Issue #7 抽取为纯函数 classifyMergeSession，可单测文本/二进制/超限/删除侧）
+    const cls = classifyMergeSession(kind, code, mine, theirs);
     // 超限（决议 #5）：显式警告由前端渲染，此处带数据
-    if (Math.max(mineBytes, theirsBytes) > MERGE_MAX_BYTES || Math.max(mineLines, theirsLines) > MERGE_MAX_LINES) {
-      return { path: relPath, binary: false, tooLarge: true, lines: Math.max(mineLines, theirsLines), bytes: Math.max(mineBytes, theirsBytes) };
+    if (cls.tooLarge) {
+      return { path: relPath, binary: false, tooLarge: true, lines: cls.lines, bytes: cls.bytes };
     }
     // 二进制：现存侧内容含 NUL → 只二选一 + 系统预览
-    const NUL = String.fromCharCode(0);
-    if ((!mineGone && mine.includes(NUL)) || (!theirsGone && theirs.includes(NUL))) {
+    if (cls.binary) {
       return {
         path: relPath, kind, labels, binary: true,
-        deletedSide: code === 'DD' ? 'theirs' : (mineGone ? 'mine' : theirsGone ? 'theirs' : undefined),
-        mineSize: mineGone ? undefined : mineBytes,
-        theirsSize: theirsGone ? undefined : theirsBytes,
+        deletedSide: cls.deletedSideBinary,
+        mineSize: cls.mineGone ? undefined : mineBytes,
+        theirsSize: cls.theirsGone ? undefined : theirsBytes,
       };
     }
     let result = '';
     try { result = fs.readFileSync(this.safeJoin(root, relPath), 'utf8'); } catch { /* DD：工作副本可能已被删 */ }
-    const deletedSide = code === 'DD' ? undefined : (mineGone ? 'mine' : theirsGone ? 'theirs' : undefined);
     return {
       path: relPath, kind, labels, binary: false,
       base: baseRaw || undefined,
       mine, theirs, result,
-      deletedSide,
+      deletedSide: cls.deletedSideText,
       mergeMsg: kind === 'merge' ? this.service.mergeMsgOf(root) : undefined,
     };
   }
@@ -1513,7 +1535,11 @@ export class GraphPanel {
   private async mergeFinish(): Promise<{ ok: true }> {
     const root = this.currentRoot();
     const kind = this.service?.mergeKindOf(root) ?? 'other';
-    if (kind === 'other') throw new Error(this.t('mergeFinishUnsupported'));
+    // Issue #7（§8.5）：cherry-pick 等其他场景不抛错——toast 引导手动完成（IDEA 式不打断）
+    if (kind === 'other') {
+      this.post({ t: 'notify', level: 'warn', message: this.t('mergeFinishOtherHint') });
+      return { ok: true };
+    }
     this.startOp({ kind: kind === 'rebase' ? 'mergeContinue' : 'commitNoEdit', rebase: kind === 'rebase' });
     return { ok: true };
   }
@@ -1522,7 +1548,10 @@ export class GraphPanel {
   private async mergeAbort(): Promise<{ ok: true }> {
     const root = this.currentRoot();
     const kind = this.service?.mergeKindOf(root) ?? 'other';
-    if (kind === 'other') throw new Error(this.t('mergeFinishUnsupported'));
+    if (kind === 'other') {
+      this.post({ t: 'notify', level: 'warn', message: this.t('mergeFinishOtherHint') });
+      return { ok: true };
+    }
     this.startOp({ kind: 'mergeAbort', rebase: kind === 'rebase' });
     return { ok: true };
   }
