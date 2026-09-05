@@ -34,7 +34,7 @@ export function createFilePanel(app: App) {
 
   // ---------- 移动引导横幅（统一 .gg-banner.accent，Issue #18 S3） ----------
   const banner = mkBanner('accent');
-  const bannerBtn = el('button', 'gg-fp-cmpbtn') as HTMLButtonElement;
+  const bannerBtn = el('button', 'gg-fp-banner-btn') as HTMLButtonElement;
   const bannerSkip = el('button', 'gg-btn small ghost') as HTMLButtonElement;
   banner.acts.append(bannerBtn, bannerSkip);
   banner.el.classList.add('hidden');

@@ -215,7 +215,7 @@
     await sleep(300);
     const lastLs = window.__sentFind('files.ls').pop();
     assert('绝对路径换算为相对（files.ls dir=B）', !!lastLs && lastLs.args && lastLs.args.dir === 'B', JSON.stringify(lastLs && lastLs.args));
-    assert('绝对路径导航后面包屑=🏠›B', document.querySelector('.gg-files-crumbs').textContent === '🏠›B');
+    assert('绝对路径导航后面包屑=home›B（S4：home 为 SVG）', document.querySelector('.gg-files-crumbs').textContent === '›B' && !!document.querySelector('.gg-files-crumb.home svg'));
   }
   // 8d. 绝对路径=仓库根 → 回根目录
   {

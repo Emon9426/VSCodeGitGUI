@@ -30,6 +30,8 @@ const MIN_W: Record<ColKey, number> = { graph: 60, msg: 220, author: 70, sha: 60
 const COL_LABELS: ColKey[] = ['graph', 'msg', 'author', 'sha'];
 
 let measureCtx: CanvasRenderingContext2D | null = null;
+/** 消息列 grid 地板（Issue #18 S1）：缺额挤压时 msg 最低保留宽，与 CSS minmax(var(--c-msg-min)) 联动 */
+const MSG_FLOOR = 120;
 /** 等宽字体下样例串实测宽（px，含单元格 16px 内边距，4px 网格取整）——时间列保底宽度的事实来源，
  *  杜绝字体/DPI/主题差异下的截断（Issue #18 S1）。 */
 function measureTimeWidth(sample: string): number {
@@ -74,8 +76,8 @@ export function createCommitList(app: App): CommitList {
   let rafPending = false;
   const FOOTER_H = 36;
 
-  /** 时间列降级状态（Issue #18 S1）：true = 行内显示紧凑格式（MM-DD HH:mm） */
-  let timeCompact = false;
+  /** 时间列降级状态（Issue #18 S1）：0=完整格式 / 1=紧凑 MM-DD HH:mm / 2=极窄兜底（60px ellipsis，完整值在 title） */
+  let timeState = 0;
   let timeWidthCache = { key: '', full: 0, compact: 0 };
   /** 按 dateFormat/语言实测时间列需求宽（缓存，配置变化才重测） */
   function timeWidths(): { full: number; compact: number } {
@@ -103,21 +105,19 @@ export function createCommitList(app: App): CommitList {
     wrap.style.setProperty('--c-msg', `${S.colWidths.msg}px`);
     wrap.style.setProperty('--c-author', `${S.colWidths.author}px`);
     wrap.style.setProperty('--c-sha', `${S.colWidths.sha}px`);
-    // 时间列保底宽（Issue #18 S1）：预算 = 列表内容宽 - graph/author/sha 占用 - msg 下限；
-    // 宽裕（≥需求×1.25）= 完整格式；紧张 = 紧凑格式；极窄 = 回到 60px ellipsis 兜底（完整值在 title）。
-    // 格式切换时失效行池缓存，令 syncRows 重填（否则已渲染行残留旧格式）。
+    // 时间列保底与降级（Issue #18 S1）：容量 = 列表内容宽 - graph - 各列 grid 地板（缺额时 grid 把
+    // author/sha/msg 压回地板，按用户列宽预算会误判——实测扫描定论）；宽裕=完整格式、紧张=紧凑格式、
+    // 极窄=60px ellipsis 兜底并同步下调 msg 下限防五列总和溢出容器。格式切换即失效行池缓存令 syncRows 重填。
     const w = timeWidths();
     const avail = scroll.clientWidth;
-    const budget = avail - canvas.graphWidth
-      - Math.max(MIN_W.author, S.colWidths.author) - Math.max(MIN_W.sha, S.colWidths.sha) - 140;
-    const wasCompact = timeCompact;
-    timeCompact = avail > 0 && budget < w.full * 1.25;
-    let min: number;
-    if (!timeCompact) min = w.full;
-    else if (budget >= w.compact) min = w.compact;
-    else min = Math.max(60, budget);
-    wrap.style.setProperty('--c-time-min', `${Math.ceil(min)}px`);
-    if (wasCompact !== timeCompact) invalidateRows();
+    const capacity = avail - canvas.graphWidth - MSG_FLOOR - MIN_W.author - MIN_W.sha;
+    const next = avail === 0 ? 0 : capacity >= w.full ? 0 : capacity >= w.compact ? 1 : 2;
+    if (next !== timeState) { timeState = next; invalidateRows(); }
+    wrap.style.setProperty('--c-time-min', `${[w.full, w.compact, 60][timeState]}px`);
+    const msgFloor = timeState === 2
+      ? Math.max(80, avail - canvas.graphWidth - MIN_W.author - MIN_W.sha - 60)
+      : MSG_FLOOR;
+    wrap.style.setProperty('--c-msg-min', `${msgFloor}px`);
   }
 
   // 表头拖拽调宽（前四列右缘手柄；时间列自适应剩余空间）
@@ -228,7 +228,7 @@ export function createCommitList(app: App): CommitList {
     (cells[2] as HTMLElement).textContent = c.author.name;
     (cells[2] as HTMLElement).title = c.author.email;
     (cells[3] as HTMLElement).textContent = c.shortSha;
-    (cells[4] as HTMLElement).textContent = formatTime(c.author.date, timeCompact ? 'compact' : S.config.dateFormat, S.t);
+    (cells[4] as HTMLElement).textContent = formatTime(c.author.date, timeState === 0 ? S.config.dateFormat : 'compact', S.t);
     (cells[4] as HTMLElement).title = formatTime(c.author.date, 'datetime', S.t);
   }
 

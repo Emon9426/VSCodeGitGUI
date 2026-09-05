@@ -105,7 +105,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-files-cbtn .gg-ic { width: 12px; height: 12px; }
 .gg-files-flt .gg-ic { width: 11px; height: 11px; }
 .gg-files-addr-ico .gg-ic { width: 13px; height: 13px; }
-.gg-files-crumb.home .gg-ic { width: 12px; height: 12px; display: block; }
+.gg-files-crumb.home .gg-ic { width: 12px; height: 12px; display: inline-block; vertical-align: -2px; }
 .gg-fp-back { display: inline-flex; align-items: center; gap: 4px; }
 .gg-fp-back .gg-ic { width: 12px; height: 12px; }
 .gg-work-clean-icon .gg-ic { width: 30px; height: 30px; }
@@ -330,7 +330,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
      最后更新于 2026-09：原 `minmax(60px, 1fr)` 在窄窗被压至 60px 导致 datetime 截断（Issue #18）。 */
   grid-template-columns:
     var(--c-graph, 150px)
-    minmax(140px, var(--c-msg, 460px))
+    minmax(var(--c-msg-min, 120px), var(--c-msg, 460px))
     minmax(70px, var(--c-author, 120px))
     minmax(60px, var(--c-sha, 90px))
     minmax(var(--c-time-min, 140px), 1fr);
@@ -1319,9 +1319,9 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fp-detail-body { max-height: 300px; overflow: auto; }
 
 /* ---- 右区：比对条与 diff 视图 ---- */
-/* ---- 右区：比对条（已统一为 .gg-banner.info，Issue #18 S3；比对按钮保留） ---- */
-.gg-fp-cmpbtn { background: var(--vscode-button-background); border: 1px solid var(--vscode-button-background);
-  color: var(--vscode-button-foreground, #fff); border-radius: var(--gg-r-s); padding: 3px 14px; font-size: 11px; font-weight: 600; cursor: pointer; }
+/* ---- 右区：比对条（已统一为 .gg-banner.info，Issue #18 S3；比对/横幅主按钮各自独立类名） ---- */
+.gg-fp-cmpbtn, .gg-fp-banner-btn { background: var(--vscode-button-background); border: 1px solid var(--vscode-button-background);
+  color: var(--vscode-button-foreground, #fff); border-radius: var(--gg-r-s); padding: 3px 14px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .gg-fp-diff { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .gg-fp-diffhead { display: flex; align-items: center; gap: 10px; padding: 9px 12px; flex: none; flex-wrap: wrap;
   border-bottom: 1px solid var(--vscode-panel-border, #333); font-size: 11px; color: var(--vscode-descriptionForeground); }
