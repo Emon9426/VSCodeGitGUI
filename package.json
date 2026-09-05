@@ -2,7 +2,7 @@
   "name": "gitboard",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.19.1",
+  "version": "0.19.2",
   "publisher": "EmonZhang3438",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -183,6 +183,22 @@
           "minimum": 0,
           "maximum": 1440,
           "description": "%cfg.autoFetchInterval%"
+        },
+        "gitboard.netStallTimeout": {
+          "type": "number",
+          "default": 180,
+          "minimum": 0,
+          "description": "%cfg.netStallTimeout%"
+        },
+        "gitboard.opVerify": {
+          "type": "string",
+          "default": "quick",
+          "enum": [
+            "quick",
+            "deep",
+            "off"
+          ],
+          "description": "%cfg.opVerify%"
         },
         "gitboard.fetchPrune": {
           "type": "boolean",

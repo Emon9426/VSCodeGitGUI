@@ -148,6 +148,11 @@ button.danger:hover { background: #c62121; }
 .gg-opstatus.done .gg-opstatus-icon { color: var(--vscode-charts-green); }
 .gg-opstatus.done .gg-opstatus-name { color: var(--vscode-charts-green); }
 .gg-opstatus.done .gg-opstatus-fill { background: var(--vscode-charts-green); transition: none; }
+/* 操作后校验警示（Issue #6 后续）：退出码 0 但状态与意图不符 → 琥珀色 */
+.gg-opstatus.done.warn { border-bottom-color: color-mix(in srgb, var(--vscode-charts-yellow) 45%, transparent); }
+.gg-opstatus.done.warn .gg-opstatus-icon { color: var(--vscode-charts-yellow); }
+.gg-opstatus.done.warn .gg-opstatus-name { color: var(--vscode-charts-yellow); }
+.gg-opstatus.done.warn .gg-opstatus-fill { background: var(--vscode-charts-yellow); }
 
 /* 作者多选下拉 + 时间段筛选 */
 .gg-logfilter { display: flex; align-items: center; gap: 4px; margin-left: 6px; flex-wrap: wrap; }

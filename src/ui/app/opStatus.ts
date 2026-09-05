@@ -10,8 +10,8 @@ export interface OpStatus {
   el: HTMLElement;
   /** activeOps 变化（opProgress/opResult 到达）后重渲染 */
   update(): void;
-  /** 操作成功完成：绿色闪现约 0.8s（队列中还有后续操作则立即切换） */
-  finish(kind: string): void;
+  /** 操作成功完成：绿色闪现约 0.8s（队列中还有后续操作则立即切换）；warn=校验警示琥珀色 */
+  finish(kind: string, warn?: boolean): void;
 }
 
 /** 进度行图标（与工具栏按钮一致） */
@@ -94,10 +94,11 @@ export function createOpStatus(app: App): OpStatus {
     cancel.title = S.t('cancel');
   }
 
-  function finish(kind: string): void {
+  function finish(kind: string, warn = false): void {
     root.classList.remove('off');
     root.classList.add('done');
-    icon.textContent = '✓';
+    root.classList.toggle('warn', warn);   // 操作后校验警示（Issue #6 后续）：琥珀色区别于常规绿色
+    icon.textContent = warn ? '!' : '✓';
     name.textContent = S.t(`${kind}Done`);
     pct.textContent = '';
     text.textContent = '';

@@ -15,6 +15,8 @@
   "cfg.maxAutoLoad": "自动加载的提交数量上限（之后仍可点击“加载更多”）。",
   "cfg.fetchOnOpen": "打开提交图时自动执行 git fetch。",
   "cfg.autoFetchInterval": "后台自动获取间隔（分钟，SourceTree 式；0 = 关闭）。仅在 GitBoard 面板打开期间执行：静默获取当前仓库全部远程（含 prune 设置），不打扰进度条，失败仅记录日志，拉到新提交后徽标与提交图自动更新。",
+  "cfg.netStallTimeout": "网络操作（Fetch/Pull/Push）无输出空闲超时（秒；0 = 关闭）。连接停滞（如网络不稳定长时间无数据传输）时自动中断并提示重试，防止操作无限挂起占用队列。",
+  "cfg.opVerify": "Git 操作后快速校验：quick = 本地探针核对操作意图（拉取后不落后、推送后无未达提交、提交/切换/重置后 HEAD 符合预期、标签存在性），假成功以黄色警示；deep = 在 quick 基础上对 Pull/Push 额外一次 ls-remote 远端确认（可检出 fetch 路径陈旧，代价是每次网络操作多一个往返）；off = 关闭。",
   "cfg.fetchPrune": "fetch 时附加 --prune。",
   "cfg.pullFetchSummary": "每次 Pull/Fetch 后弹窗显示拉到的提交摘要（排除合并提交，附变更文件清单）。",
   "cfg.defaultPullStrategy": "默认拉取策略。",

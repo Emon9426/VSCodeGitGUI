@@ -129,7 +129,7 @@ npm run package     # 产出 gitboard-x.y.z.vsix
 ![操作菜单 / Operations](res/screenshots/operations.png)
 
 - **Fetch**：工具栏 ⟳，默认 `--all --prune`（可配置）；也可在侧栏远程主机/远程分支上右键按单个远程获取；打开视图时可配置自动 fetch；
-- **Pull / Push**：工具栏 ⤓ / ⤒，作用于当前分支；Pull 策略可选 merge / rebase / ff-only；Push 无上游时弹窗引导创建；所有网络操作显示实时进度并可取消；
+- **Pull / Push**：工具栏 ⤓ / ⤒，作用于当前分支的上游配置（`branch.<name>.remote/merge`，与原生 git 语义一致）；Pull 策略可选 merge / rebase / ff-only；Push 无上游时弹窗引导创建；所有网络操作显示实时进度、可取消，且带停滞防护（低速中断 + 无输出超时，见 `gitboard.netStallTimeout`）；
 - **重置到某次提交**：提交行右键 →“重置到此提交…”，选择 soft / mixed / hard；工作区有未提交修改且选择 hard 时，必须点击红色确认按钮（防误触）；
 - **切换分支**：双击侧栏分支即检出；双击远程分支弹出命名框，创建本地跟踪分支；提交行右键可“检出此提交”（分离 HEAD）；
 - **后台自动获取**（SourceTree 式）：面板打开期间按 `gitboard.autoFetchInterval`（默认 10 分钟，0=关闭）静默 fetch，拉到新提交后分支 ↓n 徽标与提交图自动更新，不走进度条、不弹摘要。
@@ -248,6 +248,8 @@ pull 或提交产生冲突时，自动切到工作副本视图并弹出引导横
 | `gitboard.language` | auto | 界面语言（工具栏 A/中/EN 按钮一键切换，即时生效） |
 | `gitboard.fetchOnOpen` | true | 打开视图时自动 fetch |
 | `gitboard.autoFetchInterval` | 10 | 后台自动获取间隔（分钟，0=关闭）：静默 fetch 全部远程，拉到新提交自动更新徽标与提交图 |
+| `gitboard.netStallTimeout` | 180 | 网络操作（Fetch/Pull/Push）无输出空闲超时（秒，0=关闭）：连接停滞自动中断并提示重试，防无限挂起 |
+| `gitboard.opVerify` | quick | Git 操作后快速校验：quick=本地探针核对操作意图（假成功黄色警示）；deep=Pull/Push 附 ls-remote 远端确认；off=关闭 |
 | `gitboard.pullFetchSummary` | true | Pull/Fetch 拉到新提交后弹窗显示纯净提交摘要 |
 | `gitboard.revealSelectStyle` | classic | 「在资源管理器中显示」的 explorer 传参形态（explorer 对 `/select` 的解析随 Windows 版本而异）：classic = 无引号原样单参数（各版本通用）；separate / quoted 为异构环境兜底 |
 | `gitboard.startView` | graph | 打开时的初始视图：提交图 / 工作副本 / 上次使用 |
@@ -283,6 +285,8 @@ npm run build && npm run package
 - **图形列想换回旧样式？** 设置 `gitboard.graphStyle` 为 `curved`（短半径圆角）或 `angular`（直角折线）即可。
 
 ### 更新日志
+
+**v0.19.2**（2026-09-05）：修复「拉取记录不完整」——Pull 稳定性、网络防护与操作后校验五项加固（[#6](https://github.com/Emon9426/VSCodeGitGUI/issues/6)）——①Pull 改为按分支级配置（`branch.<name>.remote/merge`）拉取：此前显式传"本地分支名"当远端分支参数，本地名 ≠ 上游名时（如默认分支改名后 `branch -u origin/main master`）会去拉同名的远端旧分支，git 报 "Already up to date." 假成功而对方新提交永远拉不进来；②Fetch/Pull/Push 增加网络停滞防护：git 层低速中断（持续 <1KB/s 60 秒）+ 无输出空闲看门狗（`gitboard.netStallTimeout`，默认 180 秒，0=关闭），连接停滞自动中断并提示重试，不再无限挂起占用操作队列（看门狗同时覆盖 SSH 等非 HTTP 远端）；③Pull"已是最新"反馈带上游分支名（如 "origin/main 已是最新"），拉错分支/远端一眼可见；④慢网络下连点 Fetch/Pull/Push 只执行一个（同类操作去重），排队期间被取消的操作不再执行；⑤**操作后快速校验**（`gitboard.opVerify`）：Pull/Push/提交/切换/重置/标签操作在退出码 0 后用本地只读探针核对操作意图——拉取后仍落后、推送后仍有未达提交（推错分支特征）、提交后 HEAD 未变化等"假成功"以黄色警示明确标出，探针异常不影响操作结果（fail-open）；deep 档对 Pull/Push 额外一次 ls-remote 远端确认，可检出 fetch 路径陈旧（代理/镜像缓存旧引用）。
 
 **v0.19.1**（2026-09-04）：修复筛选功能三缺陷（[#5](https://github.com/Emon9426/VSCodeGitGUI/issues/5)）——①按作者筛选无效：含 `[]`、逗号等字符的作者名（如 `dependabot[bot]`）曾因字符白名单被静默丢弃导致筛选不生效，现放宽校验并按 git 基本正则转义后精确匹配；②按日期筛选错位：git 的 `--since/--until` 按提交者日期过滤而列表显示作者日期，rebase/cherry-pick 过的仓库两边对不上，现改为按作者日期（与显示同口径）在扩展侧过滤，分页改为扫描游标续扫；③新增：选择起始日期时自动带入截止日期 = 起始日期。
 
@@ -406,7 +410,7 @@ npm install && npm run package
 
 ![Operations](res/screenshots/operations.png)
 
-① commit-row context menu (detached checkout, reset, copy SHA/subject); ② file context menu (open working file, read-only revision, reveal in file manager, copy path); ③ branch menu (double-click a branch to check it out; double-click a remote branch to create a local tracking branch); ④ the reset dialog — hard resets require an explicit red confirmation when uncommitted changes exist. **Fetch** (⟳) defaults to `--all --prune`; per-remote fetch from the sidebar context menu. **Pull/Push** act on the current branch; a push without upstream offers to create one. Background **auto-fetch** (SourceTree-style) runs silently every 10 minutes by default (`gitboard.autoFetchInterval`, 0 = off) and updates badges/graph without popups.
+① commit-row context menu (detached checkout, reset, copy SHA/subject); ② file context menu (open working file, read-only revision, reveal in file manager, copy path); ③ branch menu (double-click a branch to check it out; double-click a remote branch to create a local tracking branch); ④ the reset dialog — hard resets require an explicit red confirmation when uncommitted changes exist. **Fetch** (⟳) defaults to `--all --prune`; per-remote fetch from the sidebar context menu. **Pull/Push** act on the current branch's configured upstream (`branch.<name>.remote/merge`); a push without upstream offers to create one. Background **auto-fetch** (SourceTree-style) runs silently every 10 minutes by default (`gitboard.autoFetchInterval`, 0 = off) and updates badges/graph without popups.
 
 **5. Filtering**
 
@@ -463,7 +467,7 @@ The fourth view "🗂 Files" lets you move/rename folders without losing history
 
 ### Settings
 
-Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angular), `commitPageSize`, `logOrder`, `maxAutoLoad`, `defaultPullStrategy`, `dateFormat`, `rowHeight`, `detailPanelPosition`, `language`, `fetchOnOpen`, `autoFetchInterval`, `pullFetchSummary`, `revealSelectStyle` (**classic** default — switch to separate/quoted if "Reveal in file manager" misbehaves on your Windows build), `startView`, `ai.enabled` / `ai.modelFamily` / `ai.language` / `ai.learnFromHistory` / `ai.useWorkspaceInstructions`, `commit.clearMessage` / `commit.pushAfter`, plus `gitPath` for a custom git binary.
+Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angular), `commitPageSize`, `logOrder`, `maxAutoLoad`, `defaultPullStrategy`, `dateFormat`, `rowHeight`, `detailPanelPosition`, `language`, `fetchOnOpen`, `autoFetchInterval`, `netStallTimeout`, `opVerify`, `pullFetchSummary`, `revealSelectStyle` (**classic** default — switch to separate/quoted if "Reveal in file manager" misbehaves on your Windows build), `startView`, `ai.enabled` / `ai.modelFamily` / `ai.language` / `ai.learnFromHistory` / `ai.useWorkspaceInstructions`, `commit.clearMessage` / `commit.pushAfter`, plus `gitPath` for a custom git binary.
 
 ### FAQ
 
@@ -480,6 +484,7 @@ Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angul
 
 ### Changelog
 
+- **v0.19.2** (2026-09-05): fixed "pull brings no commits / needs several retries" — five pull-stability hardenings ([#6](https://github.com/Emon9426/VSCodeGitGUI/issues/6)) — ① Pull now resolves the remote/branch from the branch config (`branch.<name>.remote/merge`, native git semantics): it previously passed the *local* branch name as the remote-side argument, so when local and upstream names differ (e.g. `branch -u origin/main master` after a default-branch rename) it fetched a stale same-named remote branch and git reported "Already up to date." with exit 0 while the peer's new commits never arrived; ② Fetch/Pull/Push gained stall protection: a git-level low-speed cutoff (<1KB/s for 60s) plus a no-output watchdog (`gitboard.netStallTimeout`, default 180s, 0 = off) that also covers SSH remotes — stalled connections fail fast with a retry hint instead of hanging the serial op queue forever; ③ the "already up to date" notice now names the upstream (e.g. "origin/main is already up to date") so a wrong branch/remote is immediately visible; ④ repeated Fetch/Pull/Push clicks coalesce into one queued op, and ops cancelled while queued no longer execute; ⑤ **post-operation quick verify** (`gitboard.opVerify`): after an exit-0, Pull/Push/commit/checkout/reset/tag ops are checked against their intent with cheap local probes — still-behind after pull, unreached commits after push (the wrong-branch signature), unchanged HEAD after commit and similar "fake successes" now surface as a yellow warning, with probe failures fail-open; the deep tier additionally confirms Pull/Push against the remote via one ls-remote round-trip, detecting a stale fetch path (proxy/mirror serving old refs).
 - **v0.19.1** (2026-09-04): fixed the three filter defects ([#5](https://github.com/Emon9426/VSCodeGitGUI/issues/5)) — ① author filter had no effect: names with `[]`, commas, etc. (e.g. `dependabot[bot]`) were silently dropped by a character whitelist, so no `--author` was ever passed; validation is now relaxed and names are escaped as git basic-regex literals; ② date filter mismatched the visible range: git's `--since/--until` filter on the committer date while the list shows the author date, so rebased/cherry-picked repos drifted — filtering now happens on the author date (same basis as the display) with a scan-cursor based pagination; ③ new: picking a start date auto-fills the end date to match.
 - **v0.19.0** (2026-09-03): **Quick Notes moved out into the standalone QuickNotes extension** — GitBoard is a pure Git tool again and the package drops TipTap and other web-view dependencies. Note data and the default folder (`~/GitBoardNotes`) are unchanged, exported HTML still round-trips; `Ctrl+Alt+N` and the activity-bar entry moved with the feature.
 - **v0.18.4** (2026-09-02): docs — full README restructure (issue-feedback section & contact info up front, changelog extracted into its own section, a dedicated Quick Notes section and a reveal troubleshooting FAQ).

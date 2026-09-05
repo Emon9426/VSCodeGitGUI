@@ -88,8 +88,9 @@ const app: App = {
       toast('warn', S.t('pullNoUpstream'));
       return;
     }
-    const remote = head.upstream.split('/')[0];
-    void rpc('op:pull', { remote, branch: S.state?.head.branch, strategy: S.config.defaultPullStrategy }).catch(showErr);
+    // F1（Issue #6）：不传 remote/branch——宿主按分支级配置 branch.<name>.merge 拉取，
+    // 本地名≠上游名时不再拉错同名远端旧分支
+    void rpc('op:pull', { strategy: S.config.defaultPullStrategy }).catch(showErr);
   },
   runPush() {
     const head = S.state?.branches.find(b => b.isHead);
@@ -793,7 +794,7 @@ window.addEventListener('message', e => {
       S.activeOps.delete(m.opId);
       opstatus.update();          // 先按剩余队列收起/切换
       if (m.ok) {
-        opstatus.finish(m.kind);  // 成功：绿色闪现（队列有后续会被立即切换）
+        opstatus.finish(m.kind, m.verify === 'warn');  // 成功：绿色闪现；校验警示=琥珀（Issue #6 后续）
         toolbar.flash(m.kind);    // 按钮短暂闪绿，明确"点击已生效"
       }
       toolbar.updateProgress();
@@ -816,7 +817,8 @@ window.addEventListener('message', e => {
           toast('error', m.message ?? S.t('error'));
         }
       } else if (m.message) {
-        toast('info', m.message);
+        // 操作后校验警示（Issue #6 后续）：黄色 toast 区别于常规成功提示
+        toast(m.verify === 'warn' ? 'warn' : 'info', m.message);
       }
       break;
     case 'notify':
