@@ -646,6 +646,38 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
 /* Pull/Fetch 摘要弹窗（v0.13）：作者 → 目录 → 文件三层分组；行内 打开/定位 按钮 */
+/* ---------------- Banner（Issue #18 S3：页面内横幅统一组件） ----------------
+   取代旧 gg-merge-banner / gg-cbar-pushq / gg-cbar-amend / gg-fp-banner / gg-fp-cmpbar 五套并行样式。
+   结构：图标(语义色) + 标题(前景·600) + 正文(描述色) + 右侧动作区。 */
+.gg-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 8px 12px;
+  padding: 8px 12px;
+  flex: none;
+  border-radius: var(--gg-r-m);
+  font-size: var(--gg-fs-m);
+  border: 1px solid;
+}
+.gg-banner-ic { flex: none; width: 15px; height: 15px; margin-top: 1px; }
+.gg-banner-text { min-width: 0; flex: 1; }
+.gg-banner-t { font-weight: 600; color: var(--vscode-foreground); }
+.gg-banner-b { color: var(--gg-t2); margin-top: 1px; word-break: break-word; }
+.gg-banner-b:empty { display: none; }
+.gg-banner-acts { margin-left: auto; display: flex; gap: 6px; flex: none; align-items: center; }
+.gg-banner .mono { font-family: var(--vscode-editor-font-family); }
+.gg-banner.info { background: var(--gg-info-bg); border-color: var(--gg-info-bd); }
+.gg-banner.info .gg-banner-ic { color: var(--gg-info); }
+.gg-banner.success { background: var(--gg-ok-bg); border-color: var(--gg-ok-bd); }
+.gg-banner.success .gg-banner-ic { color: var(--gg-ok); }
+.gg-banner.warn { background: var(--gg-warn-bg); border-color: var(--gg-warn-bd); }
+.gg-banner.warn .gg-banner-ic { color: var(--gg-warn); }
+.gg-banner.danger { background: var(--gg-err-bg); border-color: var(--gg-err-bd); }
+.gg-banner.danger .gg-banner-ic { color: var(--gg-err); }
+.gg-banner.accent { background: var(--gg-accent-bg); border-color: var(--gg-accent-bd); }
+.gg-banner.accent .gg-banner-ic { color: var(--gg-accent); }
+
 .gg-psum-modal { max-width: 720px; }
 .gg-psum-sum { font-size: 11.5px; color: var(--vscode-descriptionForeground); margin: 0 0 6px; }
 .gg-psum-list { max-height: 56vh; overflow: auto; min-width: 520px; }
@@ -900,14 +932,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-cbar-select { max-width: 150px; font-size: 11.5px; padding: 2px 6px; }
 .gg-cbar-count { margin-left: auto; font-family: var(--vscode-editor-font-family); font-size: 11px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
 .gg-cbar-count.warn { color: var(--vscode-charts-yellow); }
-.gg-cbar-amend {
-  display: flex; align-items: center; gap: 8px;
-  padding: 4px 10px; border-radius: 5px; font-size: 12px;
-  color: var(--vscode-charts-yellow);
-  background: color-mix(in srgb, var(--vscode-charts-yellow) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--vscode-charts-yellow) 40%, transparent);
-}
-.gg-cbar-amend a { margin-left: auto; color: var(--vscode-textLink-foreground); cursor: pointer; }
+/* amend 提示条 / 推送询问条已统一为 .gg-banner（Issue #18 S3） */
 .gg-cbar-input {
   width: 100%; min-height: 58px; max-height: 240px; resize: vertical;
   padding: 6px 8px; font-family: inherit; font-size: 12.5px; line-height: 1.5;
@@ -923,21 +948,12 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-cbar-caret { padding: 4px 7px; border-left: 1px solid color-mix(in srgb, var(--vscode-button-foreground) 35%, transparent); }
 .gg-cbar-commit:disabled, .gg-cbar-caret:disabled { opacity: 0.5; }
 
-/* ---- v0.8.0：提交后推送询问条 / 冲突分组 / 标签入口 ---- */
+/* ---- v0.8.0：提交后推送询问条 / 冲突分组 / 标签入口（询问条已统一为 .gg-banner，S3） ---- */
 .gg-btn.tiny { padding: 1px 7px; font-size: 10.5px; border-radius: 3px; }
 .gg-btn.ghost {
   background: transparent; color: var(--vscode-foreground);
   border: 1px solid var(--vscode-dropdown-border, #666);
 }
-.gg-cbar-pushq {
-  display: flex; align-items: center; gap: 10px;
-  padding: 4px 10px; border-radius: 5px; font-size: 12px;
-  color: var(--vscode-charts-green);
-  background: color-mix(in srgb, var(--vscode-charts-green) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--vscode-charts-green) 40%, transparent);
-}
-.gg-cbar-pushq .gg-btn { margin-left: auto; }
-.gg-cbar-pushq .gg-btn + .gg-btn { margin-left: 0; }
 .gg-work-group-h.conflict b { color: var(--vscode-charts-red); }
 .gg-work-group-h.conflict .gg-work-cnt {
   background: color-mix(in srgb, var(--vscode-charts-red) 30%, transparent);
@@ -962,24 +978,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 /* ============ 合并解决器（v0.10，设计方案 v1.3 §4.3） ============ */
 .gg-work-outer { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .gg-work-outer .gg-work { flex: 1; }
-
-/* 冲突横幅：红=待解决 / 绿=待完成合并 */
-.gg-merge-banner {
-  display: flex; align-items: center; gap: 10px; margin: 6px 10px 2px; padding: 6px 12px;
-  border-radius: 6px; font-size: 12px; flex: none;
-}
-.gg-merge-banner.warn {
-  background: color-mix(in srgb, var(--vscode-charts-red) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--vscode-charts-red) 45%, transparent);
-  color: var(--vscode-charts-red);
-}
-.gg-merge-banner.ok {
-  background: color-mix(in srgb, var(--vscode-charts-green) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--vscode-charts-green) 45%, transparent);
-  color: var(--vscode-charts-green);
-}
-.gg-merge-banner-t { font-weight: 600; }
-.gg-merge-banner-btns { margin-left: auto; display: flex; gap: 6px; flex: none; }
+/* 冲突/合并/移动横幅已统一为 .gg-banner（Issue #18 S3） */
 
 /* 三栏合并器：全屏覆盖层 */
 .gg-merge {
@@ -1230,17 +1229,8 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fp-fol.off .gg-fp-sw { background: var(--vscode-descriptionForeground, #484f58); }
 .gg-fp-fol.off .gg-fp-sw::after { right: auto; left: 2px; }
 
-/* ---- 右区：移动引导横幅 ---- */
-.gg-fp-banner { display: flex; align-items: center; gap: 10px; margin: 10px 16px 0; padding: 7px 12px; flex: none;
-  border: 1px solid var(--vscode-charts-purple, #8250df); border-radius: 6px; font-size: 12px;
-  color: var(--vscode-charts-purple, #b180d7); background: color-mix(in srgb, var(--vscode-charts-purple, #8250df) 10%, transparent); }
-.gg-fp-banner-t { color: var(--vscode-foreground); }
-.gg-fp-banner-btn { background: transparent; border: 1px solid var(--vscode-charts-purple, #8250df); border-radius: 4px;
-  padding: 2px 10px; font-size: 11.5px; color: var(--vscode-charts-purple, #b180d7); cursor: pointer; white-space: nowrap; }
-.gg-fp-banner-btn.hero { background: var(--vscode-button-background); border-color: var(--vscode-button-background); color: var(--vscode-button-foreground, #fff); }
-
-/* ---- 右区：多选批量面板 ---- */
-.gg-fp-multi { flex: 1; min-height: 0; overflow: auto; padding: 12px 16px; }
+/* ---- 右区：移动引导横幅（已统一为 .gg-banner.accent，Issue #18 S3） ---- */
+.gg-fp-multi { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
 .gg-fp-multi h3 { margin: 2px 0 4px; font-size: 14px; color: var(--vscode-foreground); }
 .gg-fp-multi-sub { font-size: 11.5px; color: var(--vscode-descriptionForeground); margin-bottom: 10px; }
 .gg-fp-multi-ops { display: flex; gap: 8px; margin-bottom: 12px; }
@@ -1301,12 +1291,9 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fp-detail-body { max-height: 300px; overflow: auto; }
 
 /* ---- 右区：比对条与 diff 视图 ---- */
-.gg-fp-cmpbar { margin: 4px 16px 12px; display: flex; align-items: center; gap: 10px; flex: none; padding: 6px 12px;
-  border-radius: 6px; font-size: 11.5px; color: var(--vscode-foreground);
-  background: color-mix(in srgb, var(--vscode-charts-blue, #0078d4) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--vscode-charts-blue, #0078d4) 45%, transparent); }
-.gg-fp-cmpbtn { margin-left: auto; background: var(--vscode-button-background); border: 1px solid var(--vscode-button-background);
-  color: var(--vscode-button-foreground, #fff); border-radius: 5px; padding: 3px 14px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+/* ---- 右区：比对条（已统一为 .gg-banner.info，Issue #18 S3；比对按钮保留） ---- */
+.gg-fp-cmpbtn { background: var(--vscode-button-background); border: 1px solid var(--vscode-button-background);
+  color: var(--vscode-button-foreground, #fff); border-radius: var(--gg-r-s); padding: 3px 14px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
 .gg-fp-diff { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .gg-fp-diffhead { display: flex; align-items: center; gap: 10px; padding: 9px 16px; flex: none; flex-wrap: wrap;
   border-bottom: 1px solid var(--vscode-panel-border, #333); font-size: 11.5px; color: var(--vscode-descriptionForeground); }
@@ -1319,10 +1306,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fp-stat { margin-left: auto; }
 .gg-fp-diffbody { flex: 1; overflow: auto; min-height: 0; }
 
-/* 手动移动检测横幅（workView 复用 merge-banner 容器，紫色调） */
-.gg-merge-banner.mv { border-color: var(--vscode-charts-purple, #8250df);
-  background: color-mix(in srgb, var(--vscode-charts-purple, #8250df) 10%, transparent);
-  color: var(--vscode-foreground); }
+/* 手动移动检测横幅已统一为 .gg-banner.accent（Issue #18 S3） */
 
 /* ---- 移动目标选择对话框（v0.14.2：webview 内实现，替代原生 showOpenDialog） ---- */
 .gg-move-dlg { width: 480px; }

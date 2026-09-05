@@ -147,7 +147,7 @@
   const cks = [...document.querySelectorAll('.gg-fp-ck')];
   cks[4].click(); cks[0].click();   // 最早 ↔ 最新
   await twoFrames();
-  assert('比对条出现（两个短sha）', /已选 2 个版本/.test(document.querySelector('.gg-fp-cmpbar').textContent));
+  assert('比对条出现（两个短sha）', /已选 2 个版本/.test(document.querySelector('.gg-banner.info').textContent));
   document.querySelector('.gg-fp-cmpbtn').click();
   await sleep(300);
   assert('diff 视图激活', !document.querySelector('.gg-fp-diff').classList.contains('hidden'));
@@ -236,7 +236,7 @@
     ai.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await sleep(300);
     const addrEl = document.querySelector('.gg-files-addr');
-    const toastEl = document.querySelector('.gg-toast');
+    const toastEl = document.querySelector('.gg-notif');
     assert('越仓路径 → 地址栏红框', addrEl.classList.contains('err'));
     assert('越仓路径 → toast 明确提示仓库根', !!toastEl && /仓库根|repo root/i.test(toastEl.textContent) && toastEl.textContent.includes('D:/demo'));
     if (toastEl) toastEl.remove();   // 清场，避免影响后续断言

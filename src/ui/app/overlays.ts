@@ -285,3 +285,28 @@ export function notify(level: NotifyLevel, opts: NotifyOpts): void {
 export function toast(level: 'info' | 'warn' | 'error', message: string, action?: { label: string; run: () => void }): void {
   notify(level, { title: message, actions: action ? [action] : undefined });
 }
+
+// ---------------- Banner（Issue #18 S3：页面内横幅统一组件） ----------------
+
+export type BannerVariant = 'info' | 'success' | 'warn' | 'danger' | 'accent';
+
+const BANNER_ICON: Record<BannerVariant, IconName> = {
+  info: 'info', success: 'checkCircle', warn: 'warnTriangle', danger: 'warnTriangle', accent: 'movePath',
+};
+
+/**
+ * 统一横幅骨架：图标(语义色) + [标题(前景·600) / 正文(描述色)] + 右侧动作区。
+ * 语义配方（§1）：浅语义底 10% + 语义色边框 42% + 图标全色 + 标题前景色。
+ */
+export function mkBanner(variant: BannerVariant): { el: HTMLElement; title: HTMLElement; body: HTMLElement; acts: HTMLElement } {
+  const root = el('div', `gg-banner ${variant}`);
+  const ic = iconSvg(BANNER_ICON[variant]);
+  ic.classList.add('gg-banner-ic');
+  const text = el('div', 'gg-banner-text');
+  const title = el('div', 'gg-banner-t');
+  const body = el('div', 'gg-banner-b');
+  text.append(title, body);
+  const acts = el('div', 'gg-banner-acts');
+  root.append(ic, text, acts);
+  return { el: root, title, body, acts };
+}

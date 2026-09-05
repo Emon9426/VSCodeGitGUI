@@ -101,7 +101,7 @@ async function connectGb() {
   await sleep(400);
   await E(`(() => { const c = document.querySelectorAll('.gg-fp-ck'); if (c[0]) c[0].click(); return true; })()`);
   await sleep(600);
-  assert('比对条出现', await E(`!document.querySelector('.gg-fp-cmpbar')?.classList.contains('hidden')`));
+  assert('比对条出现', await E(`!document.querySelector('.gg-banner.info')?.classList.contains('hidden')`));
   await E(`document.querySelector('.gg-fp-cmpbtn')?.click()`);
   await sleep(3000);
   const diffInfo = await E(`(() => ({ shown: !document.querySelector('.gg-fp-diff')?.classList.contains('hidden'), pair: document.querySelector('.gg-fp-pair')?.textContent ?? '', body: document.querySelector('.gg-fp-diffbody')?.textContent ?? '' }))()`);

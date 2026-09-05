@@ -9,7 +9,7 @@ import { S, type App } from '../state';
 import { el, formatDateTime } from '../util';
 import { fileIconSvg } from '../icons';
 import { renderDiff } from '../diff/render';
-import { confirmDialog, toast } from './overlays';
+import { confirmDialog, toast, mkBanner } from './overlays';
 
 export function createFilePanel(app: App) {
   const root = el('div', 'gg-filepanel');
@@ -32,14 +32,12 @@ export function createFilePanel(app: App) {
   fh.append(fhIco, fhName, fhCrumb, chain, el('span', 'gg-fp-sp'), fol);
   root.append(fh);
 
-  // ---------- 移动引导横幅 ----------
-  const banner = el('div', 'gg-fp-banner hidden');
-  const bannerText = el('span', 'gg-fp-banner-t');
-  const bannerBtn = el('button', 'gg-fp-banner-btn hero') as HTMLButtonElement;
-  bannerBtn.textContent = '';   // fill in update
-  const bannerSkip = el('button', 'gg-fp-banner-btn') as HTMLButtonElement;
-  bannerSkip.textContent = S.t('moveIgnore');
-  banner.append(el('span', undefined, '🗂'), bannerText, el('span', 'gg-fp-sp'), bannerBtn, bannerSkip);
+  // ---------- 移动引导横幅（统一 .gg-banner.accent，Issue #18 S3） ----------
+  const banner = mkBanner('accent');
+  const bannerBtn = el('button', 'gg-fp-cmpbtn') as HTMLButtonElement;
+  const bannerSkip = el('button', 'gg-btn small ghost') as HTMLButtonElement;
+  banner.acts.append(bannerBtn, bannerSkip);
+  banner.el.classList.add('hidden');
   bannerBtn.addEventListener('click', () => {
     const mb = S.files.moveBanner;
     if (!mb) return;
@@ -50,7 +48,7 @@ export function createFilePanel(app: App) {
     update();
   });
   bannerSkip.addEventListener('click', () => { S.files.moveBanner = undefined; update(); });
-  root.append(banner);
+  root.append(banner.el);
 
   // ---------- 多选批量面板 ----------
   const multi = el('div', 'gg-fp-multi hidden');
@@ -64,13 +62,16 @@ export function createFilePanel(app: App) {
   const histOpsHint = el('span', 'gg-fp-opshint');
   histHead.append(el('span', undefined, S.t('filesHist')), histCount, histNote, el('span', 'gg-fp-sp'), histOpsHint);
   const histList = el('div', 'gg-fp-list');
-  const cmpBar = el('div', 'gg-fp-cmpbar hidden');
+  // 比对条（统一 .gg-banner.info，Issue #18 S3）
+  const cmpBar = mkBanner('info');
   const cmpText = el('span');
   const cmpBtn = el('button', 'gg-fp-cmpbtn') as HTMLButtonElement;
   cmpBtn.textContent = S.t('filesCmpBtn');
   cmpBtn.addEventListener('click', () => app.filesVersionDiff());
-  cmpBar.append(cmpText, cmpBtn);
-  histWrap.append(histHead, histList, cmpBar);
+  cmpBar.title.appendChild(cmpText);
+  cmpBar.acts.append(cmpBtn);
+  cmpBar.el.classList.add('hidden');
+  histWrap.append(histHead, histList, cmpBar.el);
   root.append(histWrap);
 
   // ---------- 比对 diff 视图 ----------
@@ -99,11 +100,12 @@ export function createFilePanel(app: App) {
   function update(): void {
     // 横幅
     const mb = S.files.moveBanner;
-    banner.classList.toggle('hidden', !mb);
+    banner.el.classList.toggle('hidden', !mb);
     if (mb) {
-      bannerText.innerHTML = '';
-      bannerText.append(document.createTextNode(S.t('moveBannerText', { from: mb.from || (mb.srcs[0] ?? ''), to: mb.dst || '/', n: String(mb.srcs.length) })));
+      banner.title.textContent = S.t('moveBannerTitleText');
+      banner.body.textContent = S.t('moveBannerText', { from: mb.from || (mb.srcs[0] ?? ''), to: mb.dst || '/', n: String(mb.srcs.length) });
       bannerBtn.textContent = S.t('moveCommitBtn');
+      bannerSkip.textContent = S.t('moveIgnore');
     }
     // 比对态优先
     if (S.files.diff && S.files.diffPair) {
@@ -276,11 +278,11 @@ export function createFilePanel(app: App) {
     });
     // 比对条
     if (S.files.picked.length === 2) {
-      cmpBar.classList.remove('hidden');
+      cmpBar.el.classList.remove('hidden');
       const [a, b] = S.files.picked;
       cmpText.textContent = S.t('filesCmpSel', { a: a.shortSha, b: b.shortSha });
     } else {
-      cmpBar.classList.add('hidden');
+      cmpBar.el.classList.add('hidden');
     }
   }
 

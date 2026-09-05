@@ -9,7 +9,7 @@ import { el, clearChildren } from '../util';
 import { rpc } from '../rpc';
 import { renderDiff } from '../diff/render';
 import { showContextMenu, confirmDialog } from './overlays';
-import { setIcon, type IconName } from '../icons';
+import { setIcon, iconSvg, type IconName } from '../icons';
 
 export interface WorkView {
   el: HTMLElement;
@@ -21,12 +21,9 @@ export interface WorkView {
 
 export function createWorkView(app: App): WorkView {
   const root = el('div', 'gg-work');
-  // 外层：冲突横幅（merging 时常驻）+ 原有 row 布局
+  // 外层：统一横幅（.gg-banner，Issue #18 S3）+ 原有 row 布局
   const outer = el('div', 'gg-work-outer');
-  const banner = el('div', 'gg-merge-banner hidden');
-  const bannerText = el('div', 'gg-merge-banner-t');
-  const bannerBtns = el('div', 'gg-merge-banner-btns');
-  banner.append(bannerText, bannerBtns);
+  const banner = el('div', 'gg-banner danger hidden');
   outer.append(banner, root);
 
   // ---------- 左：文件状态 ----------
@@ -245,17 +242,26 @@ export function createWorkView(app: App): WorkView {
 
   // ---------- 渲染 ----------
 
-  /** 冲突横幅：merging=红（待解决）；mergeActive 且清零=绿（待完成合并）；否则隐藏 */
+  /** 统一横幅（Issue #18 S3）：danger=冲突待解决 / success=待完成合并 / accent=移动检测；否则隐藏 */
   function updateBanner(): void {
     const st = S.work.state;
-    clearChildren(bannerBtns);
-    if (!st) { banner.classList.add('hidden'); return; }
+    banner.textContent = '';
+    if (!st) { banner.className = 'gg-banner danger hidden'; return; }
     const n = st.conflicts.length;
     const kindText = S.t(st.mergeKind === 'rebase' ? 'mergeKindRebase' : st.mergeKind === 'merge' ? 'mergeKindMerge' : 'mergeKindOther');
+    const fill = (variant: string, icon: IconName, title: string, body?: string): HTMLElement => {
+      banner.className = `gg-banner ${variant}`;
+      const ic = iconSvg(icon);
+      ic.classList.add('gg-banner-ic');
+      const text = el('div', 'gg-banner-text');
+      text.appendChild(el('div', 'gg-banner-t', title));
+      if (body) text.appendChild(el('div', 'gg-banner-b', body));
+      const acts = el('div', 'gg-banner-acts');
+      banner.append(ic, text, acts);
+      return acts;
+    };
     if (n > 0) {
-      banner.classList.remove('hidden', 'ok');
-      banner.classList.add('warn');
-      bannerText.textContent = S.t('mergeBannerTitle', { kind: kindText, n: String(n) });
+      const acts = fill('danger', 'warnTriangle', S.t('mergeBannerTitle', { kind: kindText, n: String(n) }), S.t('mergeBannerBody'));
       const mk = (label: string, cls: string, fn: () => void, confirmN?: number) => {
         const b = el('button', 'gg-btn tiny ' + cls, label);
         b.addEventListener('click', () => {
@@ -264,7 +270,7 @@ export function createWorkView(app: App): WorkView {
         });
         return b;
       };
-      bannerBtns.append(
+      acts.append(
         mk(S.t('mergeBannerResolve'), 'primary', () => app.openMerge()),
         mk(S.t('mergeBannerAllMine'), '', () => { for (const c of st.conflicts) app.mergeResolve(c.path, false); }, n),
         mk(S.t('mergeBannerAllTheirs'), '', () => { for (const c of st.conflicts) app.mergeResolve(c.path, true); }, n),
@@ -274,22 +280,18 @@ export function createWorkView(app: App): WorkView {
     }
     if (st.mergeActive) {
       // 冲突已清但未完成提交（决议 #2 的「稍后」状态）
-      banner.classList.remove('hidden', 'warn');
-      banner.classList.add('ok');
-      bannerText.textContent = S.t('mergePendingTitle');
+      const acts = fill('success', 'checkCircle', S.t('mergePendingTitle'));
       const finish = el('button', 'gg-btn tiny primary', S.t('mergeFinishShort'));
       finish.addEventListener('click', () => app.mergeFinishAsk());
       const abort = el('button', 'gg-btn tiny danger', S.t('mergeAbortBtn'));
       abort.addEventListener('click', () => app.mergeAbort());
-      bannerBtns.append(finish, abort);
+      acts.append(finish, abort);
       return;
     }
     // 手动移动检测（v0.14 R7）：未暂存"同前缀批量删除 + 同名未跟踪"→ 引导按移动 stage 并预填信息
     const md = st.moveDetect;
     if (md) {
-      banner.classList.remove('hidden', 'warn', 'ok');
-      banner.classList.add('mv');
-      bannerText.textContent = S.t('moveDetectText', { from: md.from || '/', to: md.to || '/', n: String(md.count) });
+      const acts = fill('accent', 'movePath', S.t('moveDetectText', { from: md.from || '/', to: md.to || '/', n: String(md.count) }));
       const commitMove = el('button', 'gg-btn tiny primary', S.t('moveDetectStage'));
       commitMove.addEventListener('click', () => {
         app.workStage(md.paths, true);
@@ -298,10 +300,10 @@ export function createWorkView(app: App): WorkView {
       });
       const skip = el('button', 'gg-btn tiny', S.t('moveIgnore'));
       skip.addEventListener('click', () => { st.moveDetect = undefined; update(); });
-      bannerBtns.append(commitMove, skip);
+      acts.append(commitMove, skip);
       return;
     }
-    banner.classList.add('hidden');
+    banner.className = 'gg-banner danger hidden';
   }
 
   function update(): void {
