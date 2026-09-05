@@ -15,6 +15,8 @@ export interface CommitBar {
   onAiError(code: string, message?: string): void;
   focusInput(): void;
   afterCommitOk(shortSha?: string, pushed?: boolean, dirty?: number): void;
+  /** 冲突解决+完成合并后的统一推送确认（Issue #7 方案 E） */
+  showPushAfterResolve(): void;
   /** 状态刷新联动：工作区已干净或已无待推送（上游存在且领先 0）→ 隐藏推送询问条 */
   autoHidePushq(): void;
   /** 恢复持久化草稿（视图首次打开 / 仓库切换） */
@@ -44,7 +46,15 @@ export function createCommitBar(app: App): CommitBar {
   const pushqText = el('span');
   const pushqBtn = el('button', 'gg-btn small');
   const pushqSkip = el('button', 'gg-btn small ghost');
-  pushqBtn.addEventListener('click', () => { hidePushq(); app.runPush(); });
+  // Issue #7：确认条形态的推送意图已显式（提交后询问/冲突解决收尾）——直接推，
+  // 不走 runPush 的落后引导（repoState 刷新竞态下陈旧 behind 会误入"拉取并推送"）
+  const pushqDirect = (): void => {
+    hidePushq();
+    const head = S.state?.branches.find(b => b.isHead);
+    const remote = head?.upstream?.split('/')[0] ?? 'origin';
+    void rpc('op:push', { remote, branch: S.state?.head.branch }).catch(() => undefined);
+  };
+  pushqBtn.addEventListener('click', pushqDirect);
   pushqSkip.addEventListener('click', hidePushq);
   pushq.append(pushqText, pushqBtn, pushqSkip);
 
@@ -71,6 +81,15 @@ export function createCommitBar(app: App): CommitBar {
   /** 提交成功：未直接推送 → 显示询问条（开始写下一次信息时自动让位） */
   function showPushq(shortSha: string): void {
     pushqText.textContent = S.t('pushqText', { sha: shortSha });
+    pushqBtn.textContent = S.t('pushNow');
+    pushqSkip.textContent = S.t('pushSkip');
+    pushq.classList.remove('hidden');
+  }
+
+  /** 冲突解决+完成合并后的统一推送确认（Issue #7 方案 E，对齐 IDEA 显式推送）：
+   *  复用询问条形态，一次推完合并提交与此前全部未推提交 */
+  function showPushAfterResolve(): void {
+    pushqText.textContent = S.t('pushqResolveText');
     pushqBtn.textContent = S.t('pushNow');
     pushqSkip.textContent = S.t('pushSkip');
     pushq.classList.remove('hidden');
@@ -348,5 +367,5 @@ export function createCommitBar(app: App): CommitBar {
 
   // 初始草稿恢复（由 main.ts 在 work.loadDraft 后调用 applyDraft）
   update();
-  return { el: root, update, onAiChunk, onAiDone, onAiError, focusInput, afterCommitOk, autoHidePushq, applyDraft };
+  return { el: root, update, onAiChunk, onAiDone, onAiError, focusInput, afterCommitOk, showPushAfterResolve, autoHidePushq, applyDraft };
 }

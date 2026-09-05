@@ -301,7 +301,12 @@ const app: App = {
     mergeview.open(p);
   },
   mergeResolve(path, sideTheirs) {
-    void rpc('merge.resolve', { path, side: sideTheirs ? 'theirs' : 'mine' }).catch(showErr);
+    // Issue #7 乐观态：点击即入集合（行内 ⏳ 禁点），opResult/workState 清理
+    S.work.resolving.add(path);
+    armResolveHint(path);
+    workview.update();
+    void rpc('merge.resolve', { path, side: sideTheirs ? 'theirs' : 'mine' })
+      .catch(e => { S.work.resolving.delete(path); workview.update(); showErr(e); });
   },
   mergeAbort() {
     void confirmDialog(S.t('mergeAbortTitle'), S.t('mergeAbortText'), S.t('mergeAbortConfirmBtn'), true).then(ok => {
@@ -649,6 +654,32 @@ let pendingLoad: { repoId: string | undefined; offset: number; anchor: string | 
 let emptyAppendStreak = 0;
 /** 「拉取并推送」链条：pull 完成且无冲突时自动续推（R3/决议 #3 的事前引导侧） */
 let pendingPushAfterPull = false;
+/** 冲突路径的统一推送确认（Issue #7 方案 E）：冲突出现时置位，完成合并后弹确认条，中止作废 */
+let pendingPushAfterResolve = false;
+
+/** 冲突解决乐观态清理（Issue #7）：已不在 conflicts 组的路径解除 ⏳；返回是否有变化 */
+function pruneResolving(): boolean {
+  const st = S.work.state;
+  if (!st || !S.work.resolving.size) return false;
+  const paths = new Set(st.conflicts.map(c => c.path));
+  let changed = false;
+  for (const p of [...S.work.resolving]) {
+    if (!paths.has(p)) { S.work.resolving.delete(p); changed = true; }
+  }
+  return changed;
+}
+
+/** 冲突解决慢提示（Issue #7）：点击后 >5s 仍在解决中（排队/执行）给一次琥珀提示（全局 5s 节流） */
+let lastResolveHintAt = 0;
+function armResolveHint(path: string): void {
+  window.setTimeout(() => {
+    if (!S.work.resolving.has(path)) return;
+    const now = Date.now();
+    if (now - lastResolveHintAt < 5000) return;
+    lastResolveHintAt = now;
+    toast('warn', S.t('resolveSlowHint'));
+  }, 5000);
+}
 
 function applyColWidths(w: { graph?: number; msg?: number; author?: number; sha?: number }): void {
   for (const key of ['graph', 'msg', 'author', 'sha'] as const) {
@@ -718,6 +749,7 @@ window.addEventListener('message', e => {
         S.work.state = undefined;
         S.work.selectedPath = undefined;
         S.work.diff = undefined;
+        S.work.resolving.clear();
         draftLoadedFor = undefined;
         // 文件页：换仓库 → 目录/选中/历史全部复位
         filesview.reset();
@@ -786,7 +818,7 @@ window.addEventListener('message', e => {
       break;
     }
     case 'opProgress':
-      S.activeOps.set(m.opId, { kind: m.kind, text: m.text, pct: m.pct });
+      S.activeOps.set(m.opId, { kind: m.kind, text: m.text, pct: m.pct, queued: m.queued, position: m.position });
       opstatus.update();
       toolbar.updateProgress();
       break;
@@ -820,6 +852,13 @@ window.addEventListener('message', e => {
         // 操作后校验警示（Issue #6 后续）：黄色 toast 区别于常规成功提示
         toast(m.verify === 'warn' ? 'warn' : 'info', m.message);
       }
+      // Issue #7 乐观态收口：冲突解决 op 落定（成功/失败）即解除行内 ⏳，失败可重点重试
+      if (m.kind === 'resolveConflict' || m.kind === 'resolveDelete') {
+        mergeview.resolveSettled();
+        if (pruneResolving()) workview.update();
+      }
+      // 中止合并：统一推送确认作废（方案 E）
+      if (m.kind === 'mergeAbort') pendingPushAfterResolve = false;
       break;
     case 'notify':
       toast(m.level, m.message);
@@ -865,6 +904,7 @@ window.addEventListener('message', e => {
       const prevRepo = S.work.state?.repoId;
       if (m.state.repoId !== S.repoId && m.state.repoId !== prevRepo) break;   // 过期的其他仓库推送
       S.work.state = m.state;
+      pruneResolving();   // 已解决/外部解决的路径解除 ⏳（opResult 之外的双保险）
       workview.update();
       toolbar.update();
       commitBar.update();
@@ -872,15 +912,21 @@ window.addEventListener('message', e => {
       mergeview.update();
       // R3 引导：出现冲突时自动切到工作副本视图（横幅即在该视图顶部）
       if (m.state.merging && S.view !== 'work') app.setView('work');
-      // 「拉取并推送」链条：pull 完成后无冲突 → 自动续推（有冲突则停在横幅流程，由用户解决后确认）
+      // 「拉取并推送」链条（Issue #7 方案 E）：干净 pull 自动续推（点击时已表达推送意图，决议 #3 不变）；
+      // 冲突路径挂起——全部解决 + 完成合并（mergeActive 清零，合并提交已创建）后弹统一推送确认条，
+      // 中止合并则作废。推送永远显式确认，对齐 IDEA。
       if (pendingPushAfterPull) {
-        if (!m.state.merging) {
+        if (m.state.merging) {
+          pendingPushAfterPull = false;
+          pendingPushAfterResolve = true;
+          toast('warn', S.t('mergePushPaused'));
+        } else if (!m.state.mergeActive) {
           pendingPushAfterPull = false;
           app.runPush();
-        } else {
-          pendingPushAfterPull = false;
-          toast('warn', S.t('mergePushPaused'));
         }
+      } else if (pendingPushAfterResolve && !m.state.merging && !m.state.mergeActive) {
+        pendingPushAfterResolve = false;
+        commitBar.showPushAfterResolve();
       }
       break;
     }
