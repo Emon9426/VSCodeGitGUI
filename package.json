@@ -190,6 +190,16 @@
           "minimum": 0,
           "description": "%cfg.netStallTimeout%"
         },
+        "gitboard.opVerify": {
+          "type": "string",
+          "default": "quick",
+          "enum": [
+            "quick",
+            "deep",
+            "off"
+          ],
+          "description": "%cfg.opVerify%"
+        },
         "gitboard.fetchPrune": {
           "type": "boolean",
           "default": true,

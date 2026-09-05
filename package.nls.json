@@ -16,6 +16,7 @@
   "cfg.fetchOnOpen": "Run `git fetch` automatically when the graph view opens.",
   "cfg.autoFetchInterval": "Background auto-fetch interval in minutes (SourceTree-style); 0 = disable. Runs only while the GitBoard panel is open: silently fetches all remotes of the current repo (honors the prune setting), no progress bar, failures only logged; badges and the graph update automatically when new commits arrive.",
   "cfg.netStallTimeout": "No-output idle timeout in seconds for network operations (Fetch/Pull/Push); 0 = disable. A stalled connection (no data transferred for a long time, e.g. on flaky networks) is aborted automatically with a retry hint, so operations never hang forever on the queue.",
+  "cfg.opVerify": "Post-operation quick verify: quick = local probes confirm the operation's intent (not behind after pull, no unreached commits after push, HEAD as expected after commit/checkout/reset, tag existence) — fake successes surface as a yellow warning; deep = additionally confirms Pull/Push against the remote via one ls-remote round-trip (detects a stale fetch path, at the cost of one extra round-trip per network op); off = disable.",
   "cfg.fetchPrune": "Add `--prune` when fetching.",
   "cfg.pullFetchSummary": "Show a summary popup of incoming commits after Pull/Fetch (merges excluded, changed files listed).",
   "cfg.defaultPullStrategy": "Default pull strategy.",

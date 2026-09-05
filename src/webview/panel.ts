@@ -19,6 +19,7 @@ import { PullSummaryService } from '../git/summary';
 import { RepoWatcher } from '../git/watcher';
 import { detectMove, semanticToOurs } from '../git/parse';
 import { OpRunner, type OpSpec, type PullStrategy } from '../ops/runner';
+import { OpVerifier, type VerifyResult } from '../ops/verify';
 import { DiffContentProvider, GITBOARD_SCHEME, EMPTY_REF, gitboardUri } from './diffProvider';
 import { fsExistsRobust, revealableAncestor, revealSpawnForm, type RevealSelectStyle } from './revealPath';
 import { lmApi, userMessage, classifyLmError } from '../ai/lm';
@@ -43,6 +44,7 @@ function readConfig(): ConfigDto {
     autoFetchInterval: cfg.get('autoFetchInterval', 10),
     fetchPrune: cfg.get('fetchPrune', true),
     netStallTimeout: cfg.get('netStallTimeout', 180),
+    opVerify: cfg.get('opVerify', 'quick'),
     defaultPullStrategy: cfg.get('defaultPullStrategy', 'merge'),
     logOrder: cfg.get('logOrder', 'topo'),
     aiEnabled: cfg.get('ai.enabled', true),
@@ -99,6 +101,8 @@ export class GraphPanel {
   private service?: GitService;
   private runner?: OpRunner;
   private pullSummary?: PullSummaryService;
+  /** 操作后快速校验（Issue #6 后续）：退出码 0 后按意图核对仓库状态 */
+  private verifier?: OpVerifier;
   private files?: FilesService;
   /** explorer 右键「查看文件历史」待定位路径（webview 未就绪时排队） */
   private pendingFilesReveal: string[] = [];
@@ -704,6 +708,7 @@ export class GraphPanel {
       }
       this.service = new GitService(this.executor);
       this.runner = new OpRunner(this.executor, undefined, () => this.config.netStallTimeout);
+      this.verifier = new OpVerifier(this.executor);
       this.pullSummary = new PullSummaryService(this.executor);
       this.files = new FilesService(this.executor);
       this.armAutoFetch();
@@ -1156,6 +1161,20 @@ export class GraphPanel {
   /** 同仓库同 kind 网络操作去重登记（F4/Issue #6）：进行中/排队中时忽略重复点击 */
   private netInFlight = new Map<string, Set<string>>();
 
+  /** 操作后校验警告文案（Issue #6 后续）：按 reason 选 i18n 键与参数 */
+  private verifyWarnText(kind: string, v: VerifyResult): string {
+    switch (v.reason) {
+      case 'behind': return this.t('verifyWarnPull', { ref: v.ref ?? '', n: String(v.n ?? 0) });
+      case 'ahead': return this.t('verifyWarnPush', { ref: v.ref ?? '', n: String(v.n ?? 0) });
+      case 'headUnchanged': return this.t('verifyWarnHeadUnchanged');
+      case 'headMismatch': return this.t('verifyWarnHeadMismatch');
+      case 'tagMissing': return this.t('verifyWarnTagMissing', { name: v.name ?? '' });
+      case 'tagExists': return this.t('verifyWarnTagExists', { name: v.name ?? '' });
+      case 'remoteDrift': return this.t('verifyWarnRemoteDrift', { ref: v.ref ?? '' });
+      default: return this.t(`${kind}Done`);
+    }
+  }
+
   private startOp(spec: OpSpec): void {
     if (!this.runner || !this.currentRepoId) return;
     const root = this.roots.get(this.currentRepoId)!;
@@ -1195,6 +1214,7 @@ export class GraphPanel {
         }
         // 结果细化：让"点了但没变化"也有明确反馈（v0.7.1）
         let message = outcome.message;
+        let verify: 'pass' | 'warn' | 'unknown' | undefined;
         if (outcome.ok) {
           if (kind === 'fetch' && refsBefore) {
             try {
@@ -1206,18 +1226,22 @@ export class GraphPanel {
               message = n > 0 ? this.t('fetchUpdated', { n }) : this.t('fetchUpToDate');
             } catch { /* 保留默认消息 */ }
           } else if (kind === 'pull' && /already up to date/i.test(outcome.stdoutTail ?? '')) {
+            // F3（Issue #6）："已是最新"带上游名便于诊断拉错分支/远端；
+            // 矛盾校验（上游领先却未合并）已由下方 OpVerifier 统一承载
             message = upstreamBefore ? this.t('pullUpToDateWith', { ref: upstreamBefore }) : this.t('pullUpToDate');
-            // F3（Issue #6）矛盾校验："已是最新"但上游跟踪引用仍领先 HEAD——正常流程不可达，
-            // 出现即拉取异常（如 fetch 结果与合并脱节），升级为警告引导重试
-            try {
-              const after = await this.service!.refsOf(root);
-              const upSha = after.find(r => r.fullName === `refs/remotes/${upstreamBefore ?? ''}`)?.sha;
-              if (upSha && headBefore && upSha !== headBefore) {
-                message = this.t('pullBehindWarn', { ref: upstreamBefore ?? '' });
-              }
-            } catch { /* 校验尽力而为 */ }
           } else if (kind === 'push') {
             message = `${this.t('pushDone')}：${spec.branch ?? 'HEAD'} → ${spec.remote ?? 'origin'}`;
+          }
+          // 操作后快速校验（Issue #6 后续）：退出码 0 后按意图核对仓库状态，
+          // 假成功（拉错分支/推错分支/未合并/HEAD 未按预期变化）显式警示；探针 fail-open
+          if (kind !== 'fetch' && this.verifier && this.config.opVerify !== 'off') {
+            const v = await this.verifier.verify(root, spec, {}, this.config.opVerify === 'deep' ? 'deep' : 'quick');
+            if (v.verdict === 'warn') {
+              message = this.verifyWarnText(kind, v);
+              verify = 'warn';
+            } else if (v.verdict !== 'skip') {
+              verify = v.verdict;
+            }
           }
         } else if (outcome.stalled) {
           // F2（Issue #6）：无输出看门狗触发——连接停滞快速失败并明示原因，重试即新连接
@@ -1225,7 +1249,7 @@ export class GraphPanel {
         }
         this.post({
           t: 'opResult', opId, kind, ok: outcome.ok,
-          message, outputTail: outcome.outputTail,
+          message, outputTail: outcome.outputTail, verify,
         });
         if (outcome.ok) {
           this.files?.invalidateTree(root);   // commit/checkout/reset 等改变 index/HEAD → 文件页目录缓存失效
@@ -1591,6 +1615,8 @@ export class GraphPanel {
     const root = this.currentRoot();
     const opId = ++this.opSeq;
     this.post({ t: 'opProgress', opId, kind: 'commit', text: '' });
+    // 校验基准（Issue #6 后续）：提交前 HEAD——commit 判定"HEAD 必须前进"
+    const headBefore = (await this.service!.headShaOf(root).catch(() => null)) ?? undefined;
     let outcome;
     try {
       outcome = await this.runner!.run(root, { kind: 'commit', messageFile: file, amend }, opId,
@@ -1600,7 +1626,19 @@ export class GraphPanel {
     } finally {
       try { fs.unlinkSync(file); } catch { /* best effort */ }
     }
-    this.post({ t: 'opResult', opId, kind: 'commit', ok: outcome.ok, message: outcome.message, outputTail: outcome.outputTail });
+    // 操作后校验（Issue #6 后续）：HEAD 未前进 = 假成功警示（fail-open）
+    let verify: 'pass' | 'warn' | 'unknown' | undefined;
+    let commitMessage = outcome.message;
+    if (outcome.ok && this.verifier && this.config.opVerify !== 'off') {
+      const v = await this.verifier.verify(root, { kind: 'commit' }, { headBefore }, this.config.opVerify === 'deep' ? 'deep' : 'quick');
+      if (v.verdict === 'warn') {
+        commitMessage = this.verifyWarnText('commit', v);
+        verify = 'warn';
+      } else if (v.verdict !== 'skip') {
+        verify = v.verdict;
+      }
+    }
+    this.post({ t: 'opResult', opId, kind: 'commit', ok: outcome.ok, message: commitMessage, outputTail: outcome.outputTail, verify });
     if (!outcome.ok) throw new Error(outcome.message ?? 'commit failed');
 
     await this.context.globalState.update(`gitboard.commitDraft:${this.currentRepoId}`, undefined);

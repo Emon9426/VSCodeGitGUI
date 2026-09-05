@@ -794,7 +794,7 @@ window.addEventListener('message', e => {
       S.activeOps.delete(m.opId);
       opstatus.update();          // 先按剩余队列收起/切换
       if (m.ok) {
-        opstatus.finish(m.kind);  // 成功：绿色闪现（队列有后续会被立即切换）
+        opstatus.finish(m.kind, m.verify === 'warn');  // 成功：绿色闪现；校验警示=琥珀（Issue #6 后续）
         toolbar.flash(m.kind);    // 按钮短暂闪绿，明确"点击已生效"
       }
       toolbar.updateProgress();
@@ -817,7 +817,8 @@ window.addEventListener('message', e => {
           toast('error', m.message ?? S.t('error'));
         }
       } else if (m.message) {
-        toast('info', m.message);
+        // 操作后校验警示（Issue #6 后续）：黄色 toast 区别于常规成功提示
+        toast(m.verify === 'warn' ? 'warn' : 'info', m.message);
       }
       break;
     case 'notify':
