@@ -77,8 +77,8 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   flex-wrap: wrap;          /* 空间不足时换行降级，避免元素互相叠压 */
   align-items: center;
   gap: 4px 10px;
-  min-height: 38px;
-  padding: 3px 10px;
+  min-height: var(--gg-h-toolbar, 40px);   /* S5：工具栏统一 40px */
+  padding: 3px 12px;
   border-bottom: 1px solid var(--vscode-panel-border, #333);
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
 }
@@ -127,7 +127,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   gap: 8px;
   height: 24px;
   padding: 0 10px;
-  font-size: 11.5px;
+  font-size: 11px;
   white-space: nowrap;
   border-bottom: 1px solid var(--vscode-panel-border, #333);
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
@@ -348,7 +348,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-col-h {
   position: relative;
   padding: 0 8px;
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--vscode-descriptionForeground);
   overflow: hidden;
 }
@@ -441,7 +441,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 
 .gg-empty { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
 .gg-empty.show { display: flex; }
-.gg-empty-title { font-size: 15px; font-weight: 600; color: var(--vscode-descriptionForeground); }
+.gg-empty-title { font-size: 14px; font-weight: 600; color: var(--vscode-descriptionForeground); }
 .gg-empty-hint { font-size: 12px; color: var(--vscode-descriptionForeground); opacity: 0.8; }
 
 /* ---------------- 详情面板 ---------------- */
@@ -480,7 +480,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   min-width: 320px;
   overflow-y: auto;
   border-right: 1px solid var(--vscode-panel-border, #333);
-  padding: 8px 10px;
+  padding: 10px 12px;   /* S5：面板内边距统一 12px 基准 */
 }
 .gg-detail-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
@@ -505,7 +505,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 
 .gg-dfiles-head {
   margin-top: 8px;
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--vscode-descriptionForeground);
   padding: 2px 0;
   /* 标题 + 右侧「打开选中文件」按钮（v0.11 多选批量打开） */
@@ -568,7 +568,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   white-space: nowrap;
 }
 .gg-diff-head .gg-btn { margin-left: auto; flex: none; }
-.gg-btn.small { padding: 2px 8px; font-size: 11.5px; }
+.gg-btn.small { padding: 2px 8px; font-size: 11px; }
 
 .gg-diff-box {
   flex: 1;
@@ -580,7 +580,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 }
 .gg-diff-note { padding: 12px; color: var(--vscode-descriptionForeground); }
 .gg-diff-more {
-  display: block; margin: 6px auto; padding: 2px 14px; font-size: 11.5px;
+  display: block; margin: 6px auto; padding: 2px 14px; font-size: 11px;
 }
 .gg-diff-inner {
   /* 行背景铺满横向滚动区的关键：inline-block 收缩到最长行宽，
@@ -631,7 +631,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
 }
-.gg-menu-item { padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12.5px; }
+.gg-menu-item { padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
 .gg-menu-item:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground)); color: var(--vscode-menu-selectionForeground, inherit); }
 .gg-menu-item.danger { color: var(--vscode-charts-red); }
 .gg-menu-item.disabled { opacity: 0.45; pointer-events: none; }
@@ -658,10 +658,10 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
 .gg-modal-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
-.gg-modal-text { font-size: 12.5px; white-space: pre-wrap; word-break: break-word; margin-bottom: 6px; }
-.gg-modal-label { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.gg-modal-text { font-size: 12px; white-space: pre-wrap; word-break: break-word; margin-bottom: 6px; }
+.gg-modal-label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
 .gg-input { padding: 5px 8px; }
-.gg-radio-row { display: flex; align-items: center; gap: 8px; padding: 5px 2px; font-size: 12.5px; }
+.gg-radio-row { display: flex; align-items: center; gap: 8px; padding: 5px 2px; font-size: 12px; }
 .gg-modal-warn { display: none; margin-top: 8px; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
 .gg-modal-warn.show { display: block; color: var(--vscode-charts-red); background: color-mix(in srgb, var(--vscode-charts-red) 12%, transparent); border: 1px solid color-mix(in srgb, var(--vscode-charts-red) 40%, transparent); }
 .gg-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
@@ -700,7 +700,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-banner.accent .gg-banner-ic { color: var(--gg-accent); }
 
 .gg-psum-modal { max-width: 720px; }
-.gg-psum-sum { font-size: 11.5px; color: var(--vscode-descriptionForeground); margin: 0 0 6px; }
+.gg-psum-sum { font-size: 11px; color: var(--vscode-descriptionForeground); margin: 0 0 6px; }
 .gg-psum-list { max-height: 56vh; overflow: auto; min-width: 520px; }
 .gg-psum-author {
   display: flex; align-items: baseline; gap: 8px;
@@ -708,7 +708,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   border-bottom: 1px solid var(--vscode-panel-border, #333);
 }
 .gg-psum-author:first-child { margin-top: 0; }
-.gg-psum-author-name { font-size: 12.5px; font-weight: 600; }
+.gg-psum-author-name { font-size: 12px; font-weight: 600; }
 .gg-psum-author-sub { font-size: 11px; color: var(--vscode-descriptionForeground); }
 .gg-psum-dir {
   font-family: var(--vscode-editor-font-family); font-size: 11px;
@@ -729,7 +729,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-psum-acts { display: flex; gap: 1px; flex: none; align-self: center; }
 .gg-psum-act {
   display: flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; padding: 0; border: none; background: none; cursor: pointer;
+  width: 20px; height: 20px; padding: 0; border: none; background: none; cursor: pointer;
   color: var(--vscode-descriptionForeground); border-radius: 4px; opacity: 0.7;
 }
 .gg-psum-act:hover, .gg-psum-act:focus-visible { opacity: 1; color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2)); }
@@ -774,6 +774,9 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 }
 .gg-notif.error .gg-notif-head .gg-ic { color: var(--gg-err); }
 .gg-notifs-more { font-size: var(--gg-fs-xs); color: var(--gg-t3); text-align: right; padding-right: 2px; }
+
+/* 数字列等宽右对齐补齐（S5：文件大小/时间/序号——已有 gg-num/opstatus-pct，此处补文件页） */
+.gg-files-table td.gg-files-sz, .gg-fp-tim, .gg-fp-era, .gg-fp-aut, .gg-psum-size, .gg-psum-time { font-variant-numeric: tabular-nums; }
 
 /* 滚动条（贴近 VS Code 观感） */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -826,13 +829,13 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-work-fhead {
   flex: none; display: flex; align-items: center; gap: 6px;
   height: 30px; padding: 0 8px;
-  font-size: 11.5px; color: var(--vscode-descriptionForeground);
+  font-size: 11px; color: var(--vscode-descriptionForeground);
   border-bottom: 1px solid var(--vscode-panel-border, #333);
 }
 .gg-work-ftitle { font-weight: 600; color: var(--vscode-foreground); font-size: 12px; }
 .gg-work-fbtns { margin-left: auto; display: flex; gap: 2px; }
 .gg-work-search {
-  flex: none; margin: 7px 8px 4px; height: 24px; padding: 2px 8px; font-size: 11.5px;
+  flex: none; margin: 7px 8px 4px; height: 24px; padding: 2px 8px; font-size: 11px;
   background: var(--vscode-input-background); color: var(--vscode-input-foreground);
   border-color: var(--vscode-input-border, transparent);
 }
@@ -840,7 +843,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-work-group-h {
   display: flex; align-items: center; gap: 6px;
   padding: 6px 8px 3px 6px; cursor: pointer; user-select: none;
-  font-size: 11.5px; color: var(--vscode-descriptionForeground);
+  font-size: 11px; color: var(--vscode-descriptionForeground);
 }
 .gg-work-group-h b { color: var(--vscode-foreground); font-weight: 600; }
 .gg-work-group-h:hover { background: var(--vscode-list-hoverBackground); }
@@ -888,14 +891,14 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 }
 .gg-work-row .gg-work-act {
   flex: none; display: flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; padding: 0; border: none; background: none; cursor: pointer;
+  width: 20px; height: 20px; padding: 0; border: none; background: none; cursor: pointer;
   color: var(--vscode-descriptionForeground); border-radius: 4px;
 }
 .gg-work-row .gg-work-act:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2)); }
 /* 删除按钮保持红色警示 hover */
 .gg-work-row .gg-work-act.gg-work-del:hover { color: var(--vscode-charts-red); background: color-mix(in srgb, var(--vscode-charts-red) 14%, transparent); }
 .gg-work-row .gg-work-act .gg-ic { width: 12px; height: 12px; }
-.gg-work-rowempty { padding: 3px 16px; color: var(--vscode-descriptionForeground); font-size: 11.5px; opacity: 0.8; }
+.gg-work-rowempty { padding: 3px 16px; color: var(--vscode-descriptionForeground); font-size: 11px; opacity: 0.8; }
 /* 目录分组头（与提交详情一致）：完整路径只显示一次，组内行仅文件名 */
 .gg-work-dirgroup {
   padding: 5px 4px 1px 18px;
@@ -950,13 +953,13 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   color: var(--vscode-charts-purple, var(--vscode-foreground));
 }
 .gg-ai-btn.busy { border-color: var(--vscode-dropdown-border, #666); background: transparent; color: var(--vscode-descriptionForeground); }
-.gg-cbar-select { max-width: 150px; font-size: 11.5px; padding: 2px 6px; }
+.gg-cbar-select { max-width: 150px; font-size: 11px; padding: 2px 6px; }
 .gg-cbar-count { margin-left: auto; font-family: var(--vscode-editor-font-family); font-size: 11px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
 .gg-cbar-count.warn { color: var(--vscode-charts-yellow); }
 /* amend 提示条 / 推送询问条已统一为 .gg-banner（Issue #18 S3） */
 .gg-cbar-input {
   width: 100%; min-height: 58px; max-height: 240px; resize: vertical;
-  padding: 6px 8px; font-family: inherit; font-size: 12.5px; line-height: 1.5;
+  padding: 6px 8px; font-family: inherit; font-size: 12px; line-height: 1.5;
   background: var(--vscode-input-background); color: var(--vscode-input-foreground);
   border-color: var(--vscode-input-border, transparent);
 }
@@ -1009,14 +1012,14 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   color: var(--vscode-editor-foreground);
 }
 .gg-merge-top {
-  display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; flex: none;
+  display: flex; align-items: center; gap: 8px; height: var(--gg-h-toolbar, 40px); padding: 0 12px; flex: none;
   border-bottom: 1px solid var(--vscode-panel-border, #333);
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
   flex-wrap: nowrap; overflow: hidden;
 }
-.gg-merge-fname { font-weight: 600; font-size: 12.5px; font-family: var(--vscode-editor-font-family); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32%; }
-.gg-merge-fprog { color: var(--vscode-descriptionForeground); font-size: 11.5px; white-space: nowrap; }
-.gg-merge-cnav { color: var(--vscode-charts-yellow); font-size: 11.5px; white-space: nowrap; }
+.gg-merge-fname { font-weight: 600; font-size: 12px; font-family: var(--vscode-editor-font-family); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32%; }
+.gg-merge-fprog { color: var(--vscode-descriptionForeground); font-size: 11px; white-space: nowrap; }
+.gg-merge-cnav { color: var(--vscode-charts-yellow); font-size: 11px; white-space: nowrap; }
 .gg-merge-spacer { flex: 1; min-width: 4px; }
 .gg-merge-close {
   background: none; border: none; color: var(--vscode-descriptionForeground); cursor: pointer;
@@ -1030,8 +1033,8 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-merge-col.mine { background: color-mix(in srgb, var(--vscode-charts-blue) 3%, transparent); }
 .gg-merge-col.theirs { background: color-mix(in srgb, var(--vscode-charts-green) 3%, transparent); }
 .gg-merge-colh {
-  display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; flex: none;
-  font-size: 11.5px; border-bottom: 1px solid var(--vscode-panel-border, #333);
+  display: flex; align-items: center; gap: 6px; height: var(--gg-h-subhead, 26px); padding: 0 10px; flex: none;
+  font-size: 11px; border-bottom: 1px solid var(--vscode-panel-border, #333);
 }
 .gg-merge-col.mine .gg-merge-colh b { color: var(--vscode-charts-blue); }
 .gg-merge-col.result .gg-merge-colh b { color: var(--vscode-charts-yellow); }
@@ -1115,13 +1118,13 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 }
 .gg-merge-footmsg { font-size: 12px; font-weight: 600; color: var(--vscode-charts-green); }
 .gg-merge-stagehint { font-size: 10.5px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
-.gg-merge-note { padding: 20px; color: var(--vscode-descriptionForeground); font-size: 12.5px; }
+.gg-merge-note { padding: 20px; color: var(--vscode-descriptionForeground); font-size: 12px; }
 .gg-merge-note.err { color: var(--vscode-charts-red); }
 
 /* 特殊会话卡片：二进制 / 一方删除 / 超限 */
 .gg-merge-special { padding: 26px 28px; max-width: 720px; }
-.gg-merge-special-title { font-size: 15px; font-weight: 600; color: var(--vscode-charts-yellow); margin-bottom: 8px; }
-.gg-merge-special-text { font-size: 12.5px; color: var(--vscode-descriptionForeground); margin-bottom: 16px; white-space: pre-line; }
+.gg-merge-special-title { font-size: 14px; font-weight: 600; color: var(--vscode-charts-yellow); margin-bottom: 8px; }
+.gg-merge-special-text { font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 16px; white-space: pre-line; }
 .gg-merge-special-btns { display: flex; gap: 10px; flex-wrap: wrap; }
 .gg-merge-cards { display: flex; gap: 14px; flex-wrap: wrap; }
 .gg-merge-card {
@@ -1129,7 +1132,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   border: 1px solid var(--vscode-panel-border, #444); border-radius: 8px; align-items: flex-start;
 }
 .gg-merge-card-t { font-weight: 600; font-size: 13px; }
-.gg-merge-card-m { color: var(--vscode-descriptionForeground); font-size: 11.5px; }
+.gg-merge-card-m { color: var(--vscode-descriptionForeground); font-size: 11px; }
 .gg-merge-card-solo { border: none; padding: 0; }
 .gg-btn.merge { font-weight: 600; }
 .gg-btn.danger {
@@ -1146,16 +1149,16 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-files-splitter:hover, .gg-files-splitter.on { background: var(--vscode-charts-blue, #0078d4); }
 .gg-filepanel { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--vscode-editor-background); }
 
-/* ---- 左区头部 / 地址栏 / 命令条 ---- */
-.gg-files-head { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; flex: none; }
+/* ---- 左区头部 / 地址栏 / 命令条（S5：水平内边距统一 12px 基准） ---- */
+.gg-files-head { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; flex: none; }
 .gg-files-title { font-size: 11px; font-weight: 700; letter-spacing: .5px; flex: 1; color: var(--vscode-foreground); }
 .gg-files-vsw { display: flex; border: 1px solid var(--vscode-panel-border, #333); border-radius: 5px; overflow: hidden; }
 .gg-files-vbtn { width: 26px; height: 20px; border: none; background: transparent; color: var(--vscode-descriptionForeground); font-size: 11px; cursor: pointer; }
 .gg-files-vbtn.on { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
-.gg-files-addr { display: flex; align-items: center; gap: 3px; height: 28px; margin: 5px 10px 0; flex: none;
+.gg-files-addr { display: flex; align-items: center; gap: 3px; height: 28px; margin: 6px 12px 0; flex: none;
   position: relative; z-index: 5;   /* 高于列表层叠，防滚动内容穿透 */
   background: var(--vscode-editor-background, #ffffff);   /* 不依赖可能半透明的主题变量 */
-  border: 1px solid var(--vscode-panel-border, #333); border-radius: 5px; padding: 0 3px 0 8px; font-size: 11.5px; }
+  border: 1px solid var(--vscode-panel-border, #333); border-radius: 5px; padding: 0 3px 0 8px; font-size: 11px; }
 .gg-files-addr.err { border-color: var(--vscode-charts-red, #b3444d); }
 .gg-files-addr-ico { color: var(--vscode-descriptionForeground); font-size: 12px; flex: none; }
 /* 容器是 gg-files-crumbS（复数，filesView.ts:40）——早期写成单数导致容器无 flex 行、
@@ -1167,19 +1170,19 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-files-crumb.cur { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
 .gg-files-crumb-sep { color: var(--vscode-descriptionForeground); opacity: .5; font-size: 10px; flex: none; }
 .gg-files-addr-space { flex: 1; min-width: 16px; height: 100%; cursor: text; }
-.gg-files-abtn { width: 24px; height: 22px; border: none; border-radius: 4px; background: transparent; color: var(--vscode-descriptionForeground); font-size: 11.5px; cursor: pointer; flex: none; }
+.gg-files-abtn { width: 24px; height: 22px; border: none; border-radius: 4px; background: transparent; color: var(--vscode-descriptionForeground); font-size: 11px; cursor: pointer; flex: none; }
 .gg-files-abtn:hover { background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent); color: var(--vscode-foreground); }
 .gg-files-addr.edit .gg-files-crumbs, .gg-files-addr.edit .gg-files-crumb, .gg-files-addr.edit .gg-files-crumb-sep, .gg-files-addr.edit .gg-files-addr-space, .gg-files-addr.edit .gg-files-addr-ico, .gg-files-addr.edit .gg-files-abtn { display: none; }
 .gg-files-addr-input { flex: 1; background: transparent; border: none; outline: none; color: var(--vscode-input-foreground, var(--vscode-foreground));
   font: 11.5px var(--vscode-editor-font-family, monospace); padding: 0 8px; min-width: 0; }
-.gg-files-cmdbar { display: flex; align-items: center; gap: 5px; margin: 5px 10px 4px; flex: none;
+.gg-files-cmdbar { display: flex; align-items: center; gap: 5px; margin: 6px 12px 4px; flex: none;
   position: relative; z-index: 5;   /* 高于列表层叠，防滚动内容穿透 */
   padding: 4px 6px; border-radius: 6px;
   background: var(--vscode-sideBar-background, var(--vscode-editor-background)); }
 .gg-files-cbtn { display: inline-flex; align-items: center; gap: 6px;
   background: var(--vscode-editor-background);   /* 必不透明：防主题半透明色透出下层内容 */
   border: 1px solid var(--vscode-panel-border, #333); border-radius: 5px; padding: 3px 10px;
-  color: var(--vscode-foreground); font-size: 11.3px; cursor: pointer; white-space: nowrap; }
+  color: var(--vscode-foreground); font-size: 11px; cursor: pointer; white-space: nowrap; }
 .gg-files-cbtn:hover:not(.dis) { border-color: var(--vscode-charts-blue, #0078d4); color: var(--vscode-foreground); }
 .gg-files-cbtn.dis { opacity: .38; cursor: default; }
 .gg-files-cbtn.danger:hover:not(.dis) { border-color: var(--vscode-charts-red, #b3444d); }
@@ -1211,7 +1214,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-files-nm-t { overflow: hidden; text-overflow: ellipsis; }
 .gg-files-cnt { color: var(--vscode-descriptionForeground); font-size: 10.5px; }
 .gg-files-row.sel .gg-files-cnt { opacity: .8; }
-.gg-files-dim { color: var(--vscode-descriptionForeground); font-size: 11.5px; }
+.gg-files-dim { color: var(--vscode-descriptionForeground); font-size: 11px; }
 .gg-files-row.sel .gg-files-dim { color: color-mix(in srgb, var(--vscode-list-activeSelectionForeground) 80%, transparent); }
 .gg-files-sum, .gg-files-empty { padding: 7px 12px; font-size: 10.5px; color: var(--vscode-descriptionForeground); }
 .gg-fileic { flex: none; width: 16px; height: 16px; vertical-align: -3px; }
@@ -1227,12 +1230,12 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-files-card-cnt { align-self: flex-start; font-size: 9px; color: var(--vscode-descriptionForeground);
   background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent); border-radius: 4px; padding: 0 4px; }
 
-/* ---- 右区：文件头 ---- */
-.gg-fp-head { display: flex; align-items: center; gap: 9px; padding: 10px 16px; flex: none; flex-wrap: wrap;
+/* ---- 右区：文件头（S5：水平内边距统一 12px 基准） ---- */
+.gg-fp-head { display: flex; align-items: center; gap: 9px; padding: 10px 12px; flex: none; flex-wrap: wrap;
   border-bottom: 1px solid var(--vscode-panel-border, #333); }
 .gg-fp-ico { display: inline-flex; }
-.gg-fp-name { font-weight: 600; font-size: 13.5px; color: var(--vscode-foreground); }
-.gg-fp-crumb { color: var(--vscode-descriptionForeground); font-size: 11.5px; }
+.gg-fp-name { font-weight: 600; font-size: 13px; color: var(--vscode-foreground); }
+.gg-fp-crumb { color: var(--vscode-descriptionForeground); font-size: 11px; }
 .gg-fp-chain { display: inline-flex; gap: 4px; align-items: center; font-size: 10.5px; padding: 1px 8px; border-radius: 5px;
   color: var(--vscode-charts-purple, #b180d7); background: color-mix(in srgb, var(--vscode-charts-purple, #8250df) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--vscode-charts-purple, #8250df) 40%, transparent);
@@ -1253,7 +1256,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 /* ---- 右区：移动引导横幅（已统一为 .gg-banner.accent，Issue #18 S3） ---- */
 .gg-fp-multi { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
 .gg-fp-multi h3 { margin: 2px 0 4px; font-size: 14px; color: var(--vscode-foreground); }
-.gg-fp-multi-sub { font-size: 11.5px; color: var(--vscode-descriptionForeground); margin-bottom: 10px; }
+.gg-fp-multi-sub { font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 10px; }
 .gg-fp-multi-ops { display: flex; gap: 8px; margin-bottom: 12px; }
 .gg-fp-multi-ops .gg-files-cbtn { padding: 5px 14px; }
 .gg-fp-multi-list { background: var(--vscode-sideBar-background, var(--vscode-editor-background));
@@ -1265,12 +1268,12 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 
 /* ---- 右区：历史列表 ---- */
 .gg-fp-hist { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.gg-fp-histhead { display: flex; align-items: center; gap: 8px; padding: 9px 16px 5px; flex: none; color: var(--vscode-descriptionForeground); font-size: 11.5px; }
+.gg-fp-histhead { display: flex; align-items: center; gap: 8px; padding: 9px 12px 5px; flex: none; color: var(--vscode-descriptionForeground); font-size: 11px; }
 .gg-fp-cnt { color: var(--vscode-foreground); font-weight: 700; }
 .gg-fp-note { font-size: 10.5px; color: var(--vscode-charts-purple, #b180d7); }
 .gg-fp-opshint { font-size: 11px; opacity: .8; }
 .gg-fp-list { flex: 1; overflow: auto; min-height: 0; padding-bottom: 6px; }
-.gg-fp-row { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 16px 0 12px; border-left: 2px solid transparent; cursor: pointer; }
+.gg-fp-row { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 12px 0 12px; border-left: 2px solid transparent; cursor: pointer; }
 .gg-fp-row:hover { background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent); }
 .gg-fp-row.mile { background: color-mix(in srgb, var(--vscode-charts-purple, #8250df) 8%, transparent); border-left-color: var(--vscode-charts-purple, #8250df); }
 .gg-fp-row.open { background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent); border-left-color: var(--vscode-charts-blue, #0078d4); }
@@ -1296,14 +1299,14 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fp-aut { flex: none; color: var(--vscode-descriptionForeground); font-size: 11px; width: 72px; overflow: hidden; text-overflow: ellipsis; }
 .gg-fp-tim { flex: none; color: var(--vscode-descriptionForeground); font-size: 11px; }
 .gg-fp-acts { flex: none; display: flex; gap: 3px; margin-left: 2px; }
-.gg-fp-act { width: 21px; height: 20px; border: 1px solid var(--vscode-panel-border, #333); border-radius: 4px;
+.gg-fp-act { width: 20px; height: 20px; border: 1px solid var(--vscode-panel-border, #333); border-radius: 4px;
   display: flex; align-items: center; justify-content: center; font-size: 10.5px; color: var(--vscode-descriptionForeground);
   background: var(--vscode-editor-background); cursor: pointer; }
 .gg-fp-act:hover { border-color: var(--vscode-charts-blue, #0078d4); color: var(--vscode-foreground); }
 .gg-fp-empty { padding: 24px 16px; text-align: center; color: var(--vscode-descriptionForeground); font-size: 12px; }
 
 /* ---- 右区：详情就地展开 ---- */
-.gg-fp-detail { margin: 0 16px 6px 49px; background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+.gg-fp-detail { margin: 0 12px 6px 49px; background: var(--vscode-sideBar-background, var(--vscode-editor-background));
   border: 1px solid var(--vscode-panel-border, #333); border-radius: 6px; overflow: hidden; }
 .gg-fp-detail-h { display: flex; align-items: center; gap: 8px; padding: 6px 12px; flex-wrap: wrap;
   border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 50%, transparent); font-size: 11px; color: var(--vscode-descriptionForeground); }
@@ -1314,12 +1317,12 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 /* ---- 右区：比对条与 diff 视图 ---- */
 /* ---- 右区：比对条（已统一为 .gg-banner.info，Issue #18 S3；比对按钮保留） ---- */
 .gg-fp-cmpbtn { background: var(--vscode-button-background); border: 1px solid var(--vscode-button-background);
-  color: var(--vscode-button-foreground, #fff); border-radius: var(--gg-r-s); padding: 3px 14px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+  color: var(--vscode-button-foreground, #fff); border-radius: var(--gg-r-s); padding: 3px 14px; font-size: 11px; font-weight: 600; cursor: pointer; }
 .gg-fp-diff { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.gg-fp-diffhead { display: flex; align-items: center; gap: 10px; padding: 9px 16px; flex: none; flex-wrap: wrap;
-  border-bottom: 1px solid var(--vscode-panel-border, #333); font-size: 11.5px; color: var(--vscode-descriptionForeground); }
+.gg-fp-diffhead { display: flex; align-items: center; gap: 10px; padding: 9px 12px; flex: none; flex-wrap: wrap;
+  border-bottom: 1px solid var(--vscode-panel-border, #333); font-size: 11px; color: var(--vscode-descriptionForeground); }
 .gg-fp-back { border: 1px solid var(--vscode-panel-border, #333); background: var(--vscode-button-secondaryBackground, #252526);
-  border-radius: 5px; padding: 3px 10px; color: var(--vscode-foreground); cursor: pointer; font-size: 11.5px; }
+  border-radius: 5px; padding: 3px 10px; color: var(--vscode-foreground); cursor: pointer; font-size: 11px; }
 .gg-fp-back:hover { border-color: var(--vscode-charts-blue, #0078d4); }
 .gg-fp-pair { color: var(--vscode-foreground); }
 .gg-fp-pair b { color: var(--vscode-charts-blue, #6cb6ff); font-family: var(--vscode-editor-font-family, monospace); font-weight: 600; }
