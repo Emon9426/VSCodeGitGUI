@@ -59,11 +59,13 @@ button, select, input {
   padding: 3px 10px;
 }
 button { cursor: pointer; background: var(--vscode-button-secondaryBackground); border-color: transparent; color: var(--vscode-button-secondaryForeground); }
-button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+button:not(:disabled):hover { background: var(--vscode-button-secondaryHoverBackground); }
 button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-button.primary:hover { background: var(--vscode-button-hoverBackground); }
+button.primary:not(:disabled):hover { background: var(--vscode-button-hoverBackground); }
 button.danger { background: #ad0707; color: #fff; }
-button.danger:hover { background: #c62121; }
+button.danger:not(:disabled):hover { background: #c62121; }
+/* B7（Issue #18）：禁用态统一——保留 hover 事件让 title 原因可悬停可见（禁用必须可解释） */
+button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 
 .hidden { display: none !important; }
 
@@ -89,9 +91,10 @@ button.danger:hover { background: #c62121; }
 .gg-icon-btn { min-width: 24px; padding: 2px 6px; }
 /* 内联 SVG 图标（v0.8.1）：描边跟随按钮前景色，明暗主题自适应 */
 .gg-ic { width: 13px; height: 13px; display: block; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
-/* 操作按钮状态反馈（v0.7.1）：进行中=蓝色脉冲，成功=短暂绿色 */
-.gg-tb-btn.busy { color: var(--vscode-charts-blue); animation: gg-pulse 1s ease-in-out infinite; pointer-events: none; }
-.gg-tb-btn.ok { color: var(--vscode-charts-green); }
+/* 操作按钮状态反馈（v0.7.1）：进行中=蓝色脉冲，成功=短暂绿色。
+   Issue #18 B3：busy 不再吞点击（移除 pointer-events:none）——点击=入队/宿主去重，排队经 title 与进度行可见 */
+.gg-tb-btn.busy { color: var(--gg-info); animation: gg-pulse 1s ease-in-out infinite; }
+.gg-tb-btn.ok { color: var(--gg-ok); }
 @keyframes gg-pulse { 50% { opacity: .45; } }
 
 /* ---------------- 操作进度行（v0.9.2，工具栏下方） ---------------- */
@@ -1113,7 +1116,7 @@ button.danger:hover { background: #c62121; }
   background: none; color: var(--vscode-charts-red);
   border: 1px solid color-mix(in srgb, var(--vscode-charts-red) 45%, transparent);
 }
-.gg-btn.danger:hover { background: color-mix(in srgb, var(--vscode-charts-red) 12%, transparent); }
+.gg-btn.danger:not(:disabled):hover { background: color-mix(in srgb, var(--vscode-charts-red) 12%, transparent); }
 
 /* ============ 文件历史页（v0.14）：左区资源管理器 + 右区文件面板 ============ */
 .gg-files-wrap { flex: 1; display: flex; min-height: 0; }

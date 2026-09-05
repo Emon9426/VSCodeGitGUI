@@ -21,6 +21,8 @@ export interface CommitBar {
   autoHidePushq(): void;
   /** 恢复持久化草稿（视图首次打开 / 仓库切换） */
   applyDraft(d: { message: string; pushAfter: boolean; amend: boolean } | null): void;
+  /** repoState 到达：amend 基底已被改写（HEAD 前进）→ 自动退出修订模式（Issue #18 B5） */
+  checkAmendBase(): void;
 }
 
 export function createCommitBar(app: App): CommitBar {
@@ -161,15 +163,28 @@ export function createCommitBar(app: App): CommitBar {
 
   // ---------- 提交 ----------
 
+  /** A 类状态门控（Issue #18 B1）：冲突未解决 / 合并未完成 → 提交链路预禁用，返回原因 title */
+  function blockReason(): string | undefined {
+    const st = S.work.state;
+    if (!st) return undefined;
+    if (st.conflicts.length > 0) return S.t('blockedByConflicts');
+    if (st.mergeActive) return S.t('blockedByMerge');
+    return undefined;
+  }
+
+  /** amend 基底（进入修订时的 HEAD 完整 sha）：HEAD 前进即失效（Issue #18 B5） */
+  let amendBaseSha = '';
+
   commitBtn.addEventListener('click', () => doCommit(S.work.amend ? { amend: true } : {}));
   caretBtn.addEventListener('click', () => {
     const rect = caretBtn.getBoundingClientRect();
+    const blocked = blockReason() !== undefined;   // 菜单项同步门控（B1）
     showContextMenu([
-      { label: S.t('commitBtn') + '  Ctrl+⏎', run: () => doCommit({}) },
-      { label: S.t('commitAndPush'), run: () => doCommit({ push: true }) },
+      { label: S.t('commitBtn') + '  Ctrl+⏎', run: () => doCommit({}), disabled: blocked },
+      { label: S.t('commitAndPush'), run: () => doCommit({ push: true }), disabled: blocked },
       { sep: true },
-      { label: `${S.t('amend')}…`, run: () => enterAmend() },
-      { label: S.t('commitAll'), run: () => doCommit({ all: true, push: S.work.pushAfter }) },
+      { label: `${S.t('amend')}…`, run: () => enterAmend(), disabled: blocked },
+      { label: S.t('commitAll'), run: () => doCommit({ all: true, push: S.work.pushAfter }), disabled: blocked },
     ], rect.right - 160, rect.bottom + 4);
   });
 
@@ -216,6 +231,7 @@ export function createCommitBar(app: App): CommitBar {
       if (!head) return;
       S.work.amend = true;
       S.work.amendSha = head.shortSha;
+      amendBaseSha = S.state?.head?.sha ?? '';   // 记录基底：HEAD 前进即失效（B5）
       S.work.message = head.message;
       input.value = head.message;
       saveDraft();
@@ -227,10 +243,21 @@ export function createCommitBar(app: App): CommitBar {
   function exitAmend(): void {
     S.work.amend = false;
     S.work.amendSha = '';
+    amendBaseSha = '';
     S.work.message = '';
     input.value = '';
     saveDraft();
     update();
+  }
+
+  /** repoState 到达校验（Issue #18 B5）：amend 期间 HEAD 前进（拉取/外部提交）→ 修订基底失效，自动退出 */
+  function checkAmendBase(): void {
+    if (!S.work.amend || !amendBaseSha) return;
+    const head = S.state?.head?.sha;
+    if (head && head !== amendBaseSha) {
+      exitAmend();
+      toast('warn', S.t('amendHeadMoved'));
+    }
   }
 
   /**
@@ -272,17 +299,26 @@ export function createCommitBar(app: App): CommitBar {
   }
 
   function refreshCommitBtn(): void {
-    const can = !!input.value.split('\n')[0].trim()
-      && (S.work.amend || (S.work.state?.staged.length ?? 0) > 0);
-    commitBtn.disabled = !can && !S.work.amend;
-    commitBtn.title = can ? 'Ctrl+Enter' : S.t('needStage');
+    // B1（Issue #18）：状态门控优先于常规可用性——冲突/未完成合并期间预禁用并给原因；
+    // doCommit 内的引导兜底保留（防状态刷新竞态）
+    const reason = blockReason();
+    const hasMsg = !!input.value.split('\n')[0].trim();
+    const hasStaged = S.work.amend || (S.work.state?.staged.length ?? 0) > 0;
+    const can = hasMsg && hasStaged;
+    commitBtn.disabled = reason !== undefined || !can;
+    caretBtn.disabled = reason !== undefined;
+    commitBtn.title = reason ?? (can ? 'Ctrl+Enter' : !hasMsg ? S.t('needMessage') : S.t('needStage'));
   }
 
   function update(): void {
     const w = S.work;
     aiBtn.textContent = w.aiBusy ? `◉ ${S.t('aiGenerating')}…` : (w.aiMeta ? `↻ ${S.t('aiRegenerate')}` : `✨ ${S.t('aiGenerate')}`);
     aiBtn.classList.toggle('busy', w.aiBusy);
-    aiBtn.title = w.aiBusy ? S.t('aiStop') : (w.state?.staged.length ? S.t('aiGenerateTitle') : S.t('aiGenerateAll'));
+    // B1（Issue #18）：冲突/未完成合并期间禁用 AI 生成（上下文含冲突标记无意义），title 给原因
+    const blocked = blockReason();
+    aiBtn.disabled = blocked !== undefined && !w.aiBusy;
+    aiBtn.title = w.aiBusy ? S.t('aiStop')
+      : blocked ?? (w.state?.staged.length ? S.t('aiGenerateTitle') : S.t('aiGenerateAll'));
     if (w.aiBusy) input.readOnly = true; else input.readOnly = false;
 
     // 模型下拉
@@ -310,8 +346,7 @@ export function createCommitBar(app: App): CommitBar {
     amendText.textContent = w.amend ? S.t('amendTip', { sha: w.amendSha || '?' }) : '';
     amendExit.textContent = S.t('amendExit');
     commitBtn.textContent = w.amend ? `${S.t('amendCommit')} ⏎` : `${S.t('commitBtn')} ⏎`;
-    if (w.amend) commitBtn.disabled = false;
-    else refreshCommitBtn();
+    refreshCommitBtn();
     if (w.aiMeta) {
       // meta 行借用计数位展示（极简）
       count.title = w.aiMeta;
@@ -367,5 +402,5 @@ export function createCommitBar(app: App): CommitBar {
 
   // 初始草稿恢复（由 main.ts 在 work.loadDraft 后调用 applyDraft）
   update();
-  return { el: root, update, onAiChunk, onAiDone, onAiError, focusInput, afterCommitOk, showPushAfterResolve, autoHidePushq, applyDraft };
+  return { el: root, update, onAiChunk, onAiDone, onAiError, focusInput, afterCommitOk, showPushAfterResolve, autoHidePushq, applyDraft, checkAmendBase };
 }

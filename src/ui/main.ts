@@ -774,6 +774,7 @@ window.addEventListener('message', e => {
       S.state = st;
       S.commits = st.commits;
       S.graph = computeLanes(st.commits);
+      if (!repoChanged) commitBar.checkAmendBase();   // B5：amend 期间 HEAD 前进 → 自动退出修订
       emptyAppendStreak = 0;   // 列表整体重建：空页熔断计数随新快照复位
       // 列表已整体重建：作废在途分页请求（其页属旧快照，拼接必错位）
       pendingLoad = undefined;

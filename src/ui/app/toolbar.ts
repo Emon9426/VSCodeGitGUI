@@ -236,11 +236,12 @@ export function createToolbar(app: App): Toolbar {
     const lang = S.config.language;
     langBtn.textContent = lang === 'zh-CN' ? '中' : lang === 'en' ? 'EN' : 'A';
     langBtn.title = `${S.t('langSwitchTitle')} — ${lang === 'auto' ? S.t('langAuto') : lang === 'zh-CN' ? '简体中文' : 'English'}`;
-    // 网络操作按钮 title 随语言刷新
-    fetchBtn.title = S.t('fetch');
-    pullBtn.title = S.t('pull');
-    pushBtn.title = S.t('push');
-    refreshBtn.title = S.t('refresh');
+    // 网络操作按钮 title 统一由 updateProgress 管理（B3：在途/排队状态优先）
+    // B2（Issue #18）：存在未完成合并 → Push 预禁用并给原因（决策类引导仍走横幅/模态）
+    const mergeBlocked = !!S.work.state?.mergeActive;
+    pushBtn.disabled = mergeBlocked;
+    if (mergeBlocked) pushBtn.title = S.t('blockedByMerge');
+    updateProgress();
     // 仓库下拉
     const multi = S.repos.length > 1;
     repoSel.classList.toggle('hidden', !multi);
@@ -291,6 +292,21 @@ export function createToolbar(app: App): Toolbar {
     pullBtn.classList.toggle('busy', kinds.has('pull'));
     pushBtn.classList.toggle('busy', kinds.has('push'));
     refreshBtn.classList.toggle('busy', kinds.has('refresh'));
+    // B3（Issue #18）：在途/排队状态写入 title——按钮可点击（同 kind 宿主去重、异 kind 入队可见），
+    // 不再以 pointer-events:none 静默吞点击（R4：排队要透明）
+    opTitle(fetchBtn, 'fetch', S.t('fetch'));
+    opTitle(pullBtn, 'pull', S.t('pull'));
+    opTitle(pushBtn, 'push', S.t('push'));
+    opTitle(refreshBtn, 'refresh', S.t('refresh'));
+  }
+
+  /** 操作按钮 title：禁用原因（update 设置）> 排队中·位次 > 执行中 > 常规名 */
+  function opTitle(btn: HTMLButtonElement, kind: string, normal: string): void {
+    if (btn.disabled) return;
+    const op = [...S.activeOps.values()].find(o => o.kind === kind);
+    btn.title = op
+      ? (op.queued ? S.t('opQueued', { n: op.position ?? 1 }) : S.t('opRunning'))
+      : normal;
   }
 
   function flash(kind: string): void {

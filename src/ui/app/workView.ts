@@ -365,6 +365,8 @@ export function createWorkView(app: App): WorkView {
       const push = el('button', 'gg-btn small', `↑ ${S.t('push')}`);
       pull.addEventListener('click', () => app.runPull());
       push.addEventListener('click', () => app.runPush());
+      // B2（Issue #18）：未完成合并 → 干净空态的 Push 同步禁用（与工具栏口径一致）
+      if (st.mergeActive) { push.disabled = true; push.title = S.t('blockedByMerge'); }
       btns.append(pull, push);
       empty.appendChild(btns);
       dbox.appendChild(empty);

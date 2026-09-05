@@ -76,8 +76,9 @@ export function confirmDialog(
     const btns = el('div', 'gg-modal-btns');
     const cancel = el('button', 'gg-btn', S.t('cancel'));
     const ok = el('button', danger ? 'gg-btn danger' : 'gg-btn primary', okLabel);
-    cancel.addEventListener('click', () => { close(); resolve(false); });
-    ok.addEventListener('click', () => { close(); resolve(true); });
+    // B4（Issue #18）：确认/取消首点即禁用——双击间隔内不再重复触发动作（防 index.lock 类二次提交）
+    cancel.addEventListener('click', () => { ok.disabled = true; cancel.disabled = true; close(); resolve(false); });
+    ok.addEventListener('click', () => { ok.disabled = true; cancel.disabled = true; close(); resolve(true); });
     btns.append(cancel, ok);
     box.appendChild(btns);
     ok.focus();

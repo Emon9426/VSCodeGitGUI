@@ -79,9 +79,9 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
   flt.append(fltInput);
   cmdbar.append(bDel, bMove, bRen, bCopy, el('span', 'gg-files-cmdsp'), flt);
   root.append(cmdbar);
-  bDel.addEventListener('click', () => { if (S.files.sel.length) app.folderDelete([...S.files.sel]); });
-  bMove.addEventListener('click', () => { if (S.files.sel.length) app.folderMove([...S.files.sel]); });
-  bRen.addEventListener('click', () => { if (S.files.sel.length === 1) app.folderRename(S.files.sel[0]); });
+  bDel.addEventListener('click', () => { if (S.files.sel.length && !fileOpBusy()) app.folderDelete([...S.files.sel]); });
+  bMove.addEventListener('click', () => { if (S.files.sel.length && !fileOpBusy()) app.folderMove([...S.files.sel]); });
+  bRen.addEventListener('click', () => { if (S.files.sel.length === 1 && !fileOpBusy()) app.folderRename(S.files.sel[0]); });
   bCopy.addEventListener('click', () => { if (S.files.sel.length) app.copy(S.files.sel.join('\n')); });
 
   // ---------- 列表区 ----------
@@ -93,13 +93,21 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
   let sortAsc = true;
 
   // ---------- 渲染 ----------
+  /** B6（Issue #18）：文件命令（本地道串行）在途 → 禁用防重复入队/撞锁 */
+  const FILE_OP_KINDS = new Set(['moveFolder', 'renamePath', 'deletePaths']);
+  const fileOpBusy = (): boolean => [...S.activeOps.values()].some(o => FILE_OP_KINDS.has(o.kind));
+
   function update(): void {
     bTile.classList.toggle('on', S.files.view === 'tile');
     bDet.classList.toggle('on', S.files.view === 'det');
-    bDel.classList.toggle('dis', !S.files.sel.length);
-    bMove.classList.toggle('dis', !S.files.sel.length);
-    bRen.classList.toggle('dis', S.files.sel.length !== 1);
+    const busy = fileOpBusy();
+    bDel.classList.toggle('dis', !S.files.sel.length || busy);
+    bMove.classList.toggle('dis', !S.files.sel.length || busy);
+    bRen.classList.toggle('dis', S.files.sel.length !== 1 || busy);
     bCopy.classList.toggle('dis', !S.files.sel.length);
+    bDel.title = busy ? S.t('filesOpBusy') : 'Del';
+    bMove.title = busy ? S.t('filesOpBusy') : '';
+    bRen.title = busy ? S.t('filesOpBusy') : 'F2';
     renderCrumbs();
     renderList();
   }

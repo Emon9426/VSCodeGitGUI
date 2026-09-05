@@ -27,6 +27,12 @@ const zh: Record<string, string> = {
   retry: '重试',
   gitOutput: 'git 输出',
   notifMore: '还有 {n} 条更早通知',
+  // 阻塞矩阵（Issue #18 S2.5）
+  blockedByConflicts: '存在未解决冲突：请先完成冲突解决',
+  blockedByMerge: '存在未完成合并：请先完成或放弃合并',
+  opRunning: '执行中…',
+  amendHeadMoved: 'HEAD 已前进，已退出修订（Amend）模式',
+  filesOpBusy: '文件操作执行中…',
 
   fetch: 'Fetch',
   pull: 'Pull',
@@ -482,6 +488,12 @@ const en: Record<string, string> = {
   retry: 'Retry',
   gitOutput: 'git output',
   notifMore: '{n} earlier notifications',
+  // Blocking matrix (Issue #18 S2.5)
+  blockedByConflicts: 'Unresolved conflicts: resolve them first',
+  blockedByMerge: 'Merge in progress: finish or abort it first',
+  opRunning: 'Running…',
+  amendHeadMoved: 'HEAD has moved; amend mode cancelled',
+  filesOpBusy: 'File operation in progress…',
 
   fetch: 'Fetch',
   pull: 'Pull',
