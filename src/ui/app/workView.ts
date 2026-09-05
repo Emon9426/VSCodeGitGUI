@@ -214,6 +214,13 @@ export function createWorkView(app: App): WorkView {
     mergeBtn.addEventListener('click', ev => { ev.stopPropagation(); app.openMerge(e.path); });
     const mineLabel = mergeKind === 'merge' ? S.t('resolveOurs') : mergeKind === 'rebase' ? S.t('resolveOurs') : S.t('resolveOursOther');
     const theirsLabel = mergeKind === 'other' ? S.t('resolveTheirsOther') : S.t('resolveTheirs');
+    // 删除侧防御（审查 P1-1 配套）：该侧 stage 不存在时选边必失败（checkout 报 does not have our version），
+    // 隐藏失效按钮引导走「合并…」（其删除侧会话有保留/采纳删除正确路径）；DD 双删两侧都藏
+    const code = e.conflictCode ?? 'UU';
+    const usDeleted = code === 'DU' || code === 'DD';
+    const themDeleted = code === 'UD' || code === 'DD';
+    const mineGone = code === 'DD' || (mergeKind === 'rebase' ? themDeleted : usDeleted);
+    const theirsGone = code === 'DD' || (mergeKind === 'rebase' ? usDeleted : themDeleted);
     const oursBtn = el('button', 'gg-btn tiny', mineLabel);
     const theirsBtn = el('button', 'gg-btn tiny', theirsLabel);
     oursBtn.title = mergeKind === 'rebase' ? S.t('resolveOursRebaseTip') : S.t('resolveOursTip');
@@ -222,7 +229,7 @@ export function createWorkView(app: App): WorkView {
     oursBtn.addEventListener('click', ev => { ev.stopPropagation(); app.mergeResolve(e.path, false); });
     theirsBtn.addEventListener('click', ev => { ev.stopPropagation(); app.mergeResolve(e.path, true); });
     if (resolving) { oursBtn.disabled = true; theirsBtn.disabled = true; mergeBtn.disabled = true; }
-    btns.append(mergeBtn, oursBtn, theirsBtn);
+    btns.append(mergeBtn, ...(mineGone ? [] : [oursBtn]), ...(theirsGone ? [] : [theirsBtn]));
     r.appendChild(btns);
     r.addEventListener('click', () => selectEntry(e));
     return r;

@@ -1117,8 +1117,7 @@ export class GraphPanel {
       } else if (outcome.message !== 'cancelled') {
         this.channel.appendLine(`[autofetch] failed: ${(outcome.outputTail ?? outcome.message ?? '').slice(0, 200)}`);
       }
-      this.releaseNetKind(root, spec);
-    });
+    }).finally(() => this.releaseNetKind(root, spec));   // 登记释放必须兜底（Issue #7 审查 P2：reject 不残留）
   }
 
   /** 文件页操作（v0.14）：移动/重命名/删除——同 startOp 的进度与结果转发，但等待完成并返回 outcome */
@@ -1407,7 +1406,8 @@ export class GraphPanel {
       } else if (outcome.message === 'cancelled') {
         this.post({ t: 'opResult', opId, kind, ok: false, message: this.t('opCancelled') });
       } else {
-        this.post({ t: 'opResult', opId, kind, ok: outcome.ok, message: outcome.message, outputTail: outcome.outputTail });
+        // paths 供前端失败时精确解除行内乐观态（resolveDelete 走此路径，Issue #7 审查修复）
+        this.post({ t: 'opResult', opId, kind, ok: outcome.ok, message: outcome.message, outputTail: outcome.outputTail, paths: spec.paths });
       }
       if (outcome.ok) {
         this.files?.invalidateTree(root);   // stage/unstage/discard 等改变 index → 文件页目录缓存失效
@@ -1437,8 +1437,8 @@ export class GraphPanel {
       position => { if (position > 0) this.post({ t: 'opProgress', opId, kind, text: '', queued: true, position }); },
       () => this.post({ t: 'opProgress', opId, kind, text: '' }),
     ).then(async outcome => {
-      // 成功静默（列表即时刷新即反馈），失败弹 toast
-      this.post({ t: 'opResult', opId, kind, ok: outcome.ok, message: outcome.ok ? undefined : outcome.message, outputTail: outcome.ok ? undefined : outcome.outputTail });
+      // 成功静默（列表即时刷新即反馈），失败弹 toast；paths 供前端失败时精确解除行内乐观态（Issue #7 审查修复）
+      this.post({ t: 'opResult', opId, kind, ok: outcome.ok, message: outcome.ok ? undefined : outcome.message, outputTail: outcome.ok ? undefined : outcome.outputTail, paths });
       await this.workStateNow().catch(() => undefined);
     });
   }
@@ -1501,9 +1501,19 @@ export class GraphPanel {
     };
   }
 
-  /** 语义侧二选一（我的/他人）：映射 --ours/--theirs 后走既有 resolveConflict 队列 */
+  /** 语义侧二选一（我的/他人）：映射 --ours/--theirs 后走既有 resolveConflict 队列；
+   *  所选侧在该冲突中已被删除（DU/UD/DD 按 mergeKind 反转判定）时改走采纳删除——
+   *  "以该侧为准"=保持删除（审查 P1-1：行级按钮已隐藏失效侧，此处兜底批量「全部以我为准」类入口） */
   private mergeResolveSide(relPath: string, sideTheirs: boolean): void {
     const root = this.currentRoot();
+    const code = (this.lastWorkEntries?.conflicts ?? []).find(c => c.path === relPath)?.conflictCode ?? 'UU';
+    const kind = this.service?.mergeKindOf(root) ?? 'merge';
+    const usDeleted = code === 'DU' || code === 'DD';
+    const themDeleted = code === 'UD' || code === 'DD';
+    const sideGone = code === 'DD' || (sideTheirs
+      ? (kind === 'rebase' ? usDeleted : themDeleted)
+      : (kind === 'rebase' ? themDeleted : usDeleted));
+    if (sideGone) { this.mergeDeleteAccept(relPath, sideTheirs); return; }
     this.workResolveConflict([relPath], this.sideToOurs(sideTheirs, root));
   }
 

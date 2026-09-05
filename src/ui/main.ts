@@ -745,6 +745,9 @@ window.addEventListener('message', e => {
         S.detail = undefined;
         S.diff = undefined;
         S.selectedFile = undefined;
+        // 换仓库：拉取/推送链条标志一并作废（审查 P1-2：否则 A 库的挂起推送意图会在 B 库误弹确认条/误推）
+        pendingPushAfterPull = false;
+        pendingPushAfterResolve = false;
         // 工作副本：换仓库 → 选中/diff 失效，草稿待重载
         S.work.state = undefined;
         S.work.selectedPath = undefined;
@@ -852,10 +855,16 @@ window.addEventListener('message', e => {
         // 操作后校验警示（Issue #6 后续）：黄色 toast 区别于常规成功提示
         toast(m.verify === 'warn' ? 'warn' : 'info', m.message);
       }
-      // Issue #7 乐观态收口：冲突解决 op 落定（成功/失败）即解除行内 ⏳，失败可重点重试
+      // Issue #7 乐观态收口：冲突解决 op 落定即解除行内 ⏳——成功走 prune（文件已离开冲突组），
+      // 失败按 opResult.paths 精确解除（文件仍在冲突组，prune 删不掉；审查 P1-1：否则行永久禁点）
       if (m.kind === 'resolveConflict' || m.kind === 'resolveDelete') {
         mergeview.resolveSettled();
-        if (pruneResolving()) workview.update();
+        let changed = false;
+        if (!m.ok) {
+          const paths = m.paths?.length ? m.paths : [...S.work.resolving];   // 旧宿主无 paths：整体解除（幂等无害）
+          for (const p of paths) changed = S.work.resolving.delete(p) || changed;
+        }
+        if (pruneResolving() || changed) workview.update();
       }
       // 中止合并：统一推送确认作废（方案 E）
       if (m.kind === 'mergeAbort') pendingPushAfterResolve = false;

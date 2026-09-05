@@ -68,6 +68,8 @@ export interface OpResult {
   outputTail?: string;   // 失败时的 stderr/stdout 尾部
   /** 操作后校验（Issue #6 后续）：warn=退出码 0 但状态与意图不符（黄色警示）；pass/unknown 不打扰 */
   verify?: 'pass' | 'warn' | 'unknown';
+  /** 涉及的文件路径（Issue #7）：冲突解决类失败时前端精确解除行内乐观态 */
+  paths?: string[];
 }
 
 /** 用户自定义列宽（持久化于 globalState，时间为自适应剩余列不持久化） */
