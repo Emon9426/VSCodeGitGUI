@@ -20,6 +20,7 @@ import { createFilesView } from './app/filesView';
 import { createFilePanel } from './app/filePanel';
 import { showPullSummary } from './app/pullSummary';
 import { confirmDialog, promptDialog, resetDialog, toast, notify, openModal } from './app/overlays';
+import { buildDiagPayload, diagActive, diagCancelStreaming, diagNoteFailure, diagOnChunk, diagOnDone, diagOnError, startDiagnosis } from './app/diagnose';
 import { fileIconSvg, iconSvg } from './icons';
 
 // ---------- App 实现 ----------
@@ -645,9 +646,11 @@ function refreshAiModels(): void {
     .catch(() => undefined);
 }
 
-// Esc 停止 AI 生成
+// Esc 停止 AI 生成 / 取消流式诊断（Issue #8）
 window.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && S.work.aiBusy) app.aiCancel();
+  if (e.key !== 'Escape') return;
+  if (S.work.aiBusy) app.aiCancel();
+  diagCancelStreaming();
 });
 applyLayout();
 
@@ -860,16 +863,29 @@ window.addEventListener('message', e => {
           });
         } else {
           // Issue #18 S2：操作失败改为常驻错误通知（标题+人话原因+折叠的 git 输出+重试），
-          // 不再弹阻塞式确认框平铺 stderr；可重试操作必带「重试」
+          // 不再弹阻塞式确认框平铺 stderr；可重试操作必带「重试」。
+          // Issue #8：Copilot 可用且非取消/停滞时附「AI 分析」，一步直达诊断模态
+          const actions: { label: string; run(): void; primary?: boolean }[] = [];
+          if (RETRYABLE_KINDS.has(m.kind)) {
+            actions.push({ label: S.t('retry'), primary: true, run: () => retryOp(m.kind) });
+          }
+          if (m.outputTail && !m.stalled && S.work.aiModels.length > 0) {
+            actions.push({
+              label: S.t('diagAction'),
+              run: () => startDiagnosis(buildDiagPayload(m), {
+                retry: RETRYABLE_KINDS.has(m.kind) ? () => retryOp(m.kind) : undefined,
+              }),
+            });
+          }
           notify('error', {
             title: S.t('opFailedTitle', { op: S.t(m.kind) }),
             body: m.message || undefined,
             detail: m.outputTail || undefined,
-            actions: RETRYABLE_KINDS.has(m.kind)
-              ? [{ label: S.t('retry'), primary: true, run: () => retryOp(m.kind) }]
-              : undefined,
+            actions: actions.length ? actions : undefined,
           });
         }
+        // Issue #8：诊断会话存活期间登记最新失败（修复步骤失败后「重新诊断」的上下文）
+        if (diagActive()) diagNoteFailure(m);
       } else if (m.message) {
         // 操作后校验警示（Issue #6 后续）：warn 通知；常规成功消息（如"已是最新的"）按纯告知 info 4s
         notify(m.verify === 'warn' ? 'warn' : 'info', { title: m.message });
@@ -973,6 +989,16 @@ window.addEventListener('message', e => {
       break;
     case 'aiError':
       commitBar.onAiError(m.code, m.message);
+      break;
+    // AI 错误诊断（Issue #8）：独立事件流，不与提交生成的 aiBusy 状态互串
+    case 'diagChunk':
+      diagOnChunk(m.text);
+      break;
+    case 'diagDone':
+      diagOnDone(m.model, m.steps);
+      break;
+    case 'diagError':
+      diagOnError(m.code, m.message);
       break;
   }
 });

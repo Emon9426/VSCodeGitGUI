@@ -1354,3 +1354,52 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-move-hint { min-height: 18px; margin-top: 6px; font-size: 11px; color: var(--vscode-charts-red, #f14c4c); }
 .gg-move-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .gg-move-foot .gg-btn.dis { opacity: .45; pointer-events: none; }
+
+/* ---------------- AI 诊断模态与一键修复（Issue #8） ---------------- */
+.gg-diag { min-width: 480px; max-width: 560px; display: flex; flex-direction: column; }
+.gg-diag .gg-modal-body { flex: 1; }
+.gg-diag-sub { margin-bottom: 8px; padding: 4px 8px; border-radius: var(--gg-r-s);
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  font-family: var(--vscode-editor-font-family, Consolas, monospace); font-size: var(--gg-fs-s);
+  color: var(--gg-t2); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gg-diag-text { white-space: pre-wrap; word-break: break-word; font-size: var(--gg-fs-m); line-height: 1.6; }
+.gg-diag-err { margin-top: 8px; padding: 8px 10px; border-radius: var(--gg-r-m); font-size: var(--gg-fs-m);
+  color: var(--gg-err); background: var(--gg-err-bg); border: 1px solid var(--gg-err-bd); }
+.gg-diag-foot { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+/* 修复方案区（P2）：徽标三色 = 本地校验器分级，模型自报 risk 不参与判定 */
+.gg-fix { margin-top: 10px; border: 1px solid var(--vscode-panel-border, #333); border-radius: var(--gg-r-m); overflow: hidden; }
+.gg-fix-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  background: var(--gg-accent-bg); border-bottom: 1px solid var(--vscode-panel-border, #333); }
+.gg-fix-title { font-size: var(--gg-fs-m); font-weight: 600; }
+.gg-fix-verified { font-size: var(--gg-fs-xs); color: var(--gg-t3); }
+.gg-fix-chip { margin-left: auto; font-size: var(--gg-fs-xs); color: var(--gg-warn); }
+.gg-fix-step { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 4px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border, #333) 55%, transparent); }
+.gg-fix-step:last-child { border-bottom: none; }
+.gg-fix-num { width: 16px; height: 16px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--vscode-panel-border, #444); font-size: var(--gg-fs-xs);
+  color: var(--gg-t2); font-variant-numeric: tabular-nums; }
+.gg-fix-st { font-size: var(--gg-fs-m); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 60px; }
+.gg-fix-cmd { font-family: var(--vscode-editor-font-family, Consolas, monospace); font-size: var(--gg-fs-s);
+  color: var(--gg-t2); background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  border-radius: var(--gg-r-s); padding: 2px 7px; margin-left: auto; flex: none; max-width: 45%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gg-fix-badge { font-size: var(--gg-fs-xs); font-weight: 600; border-radius: 3px; padding: 1px 6px; flex: none; }
+.gg-fix-badge.run { color: var(--gg-ok); background: var(--gg-ok-bg); border: 1px solid var(--gg-ok-bd); }
+.gg-fix-badge.confirm { color: var(--gg-warn); background: var(--gg-warn-bg); border: 1px solid var(--gg-warn-bd); }
+.gg-fix-badge.copy { color: var(--gg-t3); border: 1px solid var(--vscode-panel-border, #444); }
+.gg-fix-state { width: 20px; height: 20px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.gg-fix-state .gg-ic { width: 12px; height: 12px; }
+.gg-fix-step.did-ok .gg-fix-state { color: var(--gg-ok); }
+.gg-fix-step.did-fail .gg-fix-state { color: var(--gg-err); }
+.gg-fix-spin { width: 10px; height: 10px; border: 1.6px solid var(--vscode-panel-border, #444);
+  border-top-color: var(--gg-info); border-radius: 50%; animation: gg-fix-rot .8s linear infinite; }
+@keyframes gg-fix-rot { to { transform: rotate(360deg); } }
+.gg-fix-stopped { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: var(--gg-fs-m);
+  color: var(--gg-err); background: var(--gg-err-bg); border-top: 1px solid var(--vscode-panel-border, #333); }
+.gg-fix-stopped .gg-ic { width: 13px; height: 13px; }
+.gg-fix-stopped .gg-btn { margin-left: auto; flex: none; }
+.gg-fix-allok { padding: 6px 10px; font-size: var(--gg-fs-m); color: var(--gg-ok);
+  background: var(--gg-ok-bg); border-top: 1px solid var(--vscode-panel-border, #333); }
