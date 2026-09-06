@@ -108,7 +108,7 @@ const log = (...a) => console.log(...a);
   log('confirm:', confirm);
   await sleep(3000);
   const after = await E(`(() => ({
-    toast: document.querySelector('.gg-toast')?.textContent.trim().slice(0, 120) || null,
+    toast: document.querySelector('.gg-notif')?.textContent.trim().slice(0, 120) || null,
     errDialog: document.querySelector('.gg-modal-overlay')?.textContent.trim().slice(0, 200) || null,
   }))()`);
   log('after:', JSON.stringify(after));

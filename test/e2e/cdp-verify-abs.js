@@ -77,8 +77,8 @@ const check = (name, cond, detail) => { results.push({ name, pass: !!cond }); co
     await sleep(waitMs);   // 红框 1.5s 自动消退——查红框须用短等待（≤600ms）
   };
   const crumbText = () => E(`document.querySelector('.gg-files-crumbs') ? document.querySelector('.gg-files-crumbs').textContent : null`);
-  const errState = () => E(`(() => { const a = document.querySelector('.gg-files-addr'); const t = document.querySelector('.gg-toast'); return { err: a ? a.classList.contains('err') : null, toast: t ? t.textContent : null }; })()`);
-  const clearToast = () => E(`(() => { document.querySelectorAll('.gg-toast').forEach(t => t.remove()); return true; })()`);
+  const errState = () => E(`(() => { const a = document.querySelector('.gg-files-addr'); const t = document.querySelector('.gg-notif'); return { err: a ? a.classList.contains('err') : null, toast: t ? t.textContent : null }; })()`);
+  const clearToast = () => E(`(() => { document.querySelectorAll('.gg-notif').forEach(t => t.remove()); return true; })()`);
 
   // ① 仓库根绝对路径（反斜杠原样）→ 应回到根目录（面包屑仅 🏠）
   await typeAddr('C:\\Users\\Emon\\AppData\\Local\\Temp\\gb-real-repo');

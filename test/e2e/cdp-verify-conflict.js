@@ -82,8 +82,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const q = s => document.querySelector(s);
     const qa = s => [...document.querySelectorAll(s)];
     return JSON.stringify({
-      banner: q('.gg-merge-banner:not(.hidden)')?.textContent.trim().slice(0, 120) || null,
-      bannerBtns: qa('.gg-merge-banner:not(.hidden) button').map(b => b.textContent.trim()),
+      banner: q('.gg-banner.danger:not(.hidden)')?.textContent.trim().slice(0, 120) || null,
+      bannerBtns: qa('.gg-banner.danger:not(.hidden) button').map(b => b.textContent.trim()),
       conflictRows: qa('.gg-work-row.conflict').map(r => ({
         path: r.querySelector('.gg-work-fpath')?.title || r.textContent.slice(0, 50),
         btns: [...r.querySelectorAll('.gg-work-cbtns button')].map(b => b.textContent.trim()),
@@ -93,7 +93,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       mergeSpecial: q('.gg-merge:not(.hidden) .gg-merge-special')?.textContent.trim().slice(0, 100) || null,
       mergeCards: qa('.gg-merge:not(.hidden) .gg-merge-card').map(c => c.textContent.trim().slice(0, 80)),
       mergeCols: qa('.gg-merge:not(.hidden) .gg-merge-col').length,
-      toast: q('.gg-toast')?.textContent.trim().slice(0, 150) || null,
+      toast: q('.gg-notif')?.textContent.trim().slice(0, 150) || null,
       opstatus: q('.gg-opstatus:not(.off)')?.textContent.trim().slice(0, 120) || null,
       groups: qa('.gg-work-group-h').filter(h => !h.classList.contains('hidden')).map(h => h.textContent.trim().slice(0, 24)),
     });

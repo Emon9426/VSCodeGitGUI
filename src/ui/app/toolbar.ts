@@ -3,6 +3,7 @@
  */
 import { S, type App } from '../state';
 import { el, clearChildren, debounce } from '../util';
+import { setIcon, iconSvg } from '../icons';
 
 export interface Toolbar {
   el: HTMLElement;
@@ -22,6 +23,10 @@ export function createToolbar(app: App): Toolbar {
   });
 
   const branchLabel = el('span', 'gg-branch-label');
+  const branchIc = iconSvg('branch');
+  const branchText = el('span');
+  const branchBadge = el('span', 'gg-dirty-badge hidden');   // 常驻元素（审查 P2-1：追加式会随 update 无界堆积）
+  branchLabel.append(branchIc, branchText, branchBadge);
   const filterSel = el('select', 'gg-select gg-filter-sel') as HTMLSelectElement;
   filterSel.addEventListener('change', () => {
     app.setFilter(filterSel.value || null);
@@ -160,33 +165,41 @@ export function createToolbar(app: App): Toolbar {
     app.setLogFilter({ authors: [], since: '', until: '' });
   });
 
-  const fetchBtn = mkBtn('⟳', () => app.runFetch());
-  const pullBtn = mkBtn('⤓', () => app.runPull());
-  const pushBtn = mkBtn('⤒', () => app.runPush());
+  // 图标按钮（S4：SVG 线性图标替代 emoji 字符——跨平台渲染一致）
+  const fetchBtn = mkBtn('', () => app.runFetch());
+  const pullBtn = mkBtn('', () => app.runPull());
+  const pushBtn = mkBtn('', () => app.runPush());
+  setIcon(fetchBtn, 'syncFetch');
+  setIcon(pullBtn, 'pullDown');
+  setIcon(pushBtn, 'pushUp');
   fetchBtn.title = S.t('fetch');
   pullBtn.title = S.t('pull');
   pushBtn.title = S.t('push');
-  const refreshBtn = mkBtn('⟲', () => app.runRefresh());
+  const refreshBtn = mkBtn('', () => app.runRefresh());
+  setIcon(refreshBtn, 'refresh');
   refreshBtn.title = S.t('refresh');
-  // 语言快捷切换（A/中/EN，点击弹三选一）
+  // 语言快捷切换（A/中/EN，点击弹三选一）——文字按钮保持
   const langBtn = mkBtn('', () => app.pickLanguage());
-  const gearBtn = mkBtn('⚙', () => app.openSettings());
+  const gearBtn = mkBtn('', () => app.openSettings());
+  setIcon(gearBtn, 'gear');
   gearBtn.title = S.t('settings');
   const versionLabel = el('span', 'gg-version-label', '');
 
   // 视图切换：提交图 ⇄ 纯提交列表 ⇄ 工作副本 ⇄ 文件历史（v0.14 第四视图；纯列表隐藏合并提交）
   const viewSeg = el('div', 'gg-viewseg');
-  const graphBtn = el('button', 'gg-viewseg-btn', `⎔ ${S.t('viewGraph')}`) as HTMLButtonElement;
+  const graphBtn = el('button', 'gg-viewseg-btn') as HTMLButtonElement;
+  const graphLabel = el('span');
+  graphBtn.append(iconSvg('graph'), graphLabel);
   const pureBtn = el('button', 'gg-viewseg-btn') as HTMLButtonElement;
-  const pureLabel = el('span', undefined, `☰ ${S.t('viewPure')}`);
-  pureBtn.append(pureLabel);
+  const pureLabel = el('span');
+  pureBtn.append(iconSvg('list'), pureLabel);
   const workBtn = el('button', 'gg-viewseg-btn') as HTMLButtonElement;
-  const workLabel = el('span', undefined, `▣ ${S.t('viewWork')}`);
+  const workLabel = el('span');
   const workBadge = el('span', 'gg-viewseg-badge hidden');
-  workBtn.append(workLabel, workBadge);
+  workBtn.append(iconSvg('panel'), workLabel, workBadge);
   const filesBtn = el('button', 'gg-viewseg-btn') as HTMLButtonElement;
-  const filesLabel = el('span', undefined, `🗂 ${S.t('viewFiles')}`);
-  filesBtn.append(filesLabel);
+  const filesLabel = el('span');
+  filesBtn.append(iconSvg('folderClock'), filesLabel);
   graphBtn.addEventListener('click', () => app.setView('graph'));
   pureBtn.addEventListener('click', () => app.setView('pure'));
   workBtn.addEventListener('click', () => app.setView('work'));
@@ -211,15 +224,15 @@ export function createToolbar(app: App): Toolbar {
 
   function update(): void {
     versionLabel.textContent = S.version ? `v${S.version}` : '';
-    // 视图分段控件（文案随语言刷新；含子节点的按钮只改 label span）
+    // 视图分段控件（文案随语言刷新；图标常驻只刷 label span——S4 结构）
     graphBtn.classList.toggle('on', S.view === 'graph');
     pureBtn.classList.toggle('on', S.view === 'pure');
     workBtn.classList.toggle('on', S.view === 'work');
     filesBtn.classList.toggle('on', S.view === 'files');
-    graphBtn.textContent = `⎔ ${S.t('viewGraph')}`;
-    pureLabel.textContent = `☰ ${S.t('viewPure')}`;
-    workLabel.textContent = `▣ ${S.t('viewWork')}`;
-    filesLabel.textContent = `🗂 ${S.t('viewFiles')}`;
+    graphLabel.textContent = S.t('viewGraph');
+    pureLabel.textContent = S.t('viewPure');
+    workLabel.textContent = S.t('viewWork');
+    filesLabel.textContent = S.t('viewFiles');
     graphBtn.title = S.t('viewGraphTip');
     pureBtn.title = S.t('viewPureTip');
     workBtn.title = S.t('viewWorkTip');
@@ -236,11 +249,12 @@ export function createToolbar(app: App): Toolbar {
     const lang = S.config.language;
     langBtn.textContent = lang === 'zh-CN' ? '中' : lang === 'en' ? 'EN' : 'A';
     langBtn.title = `${S.t('langSwitchTitle')} — ${lang === 'auto' ? S.t('langAuto') : lang === 'zh-CN' ? '简体中文' : 'English'}`;
-    // 网络操作按钮 title 随语言刷新
-    fetchBtn.title = S.t('fetch');
-    pullBtn.title = S.t('pull');
-    pushBtn.title = S.t('push');
-    refreshBtn.title = S.t('refresh');
+    // 网络操作按钮 title 统一由 updateProgress 管理（B3：在途/排队状态优先）
+    // B2（Issue #18）：存在未完成合并 → Push 预禁用并给原因（决策类引导仍走横幅/模态）
+    const mergeBlocked = !!S.work.state?.mergeActive;
+    pushBtn.disabled = mergeBlocked;
+    if (mergeBlocked) pushBtn.title = S.t('blockedByMerge');
+    updateProgress();
     // 仓库下拉
     const multi = S.repos.length > 1;
     repoSel.classList.toggle('hidden', !multi);
@@ -253,18 +267,22 @@ export function createToolbar(app: App): Toolbar {
         repoSel.appendChild(opt);
       }
     }
-    // 当前分支标识
+    // 当前分支标识（分支图标常驻，S4；detached 时图标隐藏只显 sha；徽标为常驻元素仅改文本）
     const st = S.state;
     if (st) {
-      branchLabel.textContent = st.head.detached
+      branchIc.classList.toggle('hidden', !!st.head.detached);
+      branchText.textContent = st.head.detached
         ? `${S.t('detachedHead')} · ${st.head.sha.slice(0, 7)}`
-        : `⑂ ${st.head.branch ?? ''}`;
+        : (st.head.branch ?? '');
       if (st.status.dirtyCount > 0) {
-        const badge = el('span', 'gg-dirty-badge', S.t('dirtyCount', { n: st.status.dirtyCount }));
-        branchLabel.appendChild(badge);
+        branchBadge.textContent = S.t('dirtyCount', { n: st.status.dirtyCount });
+        branchBadge.classList.remove('hidden');
+      } else {
+        branchBadge.classList.add('hidden');
       }
     } else {
-      branchLabel.textContent = '';
+      branchText.textContent = '';
+      branchBadge.classList.add('hidden');
     }
     // 过滤下拉
     filterSel.textContent = '';
@@ -291,6 +309,21 @@ export function createToolbar(app: App): Toolbar {
     pullBtn.classList.toggle('busy', kinds.has('pull'));
     pushBtn.classList.toggle('busy', kinds.has('push'));
     refreshBtn.classList.toggle('busy', kinds.has('refresh'));
+    // B3（Issue #18）：在途/排队状态写入 title——按钮可点击（同 kind 宿主去重、异 kind 入队可见），
+    // 不再以 pointer-events:none 静默吞点击（R4：排队要透明）
+    opTitle(fetchBtn, 'fetch', S.t('fetch'));
+    opTitle(pullBtn, 'pull', S.t('pull'));
+    opTitle(pushBtn, 'push', S.t('push'));
+    opTitle(refreshBtn, 'refresh', S.t('refresh'));
+  }
+
+  /** 操作按钮 title：禁用原因（update 设置）> 排队中·位次 > 执行中 > 常规名 */
+  function opTitle(btn: HTMLButtonElement, kind: string, normal: string): void {
+    if (btn.disabled) return;
+    const op = [...S.activeOps.values()].find(o => o.kind === kind);
+    btn.title = op
+      ? (op.queued ? S.t('opQueued', { n: op.position ?? 1 }) : S.t('opRunning'))
+      : normal;
   }
 
   function flash(kind: string): void {

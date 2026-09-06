@@ -36,9 +36,17 @@ export function formatRelative(iso: string, t: (k: string, p?: Record<string, st
   return t('relativeOld', { n: Math.round(week / 52) });
 }
 
-export function formatTime(iso: string, mode: 'datetime' | 'relative' | 'iso', t: (k: string, p?: Record<string, string | number>) => string): string {
+/** 紧凑格式（Issue #18 S1）：提交列表时间列在极窄窗下降级为 MM-DD HH:mm，完整值保留在 title */
+export function formatCompact(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export function formatTime(iso: string, mode: 'datetime' | 'relative' | 'iso' | 'compact', t: (k: string, p?: Record<string, string | number>) => string): string {
   if (mode === 'iso') return iso.replace('T', ' ').slice(0, 19);
   if (mode === 'relative') return formatRelative(iso, t);
+  if (mode === 'compact') return formatCompact(iso);
   return formatDateTime(iso);
 }
 

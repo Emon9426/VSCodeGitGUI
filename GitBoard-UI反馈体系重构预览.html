@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GitBoard UI 反馈体系重构预览（Issue #18 · 待批准 mock）</title>
+<style>
+  /* 近似 VS Code Dark+ 主题（实现时全部替换为 --vscode-* 主题变量） */
+  :root {
+    --bg: #1e1e1e; --panel: #252526; --widget: #2d2d30;
+    --fg: #cccccc; --t2: #9d9d9d; --t3: rgba(157,157,157,.72);
+    --border: #3c3c3c;
+    --blue: #3794ff; --green: #89d185; --yellow: #cca700; --red: #f14c4c; --purple: #b180d7;
+    --mono: Consolas, 'Courier New', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 13px 'Segoe UI', 'Microsoft YaHei', sans-serif; padding: 24px 28px 60px; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .sub { color: var(--t2); font-size: 12px; margin-bottom: 26px; }
+  .sub b { color: var(--yellow); }
+  h2 { font-size: 14px; margin: 34px 0 6px; padding-left: 10px; border-left: 3px solid var(--blue); }
+  h2 .tag { font-size: 10.5px; font-weight: 600; color: var(--t2); margin-left: 8px; letter-spacing: .05em; }
+  .desc { color: var(--t2); font-size: 12px; margin: 0 0 14px 13px; }
+  .cols { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+  .col { flex: 1; min-width: 430px; }
+  .col-label { font-size: 11px; font-weight: 600; letter-spacing: .05em; color: var(--t2); text-transform: uppercase; margin-bottom: 8px; }
+  .col-label.old { color: var(--t3); }
+  .col-label.new { color: var(--green); }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; position: relative; }
+  .svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .svg.lg { width: 16px; height: 16px; }
+
+  /* ===== 1. Toast 现状 vs Notification ===== */
+  .toast-old { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; font-size: 12.5px;
+    background: var(--widget); border: 1px solid var(--border); border-left: 3px solid var(--blue); margin-bottom: 8px; }
+  .toast-old.warn { border-left-color: var(--yellow); } .toast-old.error { border-left-color: var(--red); }
+  .toast-old .x { margin-left: auto; color: var(--t2); }
+  .toast-old.error wall { color: var(--t3); font-size: 11px; }
+
+  .notif { width: 380px; background: var(--widget); border: 1px solid; border-radius: 6px; margin-bottom: 10px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.4); overflow: hidden; }
+  .notif .row1 { display: flex; align-items: center; gap: 8px; padding: 8px 8px 0 10px; }
+  .notif .bar { position: absolute; }
+  .notif .ttl { font-size: 12.5px; font-weight: 600; }
+  .notif .x { margin-left: auto; color: var(--t2); cursor: pointer; padding: 0 4px; }
+  .notif .body { padding: 2px 10px 8px 32px; color: var(--t2); font-size: 12px; }
+  .notif .acts { display: flex; gap: 6px; padding: 0 10px 8px 32px; }
+  .notif .detail { margin: 0 10px 8px 32px; font-family: var(--mono); font-size: 11px; color: var(--t3);
+    background: rgba(0,0,0,.25); border-radius: 4px; padding: 5px 8px; max-height: 96px; overflow: auto; }
+  .notif .detail summary { cursor: pointer; color: var(--t2); }
+  .notif.info { border-left: 3px solid var(--blue); } .notif.info .ic { color: var(--blue); }
+  .notif.ok { border-left: 3px solid var(--green); } .notif.ok .ic { color: var(--green); }
+  .notif.warn { border-left: 3px solid var(--yellow); } .notif.warn .ic { color: var(--yellow); }
+  .notif.err { border-left: 3px solid var(--red); } .notif.err .ic { color: var(--red); }
+  .notif.err { border-color: color-mix(in srgb, var(--red) 42%, transparent); background: color-mix(in srgb, var(--red) 7%, var(--widget)); }
+  .notif.warn { background: color-mix(in srgb, var(--yellow) 7%, var(--widget)); border-color: color-mix(in srgb, var(--yellow) 42%, transparent); }
+  .btn { font: 600 11px 'Segoe UI', sans-serif; padding: 2px 10px; border-radius: 4px; cursor: pointer; }
+  .btn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+  .btn.pri { background: var(--blue); color: #fff; border: none; }
+  .meta { font-size: 10.5px; color: var(--t3); margin-top: 4px; padding-left: 2px; }
+
+  /* ===== 2. Banner ===== */
+  .banner { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 12px;
+    margin-bottom: 8px; border: 1px solid; }
+  .banner .ic { margin-top: 1px; }
+  .banner .bt { font-weight: 600; }
+  .banner .bb { color: var(--t2); margin-top: 1px; }
+  .banner .bacts { margin-left: auto; display: flex; gap: 6px; flex: none; }
+  .banner.danger { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border-color: color-mix(in srgb, var(--red) 42%, transparent); }
+  .banner.danger .bt, .banner.danger .ic { color: var(--red); }
+  .banner.success { background: color-mix(in srgb, var(--green) 10%, transparent); border-color: color-mix(in srgb, var(--green) 42%, transparent); }
+  .banner.success .ic { color: var(--green); }
+  .banner.warnv { background: color-mix(in srgb, var(--yellow) 10%, transparent); border-color: color-mix(in srgb, var(--yellow) 42%, transparent); }
+  .banner.warnv .ic { color: var(--yellow); }
+  .banner.infov { background: color-mix(in srgb, var(--blue) 10%, transparent); border-color: color-mix(in srgb, var(--blue) 42%, transparent); }
+  .banner.infov .ic { color: var(--blue); }
+  .banner.accent { background: color-mix(in srgb, var(--purple) 10%, transparent); border-color: color-mix(in srgb, var(--purple) 42%, transparent); }
+  .banner.accent .ic { color: var(--purple); }
+  .banner .mono { font-family: var(--mono); }
+
+  /* ===== 3. 提交列表 ===== */
+  .list-wrap { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; width: 560px; background: var(--bg); }
+  .lh { display: grid; grid-template-columns: 84px minmax(0,1fr) 86px 64px 130px; height: 26px; line-height: 26px;
+    background: var(--panel); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--t2); }
+  .lh span, .lr span { padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lh .r, .lr .r { text-align: right; }
+  .lr { display: grid; grid-template-columns: 84px minmax(0,1fr) 86px 64px 130px; height: 24px; line-height: 24px; font-size: 12px; }
+  .lr:hover { background: rgba(255,255,255,.055); }
+  .lr.sel { background: #04395e; box-shadow: inset 2px 0 0 var(--blue); }
+  .lr .mono { font-family: var(--mono); font-size: 11.5px; color: var(--t2); }
+  .lr .t { font-family: var(--mono); font-size: 11.5px; color: var(--t2); }
+  .lr .a { color: var(--t2); overflow: hidden; }
+  .graph-mock { display: flex; align-items: center; gap: 4px; padding-left: 10px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .dot.b { background: var(--blue); } .dot.p { background: var(--purple); } .dot.y { background: var(--yellow); }
+  .ln { width: 16px; height: 1.5px; background: #555; }
+  .chip { display: inline-flex; align-items: center; height: 15px; padding: 0 6px; border-radius: 8px; font-size: 10.5px; margin-left: 6px; }
+  .chip.h { color: var(--green); background: color-mix(in srgb, var(--green) 18%, transparent); }
+  .chip.t { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 18%, transparent); }
+  .list-old .lh { grid-template-columns: 84px minmax(0,1fr) 86px 64px 60px; }
+  .list-old .lr { grid-template-columns: 84px minmax(0,1fr) 86px 64px 60px; }
+  .cut { color: var(--red); outline: 1px dashed color-mix(in srgb, var(--red) 60%, transparent); outline-offset: 1px; }
+  .arrow-note { font-size: 11px; color: var(--red); margin-top: 6px; }
+  .arrow-note.g { color: var(--green); }
+
+  /* ===== 4. 图标对照 ===== */
+  .icons { display: flex; flex-wrap: wrap; gap: 10px 22px; }
+  .ic-entry { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--t2); }
+  .ic-entry .demo { display: inline-flex; align-items: center; gap: 4px; color: var(--fg); }
+  .ic-entry code { font-size: 11px; color: var(--t3); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+  .seg button { font: 12px 'Segoe UI'; border: none; background: transparent; color: var(--fg); padding: 3px 11px; display: inline-flex; gap: 6px; align-items: center; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button.on { background: var(--blue); color: #fff; }
+  .tbtn { min-width: 30px; height: 24px; border: none; border-radius: 4px; background: transparent; color: var(--fg);
+    display: inline-flex; align-items: center; justify-content: center; }
+  .tbtn:hover { background: rgba(255,255,255,.08); }
+
+  /* ===== 5. 令牌 ===== */
+  .tokens { display: flex; gap: 26px; flex-wrap: wrap; }
+  .tok-group { min-width: 220px; }
+  .tok-group h3 { font-size: 11px; color: var(--t2); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+  .tok { display: flex; align-items: center; gap: 8px; font-size: 11.5px; margin-bottom: 5px; color: var(--t2); }
+  .tok .box { border: 1px solid var(--border); background: var(--widget); }
+  .tok .sw { width: 14px; height: 14px; border-radius: 3px; }
+  footer { margin-top: 44px; color: var(--t3); font-size: 11.5px; border-top: 1px solid var(--border); padding-top: 12px; }
+</style>
+</head>
+<body>
+
+<h1>GitBoard UI 反馈体系重构 · 可视化预览</h1>
+<div class="sub">Issue <b>#18</b> 设计方案配套 mock —— <b>待批准，非实现</b>。颜色为 Dark+ 主题近似值，实现时全部走 VS Code 主题变量（明暗自适应）。</div>
+
+<!-- ============ 1. Toast vs Notification ============ -->
+<h2>1 · 错误 / 结果通知<span class="tag">TOAST → NOTIFICATION</span></h2>
+<div class="desc">现状：无图标无标题、级别只靠 3px 色带、错误 8s 自动消失、git 输出弹阻塞模态。新设计：图标+标题+正文三档层级，error 常驻、可重试、技术详情折叠。</div>
+<div class="cols">
+  <div class="col">
+    <div class="col-label old">现状（Before）</div>
+    <div class="panel">
+      <div class="toast-old">已刷新仓库状态 <span class="x">×</span></div>
+      <div class="toast-old warn">检测到工作区存在未完成合并，推送已暂停 <span class="x">×</span></div>
+      <div class="toast-old error">拉取失败：ssh: connect to host github.com port 22: Connection timed out…（8 秒后自动消失）<span class="x">×</span></div>
+      <div class="meta">另：操作失败时弹<b>阻塞式确认框</b>平铺 git 原始输出，必须点「关闭」。</div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="col-label new">新设计（After）</div>
+    <div class="panel">
+      <div class="notif info">
+        <div class="row1"><svg class="svg lg ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.4v3.4M8 4.9v.2"/></svg><span class="ttl">仓库已刷新</span><span class="x">×</span></div>
+        <div class="body">已获取 12 个分支与 5 个标记的最新状态</div>
+      </div>
+      <div class="notif warn">
+        <div class="row1"><svg class="svg lg ic" viewBox="0 0 16 16"><path d="M8 2.4 14.4 13H1.6z"/><path d="M8 6.4v3M8 11.2v.2"/></svg><span class="ttl">推送已暂停</span><span class="x">×</span></div>
+        <div class="body">工作区存在未完成合并，请先完成冲突解决</div>
+        <div class="acts"><button class="btn ghost">查看冲突</button></div>
+      </div>
+      <div class="notif err">
+        <div class="row1"><svg class="svg lg ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8"/></svg><span class="ttl">拉取失败</span><span class="x">×</span></div>
+        <div class="body">无法连接 origin（github.com:22 连接超时）</div>
+        <div class="acts"><button class="btn pri">重试</button><button class="btn ghost">详情 ▸</button></div>
+        <details class="detail"><summary>git 输出</summary>ssh: connect to host github.com port 22:<br>Connection timed out<br>fatal: Could not read from remote repository.</details>
+      </div>
+      <div class="meta">info 4s / success 5s / warn 8s / <b style="color:var(--red)">error 常驻</b>；最多堆叠 4 条。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 2. Banner ============ -->
+<h2>2 · 页面内横幅统一<span class="tag">5+ 套样式 → 1 个组件 · 5 变体</span></h2>
+<div class="desc">冲突横幅 / 待完成合并 / 推送询问条 / amend 提示 / 移动引导 / 比对条，统一为同一结构与语义配方：图标(语义色) + 标题(前景·600) + 正文(描述色) + 右侧动作区。</div>
+<div class="panel" style="max-width:760px">
+  <div class="banner danger">
+    <svg class="svg lg ic" viewBox="0 0 16 16"><path d="M8 2.4 14.4 13H1.6z"/><path d="M8 6.4v3M8 11.2v.2"/></svg>
+    <div><div class="bt">检测到 3 个未解决冲突</div><div class="bb">完成冲突解决前无法提交</div></div>
+    <div class="bacts"><button class="btn ghost">打开解决器</button></div>
+  </div>
+  <div class="banner success">
+    <svg class="svg lg ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M5.4 8.2l1.8 1.8 3.4-3.8"/></svg>
+    <div><div class="bt">合并待完成</div><div class="bb">所有冲突已解决，可提交合并结果（<span class="mono">feature/ui-refactor → main</span>）</div></div>
+    <div class="bacts"><button class="btn pri">提交合并</button><button class="btn ghost">放弃合并</button></div>
+  </div>
+  <div class="banner success">
+    <svg class="svg lg ic" viewBox="0 0 16 16"><path d="M8 11.4V4.6M4.6 8L8 4.6 11.4 8"/><path d="M2.4 11v1.6a1.2 1.2 0 0 0 1.2 1.2h8.8a1.2 1.2 0 0 0 1.2-1.2V11"/></svg>
+    <div><div class="bt">已提交 <span class="mono">a1b2c3d</span></div><div class="bb">重构操作反馈组件：统一通知与横幅视觉语言</div></div>
+    <div class="bacts"><button class="btn pri">立即推送</button><button class="btn ghost">稍后</button></div>
+  </div>
+  <div class="banner warnv">
+    <svg class="svg lg ic" viewBox="0 0 16 16"><path d="M2.6 12.8h10.8L8 2.8z"/><path d="M8 10.2v.2M8 7.4v1.6"/></svg>
+    <div><div class="bt">Amend 模式</div><div class="bb">本次提交将改写 <span class="mono">a1b2c3d</span>，而非创建新提交</div></div>
+    <div class="bacts"><button class="btn ghost">退出 Amend</button></div>
+  </div>
+  <div class="banner infov">
+    <svg class="svg lg ic" viewBox="0 0 16 16"><path d="M2.4 5.2 8 9.6l5.6-4.4"/><path d="M2.4 5.2h11.2v6.4H2.4z"/></svg>
+    <div><div class="bt">比对就绪</div><div class="bb"><span class="mono">src/ui/main.ts</span> · 两个版本已选定</div></div>
+    <div class="bacts"><button class="btn pri">开始比对</button></div>
+  </div>
+  <div class="banner accent">
+    <svg class="svg lg ic" viewBox="0 0 16 16"><path d="M8 11.6V4.4M4.4 8 8 4.4 11.6 8"/><path d="M2.4 11.6h11.2"/></svg>
+    <div><div class="bt">检测到文件移动</div><div class="bb">GitBoard/quick-notes → GitBoardQuickNotes，历史可跟随</div></div>
+    <div class="bacts"><button class="btn pri">保留历史</button><button class="btn ghost">按移动处理</button></div>
+  </div>
+</div>
+
+<!-- ============ 3. 时间列 ============ -->
+<h2>3 · 提交列表时间列修复<span class="tag">BUG FIX</span></h2>
+<div class="desc">同一窗口宽（560px mock）下：时间列被压缩至 60px 下限导致 datetime 截断（根因：graph 固定 + 各列下限挤占）。修复后时间列保底实测宽度、挤压由消息列承担，且表头「时间」右对齐与数据对齐。</div>
+<div class="cols">
+  <div class="col">
+    <div class="col-label old">现状（Before）</div>
+    <div class="list-wrap list-old">
+      <div class="lh"><span>图形</span><span>提交信息</span><span>作者</span><span>哈希</span><span>时间</span></div>
+      <div class="lr"><span class="graph-mock"><span class="ln"></span><span class="dot"></span></span><span>fix: 统一操作反馈组件的视觉语言与堆叠策略</span><span class="a">Emon</span><span class="mono">a1b2c3d</span><span class="t cut">2026-09-0…</span></div>
+      <div class="lr"><span class="graph-mock"><span class="ln"></span><span class="dot b"></span></span><span>feat: 推送询问条带提交摘要</span><span class="a">Emon</span><span class="mono">e4f5a6b</span><span class="t cut">2026-09-0…</span></div>
+      <div class="lr sel"><span class="graph-mock"><span class="ln"></span><span class="dot y"></span></span><span>chore: 发布 v0.19.3</span><span class="a">Emon</span><span class="mono">56766aa</span><span class="t cut">2026-08-3…</span></div>
+      <div class="arrow-note">▲ 时间被截断；表头「时间」左对齐而数据右对齐（头身错位）</div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="col-label new">新设计（After）</div>
+    <div class="list-wrap">
+      <div class="lh"><span>图形</span><span>提交信息</span><span>作者</span><span>哈希</span><span class="r">时间</span></div>
+      <div class="lr"><span class="graph-mock"><span class="ln"></span><span class="dot"></span></span><span>fix: 统一操作反馈组件的视觉语言与堆叠策略</span><span class="a">Emon</span><span class="mono">a1b2c3d</span><span class="t r">2026-09-05 14:30</span></div>
+      <div class="lr"><span class="graph-mock"><span class="ln"></span><span class="dot b"></span></span><span>feat: 推送询问条带提交摘要</span><span class="a">Emon</span><span class="mono">e4f5a6b</span><span class="t r">2026-09-05 11:02</span></div>
+      <div class="lr sel"><span class="graph-mock"><span class="ln"></span><span class="dot y"></span></span><span>chore: 发布 v0.19.3</span><span class="a">Emon</span><span class="mono">56766aa</span><span class="t r">2026-08-31 09:47</span></div>
+      <div class="arrow-note g">▲ 时间完整（实测保底宽），消息列优雅省略；极窄时自动降级 MM-DD HH:mm，完整值在 hover</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 4. 图标 ============ -->
+<h2>4 · 图标系统（去 emoji）<span class="tag">SVG · 16 网格 · stroke 1.2</span></h2>
+<div class="desc">emoji 跨平台渲染不一致且风格松散；统一为线性 SVG（描边跟随前景色，明暗主题自适应）。</div>
+<div class="panel">
+  <div style="margin-bottom:14px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+    <span class="col-label new" style="margin:0">After · 视图切换</span>
+    <span class="seg">
+      <button class="on"><svg class="svg" viewBox="0 0 16 16"><circle cx="3.6" cy="8" r="1.6"/><circle cx="8.4" cy="3.8" r="1.6"/><circle cx="8.4" cy="12.2" r="1.6"/><circle cx="13" cy="8" r="1.6"/><path d="M5 7.4l1.9-2.4M5 8.6l1.9 2.4M10 4.6l2 2.2M10 11.4l2-2.2"/></svg>提交图</button>
+      <button><svg class="svg" viewBox="0 0 16 16"><path d="M2.4 4h11.2M2.4 8h11.2M2.4 12h11.2"/><circle cx="5" cy="4" r=".4"/><circle cx="5" cy="8" r=".4"/></svg>纯提交</button>
+      <button><svg class="svg" viewBox="0 0 16 16"><rect x="2.2" y="2.8" width="11.6" height="10.4" rx="1.4"/><path d="M7.4 2.8v10.4"/></svg>工作副本<span style="background:rgba(204,167,0,.8);color:#1e1e1e;border-radius:8px;font-size:10px;font-weight:600;padding:0 5px">3</span></button>
+      <button><svg class="svg" viewBox="0 0 16 16"><path d="M1.6 13.2V3.4h4.4l1.4 1.8h7v8z"/><path d="M9.4 7.2v2.6M8.1 8.5l1.3 1.3 1.3-1.3"/></svg>文件历史</button>
+    </span>
+    <span class="col-label new" style="margin:0">工具栏</span>
+    <button class="tbtn" title="Fetch"><svg class="svg" viewBox="0 0 16 16"><path d="M2.6 6.6a5.4 4 0 0 1 10.8 0"/><path d="M13.8 6.6v-.2M2.6 6.6v-.2"/><path d="M5.2 6.2 2.6 6.6l.5-2.5M10.8 6.2l2.6.4-.5-2.5"/></svg></button>
+    <button class="tbtn" title="Pull"><svg class="svg" viewBox="0 0 16 16"><path d="M8 10.6V3.2M4.8 7.4 8 10.6l3.2-3.2"/><path d="M2.6 12.6h10.8"/></svg></button>
+    <button class="tbtn" title="Push"><svg class="svg" viewBox="0 0 16 16"><path d="M8 3.2v7.4M4.8 6.4 8 3.2l3.2 3.2"/><path d="M2.6 12.6h10.8"/></svg></button>
+    <button class="tbtn" title="刷新"><svg class="svg" viewBox="0 0 16 16"><path d="M13.2 8a5.2 5.2 0 1 1-1.52-3.68"/><path d="M13.6 1.6v3h-3"/></svg></button>
+    <button class="tbtn" title="设置"><svg class="svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg></button>
+  </div>
+  <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+    <span class="col-label old" style="margin:0">Before（现状 emoji）</span>
+    <span style="font-size:14px;letter-spacing:6px;color:var(--t2)">⎔ ☰ ▣ 🗂 ⚙ ⟳ ⤓ ⤒ ⟲</span>
+    <span style="font-size:11px;color:var(--t3)">（不同平台字体下大小/基线/是否有彩色表情均不可控）</span>
+  </div>
+</div>
+
+<!-- ============ 5. 令牌 ============ -->
+<h2>5 · 设计令牌速览<span class="tag">4PX 网格 · 字号收敛 · 语义配方</span></h2>
+<div class="panel"><div class="tokens">
+  <div class="tok-group"><h3>间距（4px 网格）</h3>
+    <div class="tok"><span class="box" style="width:4px;height:12px"></span>sp-1 · 4px</div>
+    <div class="tok"><span class="box" style="width:8px;height:12px"></span>sp-2 · 8px（行内）</div>
+    <div class="tok"><span class="box" style="width:12px;height:12px"></span>sp-3 · 12px（面板内边距/右缘基准）</div>
+    <div class="tok"><span class="box" style="width:16px;height:12px"></span>sp-4 · 16px（区块间距）</div>
+  </div>
+  <div class="tok-group"><h3>字号（5 档，替 11 档）</h3>
+    <div class="tok" style="font-size:10.5px">xs 10.5 · 徽标/计数</div>
+    <div class="tok" style="font-size:11px">s 11 · 表头/辅助</div>
+    <div class="tok" style="font-size:12px">m 12 · 正文/行数据</div>
+    <div class="tok" style="font-size:13px">l 13 · 面板标题</div>
+    <div class="tok" style="font-size:14px">xl 14 · 模态标题</div>
+  </div>
+  <div class="tok-group"><h3>语义配方（统一）</h3>
+    <div class="tok"><span class="sw" style="background:#3794ff"></span>info 蓝 · 进度/中性动作</div>
+    <div class="tok"><span class="sw" style="background:#89d185"></span>success 绿 · 成功/后续动作</div>
+    <div class="tok"><span class="sw" style="background:#cca700"></span>warn 黄 · 注意/降级</div>
+    <div class="tok"><span class="sw" style="background:#f14c4c"></span>danger 红 · 失败/破坏性</div>
+    <div class="tok"><span class="sw" style="background:#b180d7"></span>accent 紫 · 移动/重命名</div>
+    <div class="tok" style="color:var(--t3)">底 10% · 边框 42% · 图标全色 · 标题前景色</div>
+  </div>
+</div></div>
+
+<!-- ============ 6. 阻塞态 ============ -->
+<h2>6 · 交互依赖阻塞设计<span class="tag">v1.1 增补 · 三态：禁用 / 在途 / 决策</span></h2>
+<div class="desc">有依赖的交互加阻塞：状态门控的按钮<b>预禁用并说明原因</b>（title）；在途操作<b>可点击=排队</b>（不再静默吞点击）；真互斥且后果严重的保留<b>模态决策</b>。任何阻塞期间中止/取消恒可用。</div>
+<div class="panel" style="max-width:760px">
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+    <span class="col-label new" style="margin:0">禁用态（状态门控）</span>
+    <button class="btn pri" style="opacity:.45;cursor:not-allowed" title="存在未解决冲突：请先完成冲突解决">提交 ⏎</button>
+    <button class="btn ghost" style="opacity:.45;cursor:not-allowed" title="存在未完成合并：请先完成或放弃合并">⤒ 推送</button>
+    <button class="btn ghost" style="opacity:.45;cursor:not-allowed" title="没有已暂存的更改">AI 生成</button>
+    <span style="font-size:11px;color:var(--t3)">▲ hover 显示禁用原因（禁用必须可解释）</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+    <span class="col-label new" style="margin:0">在途态（排队可见）</span>
+    <button class="btn ghost" style="color:var(--blue)" title="排队中 · 第 2 位">⟳ Fetch<span class="mini-spin"></span></button>
+    <span style="font-size:11px;color:var(--blue)">Pull · 45% · 3.2s</span>
+    <span style="font-size:11px;color:var(--t3)">▲ 同车道在途时点击=入队（去重），按钮不再吞点击</span>
+    <style>.mini-spin{display:inline-block;width:9px;height:9px;border:1.5px solid currentColor;border-top-color:transparent;border-radius:50%;margin-left:5px;vertical-align:-1px;animation:mspin .8s linear infinite}@keyframes mspin{to{transform:rotate(360deg)}}</style>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <span class="col-label new" style="margin:0">决策态（模态保留）</span>
+    <button class="btn" style="background:transparent;color:var(--red);border:1px solid color-mix(in srgb, var(--red) 45%, transparent);opacity:.45;cursor:not-allowed" title="执行中…">重置（hard）</button>
+    <span style="font-size:11px;color:var(--t3)">▲ 危险确认 OK 首点即禁用防二连点；reset hard / push 被拒 / 删除仍走模态</span>
+  </div>
+</div>
+
+<footer>
+  GitBoard · Issue #18 UI 重构设计预览（mock）· 待用户批准后实施 · 获批后本文件随实施分支入库，实现以 VS Code 主题变量为准（明暗主题自适应）
+</footer>
+
+</body>
+</html>

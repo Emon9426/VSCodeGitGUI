@@ -7,9 +7,9 @@
 import type { DiffPayload, FileHistoryItem } from '../../common/models';
 import { S, type App } from '../state';
 import { el, formatDateTime } from '../util';
-import { fileIconSvg } from '../icons';
+import { fileIconSvg, iconSvg } from '../icons';
 import { renderDiff } from '../diff/render';
-import { confirmDialog, toast } from './overlays';
+import { confirmDialog, toast, mkBanner } from './overlays';
 
 export function createFilePanel(app: App) {
   const root = el('div', 'gg-filepanel');
@@ -32,14 +32,12 @@ export function createFilePanel(app: App) {
   fh.append(fhIco, fhName, fhCrumb, chain, el('span', 'gg-fp-sp'), fol);
   root.append(fh);
 
-  // ---------- 移动引导横幅 ----------
-  const banner = el('div', 'gg-fp-banner hidden');
-  const bannerText = el('span', 'gg-fp-banner-t');
-  const bannerBtn = el('button', 'gg-fp-banner-btn hero') as HTMLButtonElement;
-  bannerBtn.textContent = '';   // fill in update
-  const bannerSkip = el('button', 'gg-fp-banner-btn') as HTMLButtonElement;
-  bannerSkip.textContent = S.t('moveIgnore');
-  banner.append(el('span', undefined, '🗂'), bannerText, el('span', 'gg-fp-sp'), bannerBtn, bannerSkip);
+  // ---------- 移动引导横幅（统一 .gg-banner.accent，Issue #18 S3） ----------
+  const banner = mkBanner('accent');
+  const bannerBtn = el('button', 'gg-fp-banner-btn') as HTMLButtonElement;
+  const bannerSkip = el('button', 'gg-btn small ghost') as HTMLButtonElement;
+  banner.acts.append(bannerBtn, bannerSkip);
+  banner.el.classList.add('hidden');
   bannerBtn.addEventListener('click', () => {
     const mb = S.files.moveBanner;
     if (!mb) return;
@@ -50,7 +48,7 @@ export function createFilePanel(app: App) {
     update();
   });
   bannerSkip.addEventListener('click', () => { S.files.moveBanner = undefined; update(); });
-  root.append(banner);
+  root.append(banner.el);
 
   // ---------- 多选批量面板 ----------
   const multi = el('div', 'gg-fp-multi hidden');
@@ -64,20 +62,24 @@ export function createFilePanel(app: App) {
   const histOpsHint = el('span', 'gg-fp-opshint');
   histHead.append(el('span', undefined, S.t('filesHist')), histCount, histNote, el('span', 'gg-fp-sp'), histOpsHint);
   const histList = el('div', 'gg-fp-list');
-  const cmpBar = el('div', 'gg-fp-cmpbar hidden');
+  // 比对条（统一 .gg-banner.info，Issue #18 S3）
+  const cmpBar = mkBanner('info');
   const cmpText = el('span');
   const cmpBtn = el('button', 'gg-fp-cmpbtn') as HTMLButtonElement;
   cmpBtn.textContent = S.t('filesCmpBtn');
   cmpBtn.addEventListener('click', () => app.filesVersionDiff());
-  cmpBar.append(cmpText, cmpBtn);
-  histWrap.append(histHead, histList, cmpBar);
+  cmpBar.title.appendChild(cmpText);
+  cmpBar.acts.append(cmpBtn);
+  cmpBar.el.classList.add('hidden');
+  histWrap.append(histHead, histList, cmpBar.el);
   root.append(histWrap);
 
   // ---------- 比对 diff 视图 ----------
   const diffWrap = el('div', 'gg-fp-diff hidden');
   const diffHead = el('div', 'gg-fp-diffhead');
   const backBtn = el('button', 'gg-fp-back') as HTMLButtonElement;
-  backBtn.textContent = '⟵ ' + S.t('filesBack');
+  const backLabel = el('span');
+  backBtn.append(iconSvg('chevronLeft'), backLabel);
   backBtn.addEventListener('click', () => {
     S.files.diff = undefined;
     S.files.diffPair = undefined;
@@ -97,13 +99,15 @@ export function createFilePanel(app: App) {
   }
 
   function update(): void {
+    backLabel.textContent = S.t('filesBack');
     // 横幅
     const mb = S.files.moveBanner;
-    banner.classList.toggle('hidden', !mb);
+    banner.el.classList.toggle('hidden', !mb);
     if (mb) {
-      bannerText.innerHTML = '';
-      bannerText.append(document.createTextNode(S.t('moveBannerText', { from: mb.from || (mb.srcs[0] ?? ''), to: mb.dst || '/', n: String(mb.srcs.length) })));
+      banner.title.textContent = S.t('moveBannerTitleText');
+      banner.body.textContent = S.t('moveBannerText', { from: mb.from || (mb.srcs[0] ?? ''), to: mb.dst || '/', n: String(mb.srcs.length) });
       bannerBtn.textContent = S.t('moveCommitBtn');
+      bannerSkip.textContent = S.t('moveIgnore');
     }
     // 比对态优先
     if (S.files.diff && S.files.diffPair) {
@@ -175,11 +179,11 @@ export function createFilePanel(app: App) {
     multi.append(el('h3', undefined, S.t('filesSelMulti', { n: String(S.files.sel.length) })));
     multi.append(el('div', 'gg-fp-multi-sub', S.t('filesMultiHint')));
     const ops = el('div', 'gg-fp-multi-ops');
-    const bDel = el('button', 'gg-files-cbtn danger') as HTMLButtonElement;
-    bDel.textContent = `🗑 ${S.t('filesDelete')}（${S.files.sel.length}）`;
+    const bDel = el('button', 'gg-files-cbtn danger has-ic') as HTMLButtonElement;
+    bDel.append(iconSvg('trash'), el('span', undefined, `${S.t('filesDelete')}（${S.files.sel.length}）`));
     bDel.addEventListener('click', () => app.folderDelete([...S.files.sel]));
-    const bMove = el('button', 'gg-files-cbtn') as HTMLButtonElement;
-    bMove.textContent = `✂ ${S.t('filesMove')}（${S.files.sel.length}）`;
+    const bMove = el('button', 'gg-files-cbtn has-ic') as HTMLButtonElement;
+    bMove.append(iconSvg('movePath'), el('span', undefined, `${S.t('filesMove')}（${S.files.sel.length}）`));
     bMove.addEventListener('click', () => app.folderMove([...S.files.sel]));
     ops.append(bDel, bMove);
     multi.append(ops);
@@ -222,7 +226,7 @@ export function createFilePanel(app: App) {
       if (idx === items.length - 1) row.classList.add('last');
       // 勾选框（恰好 2 条，第 3 个挤掉最早）
       const ck = el('span', 'gg-fp-ck' + (S.files.picked.some(p => p.sha === it.sha) ? ' on' : ''));
-      ck.textContent = S.files.picked.some(p => p.sha === it.sha) ? '✓' : '';
+      ck.textContent = S.files.picked.some(p => p.sha === it.sha) ? '✓' : '';   // 文本对勾（非 emoji，跨平台稳定）
       ck.addEventListener('click', e => {
         e.stopPropagation();
         const i = S.files.picked.findIndex(p => p.sha === it.sha);
@@ -257,11 +261,11 @@ export function createFilePanel(app: App) {
       const acts = el('span', 'gg-fp-acts');
       const aInfo = el('button', 'gg-fp-act') as HTMLButtonElement;
       aInfo.title = S.t('filesDetail');
-      aInfo.textContent = 'ⓘ';
+      aInfo.appendChild(iconSvg('info'));
       aInfo.addEventListener('click', e => { e.stopPropagation(); toggleDetail(it); });
       const aVer = el('button', 'gg-fp-act') as HTMLButtonElement;
       aVer.title = S.t('filesOpenVer');
-      aVer.textContent = '📄';
+      aVer.appendChild(iconSvg('goToFile'));
       aVer.addEventListener('click', e => { e.stopPropagation(); app.openFileAt(it.sha, it.path); });
       acts.append(aInfo, aVer);
       row.append(ck, tl, msg);
@@ -276,11 +280,11 @@ export function createFilePanel(app: App) {
     });
     // 比对条
     if (S.files.picked.length === 2) {
-      cmpBar.classList.remove('hidden');
+      cmpBar.el.classList.remove('hidden');
       const [a, b] = S.files.picked;
       cmpText.textContent = S.t('filesCmpSel', { a: a.shortSha, b: b.shortSha });
     } else {
-      cmpBar.classList.add('hidden');
+      cmpBar.el.classList.add('hidden');
     }
   }
 

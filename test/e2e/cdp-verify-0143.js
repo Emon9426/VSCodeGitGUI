@@ -83,7 +83,7 @@ const check = (name, cond, detail) => { results.push({ name, pass: !!cond, detai
   check('命令条不透明', geo.cmdbarA === 1, 'alpha=' + geo.cmdbarA);
   check('命令按钮不透明', geo.cbtnA === 1, 'alpha=' + geo.cbtnA);
   check('地址栏/命令条与列表无重叠', geo.noOverlap, JSON.stringify({ addr: geo.addr, cmdbar: geo.cmdbar, list: geo.list }));
-  check('地址栏有面包屑内容', /🏠|🗂/.test(geo.addrText), geo.addrText.slice(0, 30));
+  check('地址栏有面包屑内容', /仓库根|repo root/i.test(geo.addrText), geo.addrText.slice(0, 30));
   await page.screenshot({ path: '.playwright-mcp/v0143-files-dark.png' });
 
   // 4) 图视图：选提交 → 详情面板变更文件列表（改名后的 gg-dfiles）
