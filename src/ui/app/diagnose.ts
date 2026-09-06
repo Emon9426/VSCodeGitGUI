@@ -9,7 +9,7 @@ import { rpc } from '../rpc';
 import { S } from '../state';
 import { el } from '../util';
 import { iconSvg } from '../icons';
-import { confirmDialog, notify, openModal } from './overlays';
+import { notify, openModal } from './overlays';
 
 export interface DiagnosePayload {
   kind: string;
@@ -42,6 +42,42 @@ export function buildDiagPayload(m: Pick<OpResult, 'kind' | 'command' | 'exitCod
 type DiagErrCode = 'noModel' | 'auth' | 'quota' | 'canceled' | 'error';
 
 let session: DiagnoseSession | undefined;
+
+/**
+ * S6 危险确认（图标 + 命令行 + 不可撤销红副行，同 reset hard 警示配方）：
+ * confirm 级修复步骤执行前逐条弹 出；「一键执行」不豁免确认。
+ * B4 首点即禁用防双击重复触发。
+ */
+function dangerConfirm(title: string, cmd: string): Promise<boolean> {
+  return new Promise(resolve => {
+    const { box, body, close } = openModal(S.t('fixConfirmTitle', { title }));
+    const overlay = box.parentElement as HTMLElement;
+    overlay.classList.add('deep');
+    const head = el('div', 'gg-dc-head');
+    head.appendChild(iconSvg('warnTriangle'));
+    const cmdLine = el('span', undefined);
+    cmdLine.append(
+      el('span', 'gg-dc-pre', S.t('fixConfirmCmd')),
+      el('code', 'gg-dc-cmd', cmd),
+    );
+    head.appendChild(cmdLine);
+    const irrev = el('div', 'gg-dc-irrev');
+    irrev.appendChild(iconSvg('errorX'));
+    irrev.appendChild(el('span', undefined, S.t('fixConfirmText')));
+    body.append(head, irrev);
+    const btns = el('div', 'gg-modal-btns');
+    const cancel = el('button', 'gg-btn', S.t('cancel'));
+    const ok = el('button', 'gg-btn danger', S.t('fixRunStep'));
+    const done = (v: boolean): void => { close(); resolve(v); };
+    cancel.addEventListener('click', () => { ok.disabled = true; cancel.disabled = true; done(false); });
+    ok.addEventListener('click', () => { ok.disabled = true; cancel.disabled = true; done(true); });
+    overlay.addEventListener('mousedown', e => { if (e.target === overlay) done(false); });
+    box.addEventListener('keydown', e => { if (e.key === 'Escape') done(false); });
+    btns.append(cancel, ok);
+    box.appendChild(btns);
+    ok.focus();
+  });
+}
 
 /** 打开诊断模态并发起请求；已有会话则先取消关闭（单会话） */
 export function startDiagnosis(payload: DiagnosePayload, opts?: { retry?: () => void }): void {
@@ -118,8 +154,24 @@ class DiagnoseSession {
   onChunk(text: string): void {
     if (this.destroyed || this.state !== 'streaming') return;
     this.text += text;
-    this.textEl.textContent = this.text;
+    this.renderText();
     this.autoScroll();
+  }
+
+  /** 流式文本渲染：'## 标题' 行升级为小节标题（模型契约的三段式），其余原样 pre-wrap */
+  private renderText(): void {
+    this.textEl.textContent = '';
+    for (const line of this.text.split('\n')) {
+      const h = line.match(/^##\s+(.*)$/);
+      if (h) {
+        if (this.textEl.childNodes.length) this.textEl.appendChild(el('div', 'gg-diag-gap'));
+        this.textEl.appendChild(el('div', 'gg-diag-h', h[1]));
+      } else {
+        const p = el('div', 'gg-diag-p', line);
+        if (!line) p.classList.add('empty');
+        this.textEl.appendChild(p);
+      }
+    }
   }
 
   onDone(model: string, steps?: FixStepDto[]): void {
@@ -247,15 +299,10 @@ class DiagnoseSession {
     }
   }
 
-  /** 单步执行：confirm → webview 危险确认；rpc 宿主重校验并走 op 队列 */
+  /** 单步执行：confirm → S6 危险确认（图标+命令+不可撤销副行）；rpc 宿主重校验并走 op 队列 */
   private async execStep(st: FixStepDto): Promise<'ok' | 'fail' | 'cancel'> {
     if (st.level === 'confirm') {
-      const ok = await confirmDialog(
-        S.t('fixConfirmTitle', { title: st.title }),
-        S.t('fixConfirmText', { cmd: st.cmd }),
-        S.t('fixRunStep'),
-        true,
-      );
+      const ok = await dangerConfirm(st.title, st.cmd);
       if (!ok) return 'cancel';
     }
     const entry = this.rows.get(st.index);

@@ -1403,3 +1403,24 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fix-stopped .gg-btn { margin-left: auto; flex: none; }
 .gg-fix-allok { padding: 6px 10px; font-size: var(--gg-fs-m); color: var(--gg-ok);
   background: var(--gg-ok-bg); border-top: 1px solid var(--vscode-panel-border, #333); }
+.gg-fix-verified { color: var(--gg-t2); }
+.gg-fix-badge { min-width: 68px; text-align: center; }
+
+/* 诊断小节标题（模型契约的 ## 三段式 → 结构化渲染） */
+.gg-diag-h { font-size: var(--gg-fs-l); font-weight: 600; color: var(--vscode-foreground); }
+.gg-diag-p { font-size: var(--gg-fs-m); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.gg-diag-p.empty { height: 0.5em; }
+.gg-diag-gap { height: 10px; }
+
+/* S6 危险确认（confirm 级修复步骤）：图标+命令行+不可撤销红副行；叠于诊断模态上加深遮罩 */
+.gg-modal-overlay.deep { background: rgba(0, 0, 0, 0.6); }
+.gg-dc-head { display: flex; align-items: center; gap: 8px; color: var(--gg-err); font-size: var(--gg-fs-m); flex-wrap: wrap; }
+.gg-dc-head .gg-ic { width: 15px; height: 15px; flex: none; }
+.gg-dc-pre { color: var(--gg-t2); }
+.gg-dc-cmd { font-family: var(--vscode-editor-font-family, Consolas, monospace); font-size: var(--gg-fs-m);
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  border-radius: var(--gg-r-s); padding: 2px 7px; word-break: break-all; }
+.gg-dc-irrev { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 8px 10px;
+  border-radius: var(--gg-r-m); font-size: var(--gg-fs-s); line-height: 1.5;
+  color: var(--gg-err); background: var(--gg-err-bg); border: 1px solid var(--gg-err-bd); }
+.gg-dc-irrev .gg-ic { width: 13px; height: 13px; margin-top: 1px; flex: none; }
