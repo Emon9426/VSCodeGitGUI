@@ -70,6 +70,20 @@ export interface OpResult {
   verify?: 'pass' | 'warn' | 'unknown';
   /** 涉及的文件路径（Issue #7）：冲突解决类失败时前端精确解除行内乐观态 */
   paths?: string[];
+  /** 失败时最后执行的 git 命令行（Issue #8：AI 诊断上下文；取消/停滞无值） */
+  command?: string;
+  /** 失败时的 git 退出码（Issue #8：AI 诊断上下文） */
+  exitCode?: number;
+  /** 网络停滞看门狗触发（Issue #8：前端据此不提供 AI 诊断入口，文案已专属） */
+  stalled?: boolean;
+}
+
+/** AI 修复方案步骤（Issue #8 P2）：level 由本地校验器独立判定，不读模型自报 risk */
+export interface FixStepDto {
+  index: number;                       // 1 起，aiFixStep 的引用键
+  title: string;
+  cmd: string;
+  level: 'run' | 'confirm' | 'copy';   // 可直接执行 / 需 S6 确认 / 仅复制（永不执行）
 }
 
 /** 用户自定义列宽（持久化于 globalState，时间为自适应剩余列不持久化） */
@@ -113,6 +127,10 @@ export type ExtEvent =
   | { t: 'aiChunk'; text: string }
   | { t: 'aiDone'; model: string; instructions: number; fallback?: boolean }
   | { t: 'aiError'; code: 'noModel' | 'auth' | 'quota' | 'canceled' | 'error'; message?: string }
+  // AI 错误诊断（Issue #8）：流式分析 + 完成附带已校验的修复步骤（P2）
+  | { t: 'diagChunk'; text: string }
+  | { t: 'diagDone'; model: string; steps?: FixStepDto[] }
+  | { t: 'diagError'; code: 'noModel' | 'auth' | 'quota' | 'canceled' | 'error'; message?: string }
   // 文件历史页（v0.14）：explorer 右键「查看文件历史」→ 打开面板切文件视图并定位路径
   | { t: 'filesReveal'; path: string };
 
@@ -182,6 +200,10 @@ export type WVCommand =
   | 'work.aiModels'         // {} -> AiModelInfo[]
   | 'work.aiGenerate'       // { modelId? }
   | 'work.aiCancel'         // {}
+  // AI 错误诊断（Issue #8）：{ kind, command?, exitCode?, message?, outputTail?, branch?, upstream?, ahead?, behind? }
+  | 'err.aiDiagnose'        // -> null（结果经 diagChunk/diagDone/diagError 事件流式回传）
+  | 'err.aiDiagnoseCancel'  // {}
+  | 'err.aiFixStep'         // { index } -> { ok }（宿主重校验后走现有 op 队列执行）
   | 'work.saveDraft'        // { draft: CommitDraft }
   | 'work.loadDraft'        // {} -> CommitDraft | null
   | 'work.saveLayout'        // { filesW, barH }
