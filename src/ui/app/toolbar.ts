@@ -241,6 +241,8 @@ export function createToolbar(app: App): Toolbar {
 
   function update(): void {
     versionLabel.textContent = S.version ? `v${S.version}` : '';
+    // C3（#22）：窄视口紧凑——视图切换收为纯图标（title 仍有全名）、分段钮缩边距，避免过早换行
+    document.body.classList.toggle('gg-tb-narrow', root.clientWidth > 0 && root.clientWidth < 1080);
     // 视图分段控件（文案随语言刷新；图标常驻只刷 label span——S4 结构）
     graphBtn.classList.toggle('on', S.view === 'graph');
     pureBtn.classList.toggle('on', S.view === 'pure');

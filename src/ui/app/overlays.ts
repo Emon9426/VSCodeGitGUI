@@ -214,9 +214,44 @@ let notifHost: HTMLElement | undefined;
 /** 超限折叠计数：最早的非常驻通知让位给新通知，计数行提示还有多少条 */
 let notifHidden = 0;
 
+/** 通知宽度拖拽保存回调（main.ts 装配时注入：宽度存宿主 globalState 跨会话记忆） */
+let notifyWidthSaver: ((w: number) => void) | undefined;
+export function bindNotifyWidthSave(save: (w: number) => void): void {
+  notifyWidthSaver = save;
+}
+
+const NOTIFY_W_MIN = 320, NOTIFY_W_MAX = 560;
+
+/** 当前通知宽度：拖拽记忆（S.notifyWidthSaved）优先，否则配置值 */
+function notifyWidth(): number {
+  const w = S.notifyWidthSaved ?? S.config.notifyWidth;
+  return Math.max(NOTIFY_W_MIN, Math.min(NOTIFY_W_MAX, w || 420));
+}
+
 function notifHostEl(): HTMLElement {
   if (!notifHost) {
     notifHost = el('div', 'gg-notifs');
+    notifHost.style.width = `${notifyWidth()}px`;
+    // 左缘拖拽手柄（#22 B1）：向左拖加宽/向右拖收窄，松开存 globalState 记忆
+    const grip = el('div', 'gg-notifs-grip');
+    grip.title = '↔';
+    grip.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = notifHost!.getBoundingClientRect().width;
+      const move = (ev: MouseEvent) => {
+        notifHost!.style.width = `${Math.max(NOTIFY_W_MIN, Math.min(NOTIFY_W_MAX, Math.round(startW - (ev.clientX - startX))))}px`;
+      };
+      const up = (ev: MouseEvent) => {
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+        const w = Math.round(startW - (ev.clientX - startX));
+        if (w >= NOTIFY_W_MIN && w <= NOTIFY_W_MAX) notifyWidthSaver?.(w);
+      };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    });
+    notifHost.appendChild(grip);
     document.body.appendChild(notifHost);
   }
   return notifHost;

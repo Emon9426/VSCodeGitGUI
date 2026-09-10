@@ -29,6 +29,7 @@
   "cfg.graphColumnWidth": "图形列宽度（像素）。",
   "cfg.graphBranchScope": "提交图默认范围：local（本地分支及其上游，默认）、all（全部引用）或 current（当前分支及其上游）。",
   "cfg.branchGroupByPrefix": "侧栏分支按名称前缀（“/”前段）分组，组头可折叠。",
+  "cfg.notifyWidth": "右下角通知区宽度（像素，320–560）。拖拽通知区左缘可实时调整并记忆（优先于此设置）。",
   "cfg.showRemoteChips": "在提交行显示远程分支徽标。",
   "cfg.maxTagChips": "单个提交行最多显示的标签徽标数。",
   "cfg.detailPanelPosition": "提交详情面板的位置。",

@@ -40,6 +40,8 @@ export interface ConfigDto {
   startView: 'graph' | 'work' | 'last';
   /** Pull/Fetch 后弹窗显示拉到的纯净提交摘要（v0.13） */
   pullFetchSummary: boolean;
+  /** 通知区默认宽度 px（#22 B1，320–560）：拖拽记忆（globalState）优先于此配置 */
+  notifyWidth: number;
 }
 
 export type OpKind = 'fetch' | 'pull' | 'push' | 'reset' | 'checkout'
@@ -110,6 +112,8 @@ export type ExtEvent =
       sideCollapsed?: boolean;
       /** 分支分组折叠的组名集合（Issue #24）：跨会话保持 */
       branchGroupsCollapsed?: string[];
+      /** 通知区拖拽记忆宽度 px（#22 B1）：无拖拽历史时缺省（用配置值） */
+      notifyWidthSaved?: number;
       /** 工作副本文件列表宽度 px：跨会话恢复 */
       workFilesW?: number;
       /** 已保存的工程列表 / 当前工作区命中的工程 / 工作区根路径（v0.11） */
@@ -234,7 +238,8 @@ export type WVCommand =
   | 'folder.delete'         // { paths: string[] }（已跟踪 git rm / 未跟踪磁盘删除）
   | 'ui:saveFilesLayout'    // { paneW, cols }（面板宽度与列宽持久化）
   | 'ui:saveSideCollapsed'  // { collapsed }（侧栏折叠状态持久化，v0.14.1）
-  | 'ui:saveBranchGroups';  // { collapsed: string[] }（分支分组折叠组名集合持久化，Issue #24）
+  | 'ui:saveBranchGroups'  // { collapsed: string[] }（分支分组折叠组名集合持久化，Issue #24）
+  | 'ui:saveNotifyWidth';  // { width }（通知区拖拽宽度持久化，#22 B1）
 
 export interface Pending {
   resolve: (v: any) => void;
