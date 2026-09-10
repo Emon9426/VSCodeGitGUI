@@ -114,6 +114,8 @@ export type ExtEvent =
       branchGroupsCollapsed?: string[];
       /** 通知区拖拽记忆宽度 px（#22 B1）：无拖拽历史时缺省（用配置值） */
       notifyWidthSaved?: number;
+      /** 侧栏拖拽宽度 px（170–460）：无记忆时缺省（220 固定值） */
+      sideWidth?: number;
       /** 工作副本文件列表宽度 px：跨会话恢复 */
       workFilesW?: number;
       /** 已保存的工程列表 / 当前工作区命中的工程 / 工作区根路径（v0.11） */
@@ -239,7 +241,8 @@ export type WVCommand =
   | 'ui:saveFilesLayout'    // { paneW, cols }（面板宽度与列宽持久化）
   | 'ui:saveSideCollapsed'  // { collapsed }（侧栏折叠状态持久化，v0.14.1）
   | 'ui:saveBranchGroups'  // { collapsed: string[] }（分支分组折叠组名集合持久化，Issue #24）
-  | 'ui:saveNotifyWidth';  // { width }（通知区拖拽宽度持久化，#22 B1）
+  | 'ui:saveNotifyWidth'  // { width }（通知区拖拽宽度持久化，#22 B1）
+  | 'ui:saveSideWidth';   // { width }（侧栏拖拽宽度持久化，170–460）
 
 export interface Pending {
   resolve: (v: any) => void;

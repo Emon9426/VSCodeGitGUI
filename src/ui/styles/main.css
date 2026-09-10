@@ -267,8 +267,9 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 /* ---------------- 侧栏 ---------------- */
 
 .gg-side {
-  width: 220px;
-  min-width: 220px;
+  width: var(--gg-side-w, 220px);
+  min-width: 170px;
+  max-width: 460px;
   overflow-y: auto;
   border-right: 1px solid var(--vscode-panel-border, #333);
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
@@ -912,6 +913,13 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .gg-side-edge::after { content: "\00BB"; font-size: 13px; }
 .gg-side-edge:hover { background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent); color: var(--vscode-foreground); }
+
+/* 侧栏右缘拖拽调宽（--gg-side-w 170–460px，globalState 跨会话记忆）；折叠态隐藏 */
+.gg-side-resizer { flex: none; width: 4px; cursor: col-resize; background: transparent; }
+.gg-side-resizer:hover, .gg-side-resizer.drag { background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 55%, transparent); }
+.gg-body.side-off .gg-side-resizer { display: none; }
+.gg-body.side-resizing { user-select: none; }
+.gg-body.side-resizing .gg-side-resizer { background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 55%, transparent); }
 
 .gg-work-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .gg-work { flex: 1; display: flex; min-height: 0; }

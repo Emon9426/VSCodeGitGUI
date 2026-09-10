@@ -527,6 +527,12 @@ export class GraphPanel {
         await this.context.globalState.update('gitboard.notifyWidth', Number.isFinite(w) && w >= 320 && w <= 560 ? w : undefined);
         return null;
       }
+      case 'ui:saveSideWidth': {
+        // 侧栏拖拽宽度：钳制 170–460 后持久化
+        const w = Math.round(Number(args.width));
+        await this.context.globalState.update('gitboard.sideWidth', Number.isFinite(w) && w >= 170 && w <= 460 ? w : undefined);
+        return null;
+      }
       case 'ui:openSettings':
         await vscode.commands.executeCommand('workbench.action.openSettings', 'gitboard');
         return null;
@@ -2050,7 +2056,7 @@ export class GraphPanel {
   }
 
   /** ready 事件的附加字段：面板高度百分比 + 工程列表/命中标记 + 工作区根路径 */
-  private readyExtras(): { detailPct?: number; projects: ProjectInfo[]; activeProjectIds: string[]; workspaceFolders: string[]; filesLayout?: { paneW: number; cols: number[] }; sideCollapsed?: boolean; workFilesW?: number; branchGroupsCollapsed?: string[]; notifyWidthSaved?: number } {
+  private readyExtras(): { detailPct?: number; projects: ProjectInfo[]; activeProjectIds: string[]; workspaceFolders: string[]; filesLayout?: { paneW: number; cols: number[] }; sideCollapsed?: boolean; workFilesW?: number; branchGroupsCollapsed?: string[]; notifyWidthSaved?: number; sideWidth?: number } {
     const projects = this.readProjects();
     const folders = (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath);
     const activeProjectIds = projects.filter(p => folders.some(f => this.samePath(f, p.path))).map(p => p.id);
@@ -2060,6 +2066,7 @@ export class GraphPanel {
     const workLayout = this.context.globalState.get<{ filesW?: number }>('gitboard.workLayout');
     const groupsCollapsed = this.context.globalState.get<string[]>('gitboard.branchGroupsCollapsed');
     const notifyW = this.context.globalState.get<number>('gitboard.notifyWidth');
+    const sideW = this.context.globalState.get<number>('gitboard.sideWidth');
     return {
       detailPct: typeof detailPct === 'number' && Number.isFinite(detailPct) ? detailPct : undefined,
       projects,
@@ -2070,6 +2077,7 @@ export class GraphPanel {
       workFilesW: typeof workLayout?.filesW === 'number' && Number.isFinite(workLayout.filesW) ? workLayout.filesW : undefined,
       branchGroupsCollapsed: Array.isArray(groupsCollapsed) ? groupsCollapsed : undefined,
       notifyWidthSaved: typeof notifyW === 'number' && Number.isFinite(notifyW) && notifyW >= 320 && notifyW <= 560 ? notifyW : undefined,
+      sideWidth: typeof sideW === 'number' && Number.isFinite(sideW) && sideW >= 170 && sideW <= 460 ? sideW : undefined,
     };
   }
 

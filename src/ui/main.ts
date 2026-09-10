@@ -505,6 +505,10 @@ const app: App = {
     S.notifyWidthSaved = width;
     void rpc('ui:saveNotifyWidth', { width }).catch(() => undefined);
   },
+  saveSideWidth(width) {
+    S.sideWidth = Math.max(170, Math.min(460, width));
+    void rpc('ui:saveSideWidth', { width: S.sideWidth }).catch(() => undefined);
+  },
 };
 
 function showErr(e: unknown): void {
@@ -622,7 +626,30 @@ const bodyEl = el('div', 'gg-body');
 const sideEdge = el('button', 'gg-side-edge hidden');
 sideEdge.title = '';
 sideEdge.addEventListener('click', () => app.toggleSide());
-bodyEl.append(sidebar.el, sideEdge, mainEl);
+// 侧栏右缘拖拽调宽（用户反馈：宽度固定 220px 不可调）——宽 170–460 钳制，globalState 跨会话记忆
+const clampSideW = (w: number): number => Math.max(170, Math.min(460, w));
+function applySideWidth(w: number): void {
+  S.sideWidth = clampSideW(w);
+  bodyEl.style.setProperty('--gg-side-w', `${S.sideWidth}px`);
+}
+const sideResizer = el('div', 'gg-side-resizer');
+sideResizer.title = '';
+sideResizer.addEventListener('mousedown', e => {
+  e.preventDefault();
+  const startX = e.clientX;
+  const startW = sidebar.el.getBoundingClientRect().width;
+  bodyEl.classList.add('side-resizing');
+  const move = (ev: MouseEvent) => applySideWidth(Math.round(startW + ev.clientX - startX));
+  const up = (ev: MouseEvent) => {
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+    bodyEl.classList.remove('side-resizing');
+    app.saveSideWidth(clampSideW(Math.round(startW + ev.clientX - startX)));
+  };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+});
+bodyEl.append(sidebar.el, sideResizer, sideEdge, mainEl);
 const host = document.getElementById('app');
 if (host) {
   host.append(toolbar.el, opstatus.el, bodyEl, mergeview.el);
@@ -635,6 +662,7 @@ function applyLayout(): void {
   bodyEl.classList.toggle('side-off', S.sideCollapsed);
   sideEdge.classList.toggle('hidden', !S.sideCollapsed);
   sideEdge.title = S.t('sideShow');
+  sideResizer.title = S.t('sideResizeTip');
 }
 
 /** 视图切换：display 切换不销毁 DOM（草稿/滚动/选中全部保留）；pure 复用提交列表（隐藏图形列） */
@@ -775,6 +803,7 @@ window.addEventListener('message', e => {
       if (typeof m.sideCollapsed === 'boolean') S.sideCollapsed = m.sideCollapsed;
       if (Array.isArray(m.branchGroupsCollapsed)) S.branchGroupsCollapsed = new Set(m.branchGroupsCollapsed);
       if (typeof m.notifyWidthSaved === 'number') S.notifyWidthSaved = m.notifyWidthSaved;
+      if (typeof m.sideWidth === 'number') applySideWidth(m.sideWidth);   // applySideWidth 定义于装配段之后，事件到达时已存在
       if (typeof m.workFilesW === 'number') workview.applyFilesWidth(m.workFilesW);   // 工作副本列宽跨会话恢复
       restoreSha = m.selectedSha;
       applyThemeKind();

@@ -98,6 +98,8 @@ export interface App {
   toggleBranchGroup(key: string): void;
   /** 保存通知区拖拽宽度（#22 B1）：宿主 globalState 跨会话记忆 */
   saveNotifyWidth(width: number): void;
+  /** 保存侧栏拖拽宽度：宿主 globalState 跨会话记忆（170–460） */
+  saveSideWidth(width: number): void;
 }
 
 export const S = {
@@ -143,6 +145,8 @@ export const S = {
   branchGroupsCollapsed: new Set<string>() as Set<string>,
   /** 通知区拖拽记忆宽度（#22 B1；ready 时由扩展侧 globalState 覆盖，优先于 config.notifyWidth） */
   notifyWidthSaved: undefined as number | undefined,
+  /** 侧栏宽度（拖拽调宽；ready 时由扩展侧持久化值覆盖） */
+  sideWidth: 220,
   /** 进行中的操作（opId → 最近进度；queued=排队中位次，Issue #7） */
   activeOps: new Map<number, { kind: string; text: string; pct?: number; queued?: boolean; position?: number }>(),
 
