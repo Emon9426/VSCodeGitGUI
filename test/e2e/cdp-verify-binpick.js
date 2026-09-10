@@ -76,7 +76,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     conflicts: [...document.querySelectorAll('.gg-work-row.conflict')].map(r => r.querySelector('.gg-work-fpath')?.title),
     mergeOpen: !document.querySelector('.gg-merge')?.classList.contains('hidden'),
     mergeTitle: document.querySelector('.gg-merge:not(.hidden) .gg-merge-fname')?.textContent,
-    toast: document.querySelector('.gg-toast')?.textContent.trim().slice(0, 120) || null,
+    toast: document.querySelector('.gg-notif')?.textContent.trim().slice(0, 120) || null,
   }))()`);
   console.log('AFTER:', JSON.stringify(after));
   gb.ws.close();

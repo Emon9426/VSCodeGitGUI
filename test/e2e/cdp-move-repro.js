@@ -81,13 +81,13 @@ function windowTitles() {
     console.log('✗ 对话框未检出。新窗口:', JSON.stringify(news.slice(0, 6)));
     // 检查 webview 侧是否有 toast（错误反馈）
     await sleep(1000);
-    const toast = await E(`document.querySelector('.gg-toast')?.textContent ?? 'none'`);
+    const toast = await E(`document.querySelector('.gg-notif')?.textContent ?? 'none'`);
     console.log('webview toast:', toast);
   }
   // 关对话框（若有）：对前台窗口发 Esc（SendKeys）
   try { execSync('powershell -NoProfile -Command "$w = New-Object -ComObject WScript.Shell; $w.SendKeys(\'{ESC}\')"', { timeout: 8000 }); } catch { }
   await sleep(1500);
-  const toastAfter = await E(`document.querySelector('.gg-toast')?.textContent ?? 'none'`);
+  const toastAfter = await E(`document.querySelector('.gg-notif')?.textContent ?? 'none'`);
   console.log('取消后 toast（应无错误）:', toastAfter);
   gbWs.close();
   process.exit(0);

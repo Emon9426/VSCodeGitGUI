@@ -5,6 +5,7 @@
  */
 import { S, type App } from '../state';
 import { el } from '../util';
+import { iconSvg, type IconName } from '../icons';
 
 export interface OpStatus {
   el: HTMLElement;
@@ -14,13 +15,21 @@ export interface OpStatus {
   finish(kind: string, warn?: boolean): void;
 }
 
-/** 进度行图标（与工具栏按钮一致） */
-const KIND_ICON: Record<string, string> = {
-  fetch: '⟳', pull: '⤓', push: '⤒', refresh: '⟲', commit: '✎', commitNoEdit: '✎',
-  resolveConflict: '⑂', discard: '⌫', discardClean: '⌫', stage: '＋', unstage: '－',
+/** 进度行图标（与工具栏按钮一致的 SVG 线性图标，Issue #18 S4 去 emoji） */
+const KIND_ICON: Record<string, IconName> = {
+  fetch: 'syncFetch', pull: 'pullDown', push: 'pushUp', refresh: 'refresh',
+  commit: 'pencil', commitNoEdit: 'pencil',
+  resolveConflict: 'branch', discard: 'trash', discardClean: 'trash',
+  stage: 'plus', unstage: 'minus',
 };
 /** 秒级完成、取消无意义的操作 */
 const NO_CANCEL = new Set(['refresh', 'stage', 'unstage']);
+
+/** 图标槽：span 内替换 SVG（currentColor 跟随状态色） */
+function setIcon(el: HTMLElement, name: IconName): void {
+  el.textContent = '';
+  el.appendChild(iconSvg(name));
+}
 
 export function createOpStatus(app: App): OpStatus {
   const root = el('div', 'gg-opstatus off');
@@ -80,9 +89,11 @@ export function createOpStatus(app: App): OpStatus {
       startTimer();
     }
     root.classList.remove('off', 'done');
-    // Issue #7 排队态：入队未执行——⏳ + 位次，明确「点上了、在第几位」；执行开始由后续 opProgress 切换
+    // Issue #7 排队态：入队未执行——沙漏 + 位次，明确「点上了、在第几位」；执行开始由后续 opProgress 切换
     const queued = op.queued === true;
-    icon.textContent = queued ? '⏳' : (KIND_ICON[op.kind] ?? '⏳');
+    if (queued) setIcon(icon, 'hourglass');
+    else if (KIND_ICON[op.kind]) setIcon(icon, KIND_ICON[op.kind]);
+    else setIcon(icon, 'hourglass');
     name.textContent = S.t(op.kind);
     const hasPct = typeof op.pct === 'number' && op.pct >= 0;
     bar.classList.toggle('indet', !hasPct);
@@ -100,7 +111,7 @@ export function createOpStatus(app: App): OpStatus {
     root.classList.remove('off');
     root.classList.add('done');
     root.classList.toggle('warn', warn);   // 操作后校验警示（Issue #6 后续）：琥珀色区别于常规绿色
-    icon.textContent = warn ? '!' : '✓';
+    setIcon(icon, warn ? 'warnTriangle' : 'checkCircle');
     name.textContent = S.t(`${kind}Done`);
     pct.textContent = '';
     text.textContent = '';

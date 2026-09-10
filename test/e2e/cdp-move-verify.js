@@ -84,7 +84,7 @@ const assert = (name, cond) => { (cond ? ok : bad).push(name); console.log((cond
   await sleep(1800);
   await E(`document.querySelector('.gg-move-foot .gg-btn.primary')?.click()`);
   await sleep(3500);
-  const after = await E(`(() => ({ dlgClosed: !document.querySelector('.gg-move-dlg'), banner: !document.querySelector('.gg-fp-banner')?.classList.contains('hidden'), bannerText: document.querySelector('.gg-fp-banner-t')?.textContent ?? '', listText: document.querySelector('.gg-files-list')?.textContent ?? '', toast: document.querySelector('.gg-toast')?.textContent ?? 'none' }))()`);
+  const after = await E(`(() => ({ dlgClosed: !document.querySelector('.gg-move-dlg'), banner: !document.querySelector('.gg-banner.accent')?.classList.contains('hidden'), bannerText: document.querySelector('.gg-banner-b')?.textContent ?? '', listText: document.querySelector('.gg-files-list')?.textContent ?? '', toast: document.querySelector('.gg-notif')?.textContent ?? 'none' }))()`);
   assert('确认后对话框关闭', after.dlgClosed);
   assert('移动横幅出现（引导纯移动提交）', after.banner);
   console.log('    横幅:', after.bannerText.slice(0, 60), '| toast:', String(after.toast).slice(0, 40));

@@ -147,7 +147,7 @@
   const cks = [...document.querySelectorAll('.gg-fp-ck')];
   cks[4].click(); cks[0].click();   // 最早 ↔ 最新
   await twoFrames();
-  assert('比对条出现（两个短sha）', /已选 2 个版本/.test(document.querySelector('.gg-fp-cmpbar').textContent));
+  assert('比对条出现（两个短sha）', /已选 2 个版本/.test(document.querySelector('.gg-banner.info').textContent));
   document.querySelector('.gg-fp-cmpbtn').click();
   await sleep(300);
   assert('diff 视图激活', !document.querySelector('.gg-fp-diff').classList.contains('hidden'));
@@ -157,8 +157,8 @@
   await twoFrames();
   assert('返回历史列表', document.querySelectorAll('.gg-fp-row').length === 5);
 
-  // 6. 详情就地展开（ⓘ → commitDiff mock）
-  const infoBtns = [...document.querySelectorAll('.gg-fp-act')].filter(b => b.textContent === 'ⓘ');
+  // 6. 详情就地展开（info 图标按钮 → commitDiff mock；S4 起 SVG 化，按 title 定位）
+  const infoBtns = [...document.querySelectorAll('.gg-fp-act')].filter(b => /详情|Detail/i.test(b.title || ''));
   infoBtns[0].click();
   await sleep(300);
   assert('详情块展开', document.querySelector('.gg-fp-detail') !== null);
@@ -215,7 +215,7 @@
     await sleep(300);
     const lastLs = window.__sentFind('files.ls').pop();
     assert('绝对路径换算为相对（files.ls dir=B）', !!lastLs && lastLs.args && lastLs.args.dir === 'B', JSON.stringify(lastLs && lastLs.args));
-    assert('绝对路径导航后面包屑=🏠›B', document.querySelector('.gg-files-crumbs').textContent === '🏠›B');
+    assert('绝对路径导航后面包屑=home›B（S4：home 为 SVG）', document.querySelector('.gg-files-crumbs').textContent === '›B' && !!document.querySelector('.gg-files-crumb.home svg'));
   }
   // 8d. 绝对路径=仓库根 → 回根目录
   {
@@ -236,7 +236,7 @@
     ai.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await sleep(300);
     const addrEl = document.querySelector('.gg-files-addr');
-    const toastEl = document.querySelector('.gg-toast');
+    const toastEl = document.querySelector('.gg-notif');
     assert('越仓路径 → 地址栏红框', addrEl.classList.contains('err'));
     assert('越仓路径 → toast 明确提示仓库根', !!toastEl && /仓库根|repo root/i.test(toastEl.textContent) && toastEl.textContent.includes('D:/demo'));
     if (toastEl) toastEl.remove();   // 清场，避免影响后续断言
