@@ -7,7 +7,7 @@
    语义色只出现在图标、边框与浅底；标题与正文永远用前景/描述色——商务克制的层次来源。 */
 :root {
   --gg-sp-1: 4px; --gg-sp-2: 8px; --gg-sp-3: 12px; --gg-sp-4: 16px;
-  --gg-fs-xs: 10.5px; --gg-fs-s: 11px; --gg-fs-m: 12px; --gg-fs-l: 13px; --gg-fs-xl: 14px;
+  --gg-fs-xs: 10px; --gg-fs-s: 11px; --gg-fs-m: 12px; --gg-fs-l: 13px; --gg-fs-xl: 14px;
   --gg-r-s: 4px; --gg-r-m: 6px; --gg-r-l: 8px;
   --gg-info: var(--vscode-charts-blue, #3794ff);
   --gg-ok: var(--vscode-charts-green, #89d185);
@@ -1273,7 +1273,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-files-abtn:hover { background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent); color: var(--vscode-foreground); }
 .gg-files-addr.edit .gg-files-crumbs, .gg-files-addr.edit .gg-files-crumb, .gg-files-addr.edit .gg-files-crumb-sep, .gg-files-addr.edit .gg-files-addr-space, .gg-files-addr.edit .gg-files-addr-ico, .gg-files-addr.edit .gg-files-abtn { display: none; }
 .gg-files-addr-input { flex: 1; background: transparent; border: none; outline: none; color: var(--vscode-input-foreground, var(--vscode-foreground));
-  font: 11.5px var(--vscode-editor-font-family, monospace); padding: 0 8px; min-width: 0; }
+  font: 12px var(--vscode-editor-font-family, monospace); padding: 0 8px; min-width: 0; }
 .gg-files-cmdbar { display: flex; align-items: center; gap: 5px; margin: 6px 12px 4px; flex: none;
   position: relative; z-index: 5;   /* 高于列表层叠，防滚动内容穿透 */
   padding: 4px 6px; border-radius: 6px;
