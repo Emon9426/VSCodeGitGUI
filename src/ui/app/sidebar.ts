@@ -6,6 +6,7 @@
 import type { BranchInfo } from '../../common/models';
 import { S, type App } from '../state';
 import { el, clearChildren } from '../util';
+import { groupByPrefix } from './branchGroup';
 import { showContextMenu, confirmDialog, promptDialog, tagDialog } from './overlays';
 
 export interface Sidebar {
@@ -86,7 +87,16 @@ export function createSidebar(app: App): Sidebar {
     sectionTitle(branchSec, `${S.t('branches')} (${st?.branches.length ?? 0})`);
     clearChildren(branchSec.list);
     if (st) {
-      for (const b of st.branches) branchSec.list.appendChild(branchRow(app, b));
+      // 前缀分组（Issue #24 / #23）：恒分组（决议 D3），配置可关；HEAD 分支恒置顶（buildRefTree 已排序）
+      if (S.config.branchGroupByPrefix) {
+        const { top, groups } = groupByPrefix(st.branches, b => b.name);
+        for (const b of top) branchSec.list.appendChild(branchRow(app, b));
+        for (const g of groups) {
+          branchSec.list.appendChild(prefixGroup('local:' + g.prefix, g.prefix, g.items, b => branchRow(app, b)));
+        }
+      } else {
+        for (const b of st.branches) branchSec.list.appendChild(branchRow(app, b));
+      }
     }
 
     sectionTitle(remoteSec, S.t('remotes'));
@@ -103,7 +113,17 @@ export function createSidebar(app: App): Sidebar {
           ], e.clientX, e.clientY);
         });
         group.appendChild(gh);
-        for (const b of g.branches) group.appendChild(remoteRow(app, b, g.name));
+        if (S.config.branchGroupByPrefix) {
+          // 远程分支剥 remote 名后按前缀分组；组内行显示剥前缀名（紧凑，操作仍用全名）
+          const strip = (n: string) => (n.includes('/') ? n.slice(n.indexOf('/') + 1) : n);
+          const { top, groups } = groupByPrefix(g.branches, b => strip(b.name));
+          for (const b of top) group.appendChild(remoteRow(app, b, g.name));
+          for (const pg of groups) {
+            group.appendChild(prefixGroup('remote:' + g.name + ':' + pg.prefix, pg.prefix, pg.items, b => remoteRow(app, b, g.name, strip(b.name))));
+          }
+        } else {
+          for (const b of g.branches) group.appendChild(remoteRow(app, b, g.name));
+        }
         remoteSec.list.appendChild(group);
       }
     }
@@ -155,6 +175,21 @@ export function createSidebar(app: App): Sidebar {
     });
   }
 
+  /** 前缀分组盒（Issue #24）：组头折叠/展开 + 计数；折叠集合经宿主 globalState 跨会话保持 */
+  function prefixGroup(key: string, label: string, items: BranchInfo[], rowOf: (b: BranchInfo) => HTMLElement): HTMLElement {
+    const box = el('div', 'gg-side-group');
+    const head = el('div', 'gg-side-item group pgroup');
+    const collapsed = S.branchGroupsCollapsed.has(key);
+    head.appendChild(el('span', 'gg-side-caret', collapsed ? '▸' : '▾'));
+    head.appendChild(el('span', 'gg-side-name', `${label}/`));
+    head.appendChild(el('span', 'gg-side-count', String(items.length)));
+    head.title = `${label}/ (${items.length})`;
+    head.addEventListener('click', () => app.toggleBranchGroup(key));
+    box.appendChild(head);
+    if (!collapsed) for (const b of items) box.appendChild(rowOf(b));
+    return box;
+  }
+
   function branchRow(app2: App, b: BranchInfo): HTMLElement {
     const item = el('div', `gg-side-item branch${b.isHead ? ' head' : ''}${S.state?.filterRef === b.fullName ? ' filtered' : ''}`);
     if (b.isHead) item.appendChild(el('span', 'gg-dot'));
@@ -181,9 +216,9 @@ export function createSidebar(app: App): Sidebar {
     return item;
   }
 
-  function remoteRow(app2: App, b: BranchInfo, group: string): HTMLElement {
+  function remoteRow(app2: App, b: BranchInfo, group: string, display?: string): HTMLElement {
     const item = el('div', `gg-side-item remote${S.state?.filterRef === b.fullName ? ' filtered' : ''}`);
-    item.appendChild(el('span', 'gg-side-name', b.name));
+    item.appendChild(el('span', 'gg-side-name', display ?? b.name));
     // 本地已有同名分支（Issue #24）：远端影子指针标记，回答"哪个分支在远程、哪个在本地"
     const stripped = b.name.includes('/') ? b.name.slice(b.name.indexOf('/') + 1) : b.name;
     if (S.state?.branches.some(x => x.name === stripped)) item.appendChild(el('span', 'gg-side-flag', S.t('branchHasLocal')));

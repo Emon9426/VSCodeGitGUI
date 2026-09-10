@@ -488,6 +488,12 @@ const app: App = {
     applyLayout();
     toolbar.update();
   },
+  toggleBranchGroup(key) {
+    const set = S.branchGroupsCollapsed;
+    if (set.has(key)) set.delete(key); else set.add(key);
+    void rpc('ui:saveBranchGroups', { collapsed: [...set] }).catch(() => undefined);
+    sidebar.update();
+  },
 };
 
 function showErr(e: unknown): void {
@@ -740,6 +746,7 @@ window.addEventListener('message', e => {
         filesview.el.style.width = S.files.paneW + 'px';
       }
       if (typeof m.sideCollapsed === 'boolean') S.sideCollapsed = m.sideCollapsed;
+      if (Array.isArray(m.branchGroupsCollapsed)) S.branchGroupsCollapsed = new Set(m.branchGroupsCollapsed);
       if (typeof m.workFilesW === 'number') workview.applyFilesWidth(m.workFilesW);   // 工作副本列宽跨会话恢复
       restoreSha = m.selectedSha;
       applyThemeKind();

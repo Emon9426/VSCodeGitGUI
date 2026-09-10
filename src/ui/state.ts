@@ -90,6 +90,8 @@ export interface App {
   saveFilesLayout(paneW: number, cols: number[] | undefined): void;
   /** 折叠/展开左侧栏（工程/仓库/分支/远程），状态跨会话保持 */
   toggleSide(): void;
+  /** 折叠/展开分支前缀分组（Issue #24）：key=local:<前缀> / remote:<remote>:<前缀>，跨会话保持 */
+  toggleBranchGroup(key: string): void;
 }
 
 export const S = {
@@ -131,6 +133,8 @@ export const S = {
   detailPct: undefined as number | undefined,
   /** 侧栏折叠（工程/仓库/分支/远程向左收起；ready 时由扩展侧持久化值覆盖） */
   sideCollapsed: false,
+  /** 分支前缀分组已折叠的组 key 集合（Issue #24；ready 时由扩展侧持久化值覆盖） */
+  branchGroupsCollapsed: new Set<string>() as Set<string>,
   /** 进行中的操作（opId → 最近进度；queued=排队中位次，Issue #7） */
   activeOps: new Map<number, { kind: string; text: string; pct?: number; queued?: boolean; position?: number }>(),
 

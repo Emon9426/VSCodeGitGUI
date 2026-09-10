@@ -713,6 +713,11 @@ button.danger:hover { background: #c62121; }
   background: color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent);
 }
 
+/* 前缀分组组头（Issue #24 / #23）：折叠箭头 + 前缀名 + 计数 */
+.gg-side-caret { flex: none; width: 12px; text-align: center; font-size: 10px; color: var(--vscode-descriptionForeground); }
+.gg-side-count { flex: none; margin-left: auto; font-size: 10px; color: var(--vscode-descriptionForeground); opacity: 0.85; }
+.gg-side-item.pgroup { cursor: pointer; user-select: none; }
+
 /* 工作副本模式下隐藏侧栏，空间让给文件列表与 diff */
 .gg-body.work-mode .gg-side { display: none; }
 
