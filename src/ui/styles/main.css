@@ -277,6 +277,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-side-h {
   padding: 10px 12px 4px;
   font-size: 11px;
+  font-weight: 600;   /* A4（#22）：区头须比其下分组头醒目，修正层级倒挂 */
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--vscode-descriptionForeground);
@@ -298,7 +299,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-side-item.branch.head .gg-side-name { font-weight: 600; }
 .gg-side-item.branch { padding-left: 14px; }
 .gg-side-item.remote { padding-left: 26px; }
-.gg-side-item.tag { padding-left: 14px; }
+.gg-side-item.tag { padding-left: 28px; }   /* A3（#22）：与分支区顶层行（28px）层级对齐 */
 .gg-side-name { overflow: hidden; text-overflow: ellipsis; }
 .gg-side-sub { font-size: 11px; color: var(--vscode-descriptionForeground); margin-left: auto; }
 .gg-side-empty { padding: 6px 12px; color: var(--vscode-descriptionForeground); font-size: 12px; }
@@ -872,6 +873,10 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-bp-flag { margin-left: 6px; flex: none; color: var(--vscode-charts-green); font-size: 11px; }
 .gg-bp-empty { padding: 14px 12px; color: var(--vscode-descriptionForeground); font-size: 12px; text-align: center; }
 .gg-bp-row.create .gg-bp-ic { color: var(--vscode-charts-green); font-weight: 600; }
+/* A1（#22）：选择器三级缩进——大区头 12px（基准）→ 区内顶层行 28px → 前缀组头 26px → 组内行 44px（查询态平铺保持 12px） */
+.gg-bp-row.d0 { padding-left: 28px; }
+.gg-bp-row.d1 { padding-left: 44px; }
+.gg-bp-head.l2 { padding-left: 26px; }
 .gg-bp-inline { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .gg-bp-inline.hidden { display: none; }
 .gg-bp-inline-label { flex: none; font-size: 12px; }
@@ -932,7 +937,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-work-row {
   position: relative;   /* 行尾悬浮操作组的定位基准 */
   display: flex; align-items: center; gap: 7px;
-  padding: 3px 10px 3px 14px; margin: 0 4px; border-radius: 4px;
+  padding: 3px 10px 3px 28px; margin: 0 4px; border-radius: 4px;   /* A2（#22）：28px 行缩进 */
   cursor: default; white-space: nowrap;
 }
 .gg-work-row:hover { background: var(--vscode-list-hoverBackground); }
@@ -978,7 +983,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-work-rowempty { padding: 3px 16px; color: var(--vscode-descriptionForeground); font-size: 11px; opacity: 0.8; }
 /* 目录分组头（与提交详情一致）：完整路径只显示一次，组内行仅文件名 */
 .gg-work-dirgroup {
-  padding: 5px 4px 1px 18px;
+  padding: 5px 4px 1px 12px;   /* A2（#22）：组头 12px / 行 28px，对齐全局面级梯度 */
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
   font-family: var(--vscode-editor-font-family);

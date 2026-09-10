@@ -24,6 +24,8 @@ interface Entry {
   text: string;
   score: number;
   positions: number[];
+  /** 缩进层级（#22 A1）：0=区内顶层行 28px、1=前缀组内行 44px；查询态平铺不设（12px） */
+  depth?: 0 | 1;
 }
 
 export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
@@ -70,8 +72,9 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   /** 内联输入态（Issue #24 三轮）：track=远程分支起本地名；create=新建分支（基于 HEAD） */
   let inlineMode: { kind: 'track'; src: { row: Row; display: string } } | { kind: 'create' } | null = null;
 
-  function sectionHead(text: string, count?: number): HTMLElement {
-    const h = el('div', 'gg-bp-head', text);
+  /** 分区头（#22 A1）：level 1=大区（12px）/ 2=前缀组头（26px），行按 depth 缩进 */
+  function sectionHead(text: string, count?: number, level: 1 | 2 = 1): HTMLElement {
+    const h = el('div', `gg-bp-head${level === 2 ? ' l2' : ''}`, text);
     if (count !== undefined) h.appendChild(el('span', 'gg-bp-count', String(count)));
     return h;
   }
@@ -79,7 +82,7 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   /** 行节点：命中下标高亮 <b>；点击即确认 */
   function rowEl(e: Entry): HTMLElement {
     const r = e.row;
-    const row = el('div', `gg-bp-row${r.kind === 'scope' ? ' scope' : ''}`);
+    const row = el('div', `gg-bp-row${e.depth !== undefined ? ` d${e.depth}` : ''}${r.kind === 'scope' ? ' scope' : ''}`);
     if (r.kind === 'scope') row.appendChild(el('span', 'gg-bp-ic', '◎'));
     else if (r.kind === 'local') row.appendChild(el('span', 'gg-bp-ic', r.b.isHead ? '●' : '⑂'));
     else row.appendChild(el('span', 'gg-bp-ic', '⇅'));
@@ -113,8 +116,8 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
     list.textContent = '';
     const q = search.value.trim();
     const ordered: Entry[] = [];
-    const addRow = (a: { row: Row; display: string; sub: string }, positions: number[] = []) => {
-      const e: Entry = { row: a.row, text: '', score: 0, positions };
+    const addRow = (a: { row: Row; display: string; sub: string }, positions: number[] = [], depth?: 0 | 1) => {
+      const e: Entry = { row: a.row, text: '', score: 0, positions, depth };
       ordered.push(e);
       list.appendChild(rowEl(e));
     };
@@ -143,7 +146,7 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
         const scopes = all.filter(a => a.row.kind === 'scope');
         if (scopes.length) {
           list.appendChild(sectionHead(S.t('pickerScope')));
-          for (const a of scopes) addRow(a);
+          for (const a of scopes) addRow(a, [], 0);
         }
       }
       const locals = all.filter(a => a.row.kind === 'local');
@@ -152,15 +155,15 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
       const headEntry = locals.find(a => (a.row as { b: BranchInfo }).b.name === headName);
       if (headEntry) {
         list.appendChild(sectionHead(S.t('pickerCurrent')));
-        addRow(headEntry);
+        addRow(headEntry, [], 0);
       }
       const others = locals.filter(a => (a.row as { b: BranchInfo }).b.name !== headName);
       list.appendChild(sectionHead(S.t('pickerLocals'), others.length));
       const lg = groupByPrefix(others, a => a.display);
-      for (const a of lg.top) addRow(a);
+      for (const a of lg.top) addRow(a, [], 0);
       for (const g of lg.groups) {
-        list.appendChild(sectionHead(`${g.prefix}/`, g.items.length));
-        for (const a of g.items) addRow(a);
+        list.appendChild(sectionHead(`${g.prefix}/`, g.items.length, 2));
+        for (const a of g.items) addRow(a, [], 1);
       }
       if (remotes.length) {
         const byOrigin = new Map<string, { row: Row; display: string; sub: string }[]>();
@@ -172,17 +175,17 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
         for (const [origin, arr] of byOrigin) {
           list.appendChild(sectionHead(`${S.t('pickerRemotes')} · ${origin}`, arr.length));
           const rg = groupByPrefix(arr, a => a.display);
-          for (const a of rg.top) addRow(a);
+          for (const a of rg.top) addRow(a, [], 0);
           for (const g of rg.groups) {
-            list.appendChild(sectionHead(`${g.prefix}/`, g.items.length));
-            for (const a of g.items) addRow(a);
+            list.appendChild(sectionHead(`${g.prefix}/`, g.items.length, 2));
+            for (const a of g.items) addRow(a, [], 1);
           }
         }
       }
     }
     // 检出模式：底部恒有「新建分支」行（无匹配时成为唯一可选项，Enter 直达新建；搜索词即预填名）
     if (mode === 'checkout') {
-      const e: Entry = { row: { kind: 'create' }, text: '', score: 0, positions: [] };
+      const e: Entry = { row: { kind: 'create' }, text: '', score: 0, positions: [], depth: 0 };
       ordered.push(e);
       list.appendChild(createRowEl(e, q));
     }
