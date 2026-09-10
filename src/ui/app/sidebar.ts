@@ -1,11 +1,14 @@
 /**
- * 左侧边栏（设计方案 4.2）：工程区（v0.11 跨工作区切换）、仓库区、本地分支（ahead/behind 徽标）、远程、标签。
+ * 左侧边栏（设计方案 4.2）：工程区（v0.11 跨工作区切换）、仓库区、分支区（两级分组：
+ * 一级 本地/远程·<remote>，二级 / 前缀——Issue #24 二轮重设计）、标签。
  * 单击分支 = 过滤提交图；双击 = 检出；右键 = 操作菜单。
  * 工程区：双击在当前窗口打开工程；右键可新窗口打开/重命名/移除。
  */
 import type { BranchInfo } from '../../common/models';
 import { S, type App } from '../state';
 import { el, clearChildren } from '../util';
+import { groupByPrefix } from './branchGroup';
+import { openBranchPicker } from './branchPicker';
 import { showContextMenu, confirmDialog, promptDialog, tagDialog } from './overlays';
 
 export interface Sidebar {
@@ -18,9 +21,8 @@ export function createSidebar(app: App): Sidebar {
   const projSec = section(S.t('projects'));
   const repoSec = section(S.t('repos'));
   const branchSec = section(S.t('branches'));
-  const remoteSec = section(S.t('remotes'));
   const tagSec = section(S.t('tags'));
-  root.append(projSec.box, repoSec.box, branchSec.box, remoteSec.box, tagSec.box);
+  root.append(projSec.box, repoSec.box, branchSec.box, tagSec.box);
 
   function section(title: string): { box: HTMLElement; list: HTMLElement } {
     const box = el('div', 'gg-side-sec');
@@ -83,28 +85,52 @@ export function createSidebar(app: App): Sidebar {
     }
 
     const st = S.state;
-    sectionTitle(branchSec, `${S.t('branches')} (${st?.branches.length ?? 0})`);
+    // 分支区（Issue #24 二轮重设计）：两级分组——一级 本地 / 远程·<remote>，二级 / 前缀（配置可关则平铺）
+    const strip = (n: string) => (n.includes('/') ? n.slice(n.indexOf('/') + 1) : n);
+    const remoteTotal = st?.remotes.reduce((n, g) => n + g.branches.length, 0) ?? 0;
+    sectionTitle(branchSec, `${S.t('branches')} (${(st?.branches.length ?? 0) + remoteTotal})`);
+    // 分支区标题旁 ➕：检出/新建分支（Issue #24 三轮；sectionTitle 的 textContent 会清标题子元素，须每轮补挂）
+    let branchAdd = branchSec.box.querySelector('.gg-side-add') as HTMLElement | null;
+    if (!branchAdd) {
+      branchAdd = el('button', 'gg-side-add', '＋');
+      branchAdd.addEventListener('click', e => {
+        e.stopPropagation();
+        openBranchPicker(app, 'checkout');
+      });
+      branchSec.box.firstElementChild!.appendChild(branchAdd);
+    }
+    branchAdd.title = S.t('branchAddTip');
     clearChildren(branchSec.list);
     if (st) {
-      for (const b of st.branches) branchSec.list.appendChild(branchRow(app, b));
-    }
-
-    sectionTitle(remoteSec, S.t('remotes'));
-    clearChildren(remoteSec.list);
-    if (st) {
+      // ---- 一级：本地（HEAD 分支恒置顶，buildRefTree 已排序）----
+      branchSec.list.appendChild(collapseGroup('top:local', `⑂ ${S.t('pickerLocals')}`, st.branches.length, box => {
+        if (S.config.branchGroupByPrefix) {
+          const { top, groups } = groupByPrefix(st.branches, b => b.name);
+          for (const b of top) box.appendChild(branchRow(app, b));
+          for (const g of groups) box.appendChild(prefixGroup('local:' + g.prefix, g.prefix, g.items, b => branchRow(app, b)));
+        } else {
+          for (const b of st.branches) box.appendChild(branchRow(app, b));
+        }
+      }, 1));
+      // ---- 一级：远程（每 remote 一组；右键 fetch 菜单保留）----
       for (const g of st.remotes) {
-        const group = el('div', 'gg-side-group');
-        const gh = el('div', 'gg-side-item group');
-        gh.appendChild(el('span', 'gg-side-name', `⇅ ${g.name}`));
-        gh.addEventListener('contextmenu', e => {
+        branchSec.list.appendChild(collapseGroup('top:remote:' + g.name, `⇅ ${S.t('pickerRemotes')} · ${g.name}`, g.branches.length, box => {
+          if (S.config.branchGroupByPrefix) {
+            // 远程分支剥 remote 名后按前缀分组；组内行显示剥前缀名（紧凑，操作仍用全名）
+            const { top, groups } = groupByPrefix(g.branches, b => strip(b.name));
+            for (const b of top) box.appendChild(remoteRow(app, b, g.name));
+            for (const pg of groups) {
+              box.appendChild(prefixGroup('remote:' + g.name + ':' + pg.prefix, pg.prefix, pg.items, b => remoteRow(app, b, g.name, strip(b.name))));
+            }
+          } else {
+            for (const b of g.branches) box.appendChild(remoteRow(app, b, g.name));
+          }
+        }, 1, e => {
           e.preventDefault();
           showContextMenu([
             { label: S.t('fetchAll'), run: () => app.runFetch() },
           ], e.clientX, e.clientY);
-        });
-        group.appendChild(gh);
-        for (const b of g.branches) group.appendChild(remoteRow(app, b, g.name));
-        remoteSec.list.appendChild(group);
+        }));
       }
     }
 
@@ -155,6 +181,31 @@ export function createSidebar(app: App): Sidebar {
     });
   }
 
+  /** 折叠组（Issue #24 二轮）：一级（本地 / 远程·<remote>）与二级（前缀）共用骨架；
+   *  折叠集合经宿主 globalState 跨会话保持 */
+  function collapseGroup(
+    key: string, label: string, count: number, renderItems: (into: HTMLElement) => void,
+    level: 1 | 2 = 2, onContextMenu?: (e: MouseEvent) => void,
+  ): HTMLElement {
+    const box = el('div', 'gg-side-group');
+    const collapsed = S.branchGroupsCollapsed.has(key);
+    const head = el('div', `gg-side-item group pgroup${level === 1 ? ' l1' : ''}`);
+    head.appendChild(el('span', 'gg-side-caret', collapsed ? '▸' : '▾'));
+    head.appendChild(el('span', 'gg-side-name', label));
+    head.appendChild(el('span', 'gg-side-count', String(count)));
+    head.title = `${label} (${count})`;
+    head.addEventListener('click', () => app.toggleBranchGroup(key));
+    if (onContextMenu) head.addEventListener('contextmenu', onContextMenu);
+    box.appendChild(head);
+    if (!collapsed) renderItems(box);
+    return box;
+  }
+
+  /** 二级前缀组（组名带尾斜杠） */
+  function prefixGroup(key: string, label: string, items: BranchInfo[], rowOf: (b: BranchInfo) => HTMLElement): HTMLElement {
+    return collapseGroup(key, `${label}/`, items.length, box => { for (const b of items) box.appendChild(rowOf(b)); });
+  }
+
   function branchRow(app2: App, b: BranchInfo): HTMLElement {
     const item = el('div', `gg-side-item branch${b.isHead ? ' head' : ''}${S.state?.filterRef === b.fullName ? ' filtered' : ''}`);
     if (b.isHead) item.appendChild(el('span', 'gg-dot'));
@@ -163,6 +214,8 @@ export function createSidebar(app: App): Sidebar {
     if (b.ahead) badge.appendChild(el('b', 'a', `↑${b.ahead}`));
     if (b.behind) badge.appendChild(el('b', 'd', `↓${b.behind}`));
     if (b.ahead || b.behind) item.appendChild(badge);
+    // 未设上游（Issue #24）：本地独有、尚未推送
+    if (!b.upstream && !b.isHead) item.appendChild(el('span', 'gg-side-flag', S.t('branchUnpushed')));
     item.title = b.subject ?? b.name;
     filterClick(item, b.fullName);
     item.addEventListener('dblclick', () => app2.checkoutRef(b.name));
@@ -179,9 +232,12 @@ export function createSidebar(app: App): Sidebar {
     return item;
   }
 
-  function remoteRow(app2: App, b: BranchInfo, group: string): HTMLElement {
+  function remoteRow(app2: App, b: BranchInfo, group: string, display?: string): HTMLElement {
     const item = el('div', `gg-side-item remote${S.state?.filterRef === b.fullName ? ' filtered' : ''}`);
-    item.appendChild(el('span', 'gg-side-name', b.name));
+    item.appendChild(el('span', 'gg-side-name', display ?? b.name));
+    // 本地已有同名分支（Issue #24）：远端影子指针标记，回答"哪个分支在远程、哪个在本地"
+    const stripped = b.name.includes('/') ? b.name.slice(b.name.indexOf('/') + 1) : b.name;
+    if (S.state?.branches.some(x => x.name === stripped)) item.appendChild(el('span', 'gg-side-flag', S.t('branchHasLocal')));
     item.title = b.subject ?? b.name;
     filterClick(item, b.fullName);
     item.addEventListener('dblclick', () => {

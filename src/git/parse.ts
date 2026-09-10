@@ -355,6 +355,43 @@ export function parseUnifiedDiff(text: string): UnifiedDiff {
   return { hunks, truncated: false };
 }
 
+/**
+ * 图形范围起点（Issue #24）：由当前 refs 快照推导 git log 起点。
+ * - ref 精选：直通该 ref（现状语义不变）
+ * - local：全部本地分支 + 各自上游（无上游的纯本地分支也在内；上游引用须仍存在于
+ *   remoteFullNames——上游指向已 prune 的远端分支时剔除，防 unknown revision）
+ * - current：当前分支 + 其上游；detached HEAD 退化为 HEAD
+ * - all / 未识别：返回 null（调用方用 --all）
+ * 上游一律用全限定 refs/remotes/<upstream>，避免与本地分支短名歧义。
+ */
+export function scopeStartRefs(
+  branches: { name: string; fullName: string; upstream?: string }[],
+  remoteFullNames: Set<string>,
+  headBranch: string | undefined,
+  filter: { ref: string | null; scopeMode?: string },
+): string[] | null {
+  if (filter.ref) return [filter.ref];
+  const upstreamRef = (up: string | undefined): string | null =>
+    up ? (remoteFullNames.has('refs/remotes/' + up) ? 'refs/remotes/' + up : null) : null;
+  if (filter.scopeMode === 'local') {
+    const out = new Set<string>();
+    for (const b of branches) {
+      out.add(b.fullName);
+      const up = upstreamRef(b.upstream);
+      if (up) out.add(up);
+    }
+    return out.size ? [...out] : null;   // 空仓库无分支：等价回退 --all
+  }
+  if (filter.scopeMode === 'current') {
+    if (!headBranch) return ['HEAD'];
+    const head = branches.find(b => b.name === headBranch);
+    if (!head) return ['refs/heads/' + headBranch];
+    const up = upstreamRef(head.upstream);
+    return up ? [head.fullName, up] : [head.fullName];
+  }
+  return null;
+}
+
 /** RawRef → 侧栏数据结构 */
 export function buildRefTree(refs: RawRef[], headBranch?: string): { branches: BranchInfo[]; remotes: RemoteGroup[]; tags: TagInfo[] } {
   const branches: BranchInfo[] = [];
@@ -368,7 +405,9 @@ export function buildRefTree(refs: RawRef[], headBranch?: string): { branches: B
         isHead: r.short === headBranch, subject: r.subject, lastDate: r.date, author: r.author,
       });
     } else if (r.prefix === 'refs/remotes/') {
-      if (r.short.endsWith('/HEAD')) continue;   // origin/HEAD 符号引用不展示
+      // origin/HEAD 符号引用不展示：git 的 %(refname:short) 会把它剥成 'origin'（不带 /HEAD 尾巴），
+      // 须按全名判断（Issue #24 实机测试暴露：short 判断从未命中，侧栏出现无意义的 origin 行）
+      if (r.fullName.endsWith('/HEAD')) continue;
       const slash = r.short.indexOf('/');
       const remote = slash === -1 ? r.short : r.short.slice(0, slash);
       const list = remotes.get(remote) ?? [];
