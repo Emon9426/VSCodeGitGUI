@@ -7,6 +7,7 @@ import { rpc } from '../rpc';
 import { S, type App } from '../state';
 import { el, formatTime } from '../util';
 import { GraphCanvas } from './graphCanvas';
+import { chipModels } from './chips';
 import { showContextMenu, tagDialog } from './overlays';
 
 export interface CommitList {
@@ -233,24 +234,23 @@ export function createCommitList(app: App): CommitList {
     (cells[4] as HTMLElement).title = formatTime(c.author.date, 'datetime', S.t);
   }
 
+  /** 本地分支名缓存（Issue #24：远程徽标同名降淡判定；按 state 对象身份失效） */
+  let localNamesCache: { state: unknown; set: Set<string> } | undefined;
+  function localNames(): Set<string> | undefined {
+    const st = S.state;
+    const cached = localNamesCache;
+    if (cached && cached.state === st) return cached.set;
+    const set = new Set(st?.branches.map(b => b.name) ?? []);
+    localNamesCache = { state: st, set };
+    return set;
+  }
+
   function buildChips(c: Commit): HTMLElement[] {
-    const out: HTMLElement[] = [];
-    let tagTotal = 0;
-    for (const ref of c.refs) if (ref.kind === 'tag') tagTotal++;
-    let shownTags = 0;
-    for (const ref of c.refs) {
-      if (ref.kind === 'remote' && !S.config.showRemoteChips) continue;
-      if (ref.kind === 'tag') {
-        shownTags++;
-        if (shownTags > S.config.maxTagChips) continue;
-      }
-      const text = ref.isHead && ref.name !== 'HEAD' ? `HEAD → ${ref.name}` : ref.name;
-      out.push(el('span', `gg-chip ${ref.kind}`, text));
-    }
-    if (tagTotal > S.config.maxTagChips) {
-      out.push(el('span', 'gg-chip tag', `+${tagTotal - S.config.maxTagChips}`));
-    }
-    return out;
+    return chipModels(c, {
+      showRemoteChips: S.config.showRemoteChips,
+      maxTagChips: S.config.maxTagChips,
+      localNames: localNames(),
+    }).map(m => el('span', m.cls, m.text));
   }
 
   function commitMenu(c: Commit, x: number, y: number): void {

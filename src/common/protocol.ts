@@ -3,7 +3,7 @@
  * 请求-响应：Webview 生成自增 id，扩展侧回 res 携带同 id。
  * 事件：扩展侧主动推送。
  */
-import type { ProjectInfo, PullSummaryEntry, PullFileStat, RepoMeta, RepoState, Commit, CommitDetail, DiffPayload, WorkState, MoveDetect } from './models';
+import type { GraphScope, ProjectInfo, PullSummaryEntry, PullFileStat, RepoMeta, RepoState, Commit, CommitDetail, DiffPayload, WorkState, MoveDetect } from './models';
 
 export interface ConfigDto {
   language: 'auto' | 'zh-CN' | 'en';
@@ -11,6 +11,10 @@ export interface ConfigDto {
   rowHeightPx: number;            // 20 / 24 / 28
   graphStyle: 'curved' | 'angular' | 'github';
   graphColumnWidth: number;       // 120–260
+  /** 图形默认范围（Issue #24）：新仓库/无记忆筛选时的起点；all=全部引用 / local=本地分支+上游 / current=当前分支 */
+  graphBranchScope: GraphScope;
+  /** 侧栏分支按 `/` 前缀分组（Issue #24 / #23） */
+  branchGroupByPrefix: boolean;
   maxTagChips: number;
   showRemoteChips: boolean;
   detailPanelPosition: 'bottom' | 'right';
@@ -104,6 +108,8 @@ export type ExtEvent =
       filesLayout?: { paneW: number; cols: number[] };
       /** 侧栏折叠状态（v0.14.1）：跨会话保持 */
       sideCollapsed?: boolean;
+      /** 分支分组折叠的组名集合（Issue #24）：跨会话保持 */
+      branchGroupsCollapsed?: string[];
       /** 工作副本文件列表宽度 px：跨会话恢复 */
       workFilesW?: number;
       /** 已保存的工程列表 / 当前工作区命中的工程 / 工作区根路径（v0.11） */
@@ -132,7 +138,9 @@ export type ExtEvent =
   | { t: 'diagDone'; model: string; steps?: FixStepDto[] }
   | { t: 'diagError'; code: 'noModel' | 'auth' | 'quota' | 'canceled' | 'error'; message?: string }
   // 文件历史页（v0.14）：explorer 右键「查看文件历史」→ 打开面板切文件视图并定位路径
-  | { t: 'filesReveal'; path: string };
+  | { t: 'filesReveal'; path: string }
+  // 检出分支（Issue #24）：命令面板 gitboard.checkoutBranch → webview 弹检出选择器
+  | { t: 'showCheckout' };
 
 export interface WVRequest {
   id: number;
@@ -157,7 +165,7 @@ export type WVCommand =
   | 'loadMore'              // { offset }
   | 'commitDetail'          // { sha } -> CommitDetail
   | 'diff'                  // { mode:'commit'|'worktree'|'range', sha, base?, path } -> DiffPayload
-  | 'setFilter'             // { ref: string | null }
+  | 'setFilter'             // { ref: string | null, scopeMode?: 'all'|'local'|'current', authors?, since?, until?, noMerges? }
   | 'op:fetch'              // { remote?: string, all?: boolean }
   | 'op:pull'               // { strategy?, autostash? }——不传 remote/branch，按分支级配置解析（Issue #6 F1）
   | 'op:push'               // { remote, branch, setUpstream? }
@@ -225,7 +233,8 @@ export type WVCommand =
   | 'folder.rename'         // { path, newName }（同目录 git mv）
   | 'folder.delete'         // { paths: string[] }（已跟踪 git rm / 未跟踪磁盘删除）
   | 'ui:saveFilesLayout'    // { paneW, cols }（面板宽度与列宽持久化）
-  | 'ui:saveSideCollapsed'; // { collapsed }（侧栏折叠状态持久化，v0.14.1）
+  | 'ui:saveSideCollapsed'  // { collapsed }（侧栏折叠状态持久化，v0.14.1）
+  | 'ui:saveBranchGroups';  // { collapsed: string[] }（分支分组折叠组名集合持久化，Issue #24）
 
 export interface Pending {
   resolve: (v: any) => void;

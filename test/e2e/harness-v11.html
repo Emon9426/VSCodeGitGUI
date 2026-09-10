@@ -197,7 +197,7 @@
 
   // ================= ③ 侧栏工程区 =================
   const secs = [...document.querySelectorAll('.gg-side-sec')];
-  ok(secs.length === 5, `③分区数=${secs.length} 应 5（工程/仓库/分支/远程/标签）`);
+  ok(secs.length === 4, `③分区数=${secs.length} 应 4（工程/仓库/分支[两级:本地/远程]/标签——Issue #24 二轮合并）`);
   ok(secs[0].querySelector('.gg-side-h').textContent.startsWith('工程'), `③首分区=${secs[0].querySelector('.gg-side-h').textContent} 应为工程`);
   const projItems = () => [...document.querySelectorAll('.gg-side-item.project')];
   ok(projItems().length === 2, `③工程行数=${projItems().length} 应 2`);

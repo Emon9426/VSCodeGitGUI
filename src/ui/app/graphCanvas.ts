@@ -108,6 +108,8 @@ export class GraphCanvas {
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    // 当前分支主干段加粗（Issue #24 B3）：HEAD 沿第一父回溯的分段走线 3px，其余 2px
+    const trunkW = (seg: number): number => (S.trunkSegs.has(seg) ? 3 : 2);
 
     // 1) 竖线：activeBelow[r] 为第 r 行下方仍活跃的 lane。
     //    本行 fork/mergeOut 的目标 lane 整段由 S 曲线接管（跳过竖线）；
@@ -130,6 +132,7 @@ export class GraphCanvas {
         const yStop = Math.min(yBottom, stopEarly.get(a.lane) ?? yBottom);
         if (yStop - yTop < 0.5) continue;
         ctx.strokeStyle = segColor(a.seg);
+        ctx.lineWidth = trunkW(a.seg);
         ctx.beginPath();
         ctx.moveTo(x(a.lane), yTop);
         ctx.lineTo(x(a.lane), yStop);
@@ -147,6 +150,7 @@ export class GraphCanvas {
         const x2 = x(cv.toLane);
         if (cv.kind === 'mergeIn') {
           ctx.strokeStyle = segColor(cv.seg);
+          ctx.lineWidth = trunkW(cv.seg);
           ctx.beginPath();
           ctx.moveTo(x1, y0 - R / 2);
           if (angular) {
@@ -164,6 +168,7 @@ export class GraphCanvas {
           ctx.stroke();
         } else {
           ctx.strokeStyle = segColor(cv.seg);
+          ctx.lineWidth = trunkW(cv.seg);
           const y1 = y0 + R;
           ctx.beginPath();
           ctx.moveTo(x1, y0);

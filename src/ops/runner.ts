@@ -26,9 +26,11 @@ export interface OpSpec {
   forceWithLease?: boolean;    // push：--force-with-lease（Issue #8 修复方案 confirm 级）
   sha?: string;                // reset / checkout(detached) / tagCreate
   mode?: ResetMode;            // reset
-  ref?: string;                // checkout
+  ref?: string;                // checkout / checkout newBranch 的起点（缺省 HEAD）
   detached?: boolean;          // checkout
   trackFrom?: { name: string; remoteBranch: string };  // checkout 远程分支为本地
+  /** checkout -b：基于 ref（缺省 HEAD）新建分支并检出（Issue #24 检出选择器新建分支） */
+  newBranch?: string;
   paths?: string[];            // stage / unstage / discard / discardClean / resolveConflict
   messageFile?: string;        // commit：-F 临时文件（调用方负责创建与清理）
   amend?: boolean;             // commit：修订上次提交
@@ -254,6 +256,9 @@ export function buildArgs(spec: OpSpec): string[][] {
     case 'checkout': {
       if (spec.trackFrom) {
         return [['checkout', '-b', spec.trackFrom.name, '--track', spec.trackFrom.remoteBranch]];
+      }
+      if (spec.newBranch) {
+        return [['checkout', '-b', spec.newBranch, ...(spec.ref ? [spec.ref] : [])]];
       }
       const args = ['checkout'];
       if (spec.detached) args.push('--detach');

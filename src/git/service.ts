@@ -7,7 +7,7 @@ import type { Commit, CommitDetail, DiffPayload, FileChange, FileEntry, LogFilte
 import { GitError, type GitExecutor } from './executor';
 import {
   LOG_FORMAT, SUMMARY_FORMAT, EACH_REF_FORMAT, parseLog, parseSummaryLog, parseForEachRef, parseFiles, parseStatus, parseStatusZ,
-  parseUnifiedDiff, countDiffLines, buildRefTree, type RawRef, type StatusInfo,
+  parseUnifiedDiff, countDiffLines, buildRefTree, scopeStartRefs, type RawRef, type StatusInfo,
 } from './parse';
 
 /** 空树的固定哈希（root 提交 diff 基线） */
@@ -120,7 +120,7 @@ export class GitService {
    * 过滤产出计数：产出可能不足 limit，由 panel.commitsFill 循环补扫凑页（SCAN_CAP 封顶），
    * 调用方须持久化返回的 scanned 作为后续调用的 scanOffset（panel.scanCursors）。
    */
-  async commitsPage(root: string, filter: LogFilter, scanOffset: number, limit: number, ctx?: { localBranches: Set<string>; remoteBranches: Set<string> }, order: 'topo' | 'date' = 'topo'): Promise<{ commits: Commit[]; hasMore: boolean; scanned: number }> {
+  async commitsPage(root: string, filter: LogFilter, scanOffset: number, limit: number, ctx?: { localBranches: Set<string>; remoteBranches: Set<string> }, order: 'topo' | 'date' = 'topo', scopeRefs?: readonly string[] | null): Promise<{ commits: Commit[]; hasMore: boolean; scanned: number }> {
     // 纯提交视图强制日期序：去掉合并提交后拓扑序会把平行支线排成时间倒错
     // （如 B 合并 A 的场景，A 反而排在 B 前）
     const ord = filter.noMerges ? 'date' : order;
@@ -131,7 +131,10 @@ export class GitService {
       '-n', String(limit), '--skip', String(scanOffset),
     ];
     if (filter.noMerges) args.push('--no-merges');
-    if (filter.ref) args.push(filter.ref); else args.push('--all');
+    // 起点选择（Issue #24）：ref 精选 > 范围起点（local/current 由调用方按 refs 快照组装）> --all
+    if (filter.ref) args.push(filter.ref);
+    else if (scopeRefs && scopeRefs.length) args.push(...scopeRefs);
+    else args.push('--all');
     for (const a of filter.authors) {
       const name = safeAuthorName(a);
       // 等号形式：值整体作为选项参数（execFile 无 shell，无注入面）；多个 --author 为或关系
@@ -164,8 +167,12 @@ export class GitService {
       localBranches: new Set(tree.branches.map(b => b.name)),
       remoteBranches: new Set(tree.remotes.flatMap(g => g.branches.map(b => b.name))),
     };
+    // 范围起点（Issue #24）：local/current 由当前 refs 快照推导（上游须仍存在）
+    const remoteFullNames = new Set<string>();
+    for (const g of tree.remotes) for (const b of g.branches) remoteFullNames.add(b.fullName);
+    const scopeRefs = scopeStartRefs(tree.branches, remoteFullNames, headBranch, filter);
     const { commits, hasMore, scanned } = headSha
-      ? await this.commitsPage(root, filter, 0, pageSize, ctx, pre?.order ?? 'topo')
+      ? await this.commitsPage(root, filter, 0, pageSize, ctx, pre?.order ?? 'topo', scopeRefs)
       : { commits: [] as Commit[], hasMore: false, scanned: 0 };
     const state: RepoState = {
       repoId,
@@ -175,6 +182,7 @@ export class GitService {
       tags: tree.tags,
       status: { dirtyCount: status.dirtyCount },
       filterRef: filter.ref,
+      scopeMode: filter.scopeMode ?? 'all',
       logFilter: { authors: filter.authors, since: filter.since, until: filter.until, noMerges: filter.noMerges },
       commits,
       commitsLoaded: commits.length,
