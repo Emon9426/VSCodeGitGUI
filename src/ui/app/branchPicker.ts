@@ -9,7 +9,7 @@ import type { BranchInfo, GraphScope } from '../../common/models';
 import { S, type App } from '../state';
 import { el } from '../util';
 import { fuzzyMatch } from '../fuzzy';
-import { groupByPrefix } from './branchGroup';
+import { buildPrefixTree, countNode, stripTo, type PrefixNode } from './branchGroup';
 import { openModal } from './overlays';
 
 type Row =
@@ -24,8 +24,10 @@ interface Entry {
   text: string;
   score: number;
   positions: number[];
-  /** 缩进层级（#22 A1）：0=区内顶层行 28px、1=前缀组内行 44px；查询态平铺不设（12px） */
-  depth?: 0 | 1;
+  /** 缩进层级（#22 A1；v0.23.2 递归多级）：0=区内顶层行 28px，每深一级 +16px；查询态平铺不设（12px） */
+  depth?: number;
+  /** 分组态显示名（v0.23.2 剥组前缀短名）；查询态不设、用 display 名 */
+  disp?: string;
 }
 
 export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
@@ -72,9 +74,10 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   /** 内联输入态（Issue #24 三轮）：track=远程分支起本地名；create=新建分支（基于 HEAD） */
   let inlineMode: { kind: 'track'; src: { row: Row; display: string } } | { kind: 'create' } | null = null;
 
-  /** 分区头（#22 A1）：level 1=大区（12px）/ 2=前缀组头（26px），行按 depth 缩进 */
-  function sectionHead(text: string, count?: number, level: 1 | 2 = 1): HTMLElement {
-    const h = el('div', `gg-bp-head${level === 2 ? ' l2' : ''}`, text);
+  /** 分区头（#22 A1；v0.23.2 递归）：level 1=大区（12px），≥2=前缀组头（26px 起每深一级 +16px） */
+  function sectionHead(text: string, count?: number, level: number = 1): HTMLElement {
+    const h = el('div', `gg-bp-head${level > 1 ? ' l2' : ''}`, text);
+    if (level > 1) h.style.setProperty('--k', String(level - 2));
     if (count !== undefined) h.appendChild(el('span', 'gg-bp-count', String(count)));
     return h;
   }
@@ -82,12 +85,13 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   /** 行节点：命中下标高亮 <b>；点击即确认 */
   function rowEl(e: Entry): HTMLElement {
     const r = e.row;
-    const row = el('div', `gg-bp-row${e.depth !== undefined ? ` d${e.depth}` : ''}${r.kind === 'scope' ? ' scope' : ''}`);
+    const row = el('div', `gg-bp-row${e.depth !== undefined ? ' d' : ''}${r.kind === 'scope' ? ' scope' : ''}`);
+    if (e.depth !== undefined) row.style.setProperty('--d', String(e.depth));
     if (r.kind === 'scope') row.appendChild(el('span', 'gg-bp-ic', '◎'));
     else if (r.kind === 'local') row.appendChild(el('span', 'gg-bp-ic', r.b.isHead ? '●' : '⑂'));
     else row.appendChild(el('span', 'gg-bp-ic', '⇅'));
     const nm = el('span', 'gg-bp-name');
-    const name = displayNameOf(e);
+    const name = e.disp ?? displayNameOf(e);
     let last = 0;
     for (const p of e.positions) {
       if (p < last || p >= name.length) continue;
@@ -116,10 +120,18 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
     list.textContent = '';
     const q = search.value.trim();
     const ordered: Entry[] = [];
-    const addRow = (a: { row: Row; display: string; sub: string }, positions: number[] = [], depth?: 0 | 1) => {
-      const e: Entry = { row: a.row, text: '', score: 0, positions, depth };
+    const addRow = (a: { row: Row; display: string; sub: string }, positions: number[] = [], depth?: number, disp?: string) => {
+      const e: Entry = { row: a.row, text: '', score: 0, positions, depth, disp };
       ordered.push(e);
       list.appendChild(rowEl(e));
+    };
+    /** 前缀组树递归（v0.23.2）：以 depth=0 调用 → 一级组头 level 2（26px）、组内行 depth 1（44px），每深一级 +16px */
+    const renderTree = (node: PrefixNode<{ row: Row; display: string; sub: string }>, depth: number): void => {
+      for (const a of node.items) addRow(a, [], depth, stripTo(node.path, a.display));
+      for (const ch of node.children) {
+        list.appendChild(sectionHead(`${ch.seg}/`, countNode(ch), depth + 2));
+        renderTree(ch, depth + 1);
+      }
     };
 
     if (q) {
@@ -159,12 +171,9 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
       }
       const others = locals.filter(a => (a.row as { b: BranchInfo }).b.name !== headName);
       list.appendChild(sectionHead(S.t('pickerLocals'), others.length));
-      const lg = groupByPrefix(others, a => a.display);
+      const lg = buildPrefixTree(others, a => a.display);
       for (const a of lg.top) addRow(a, [], 0);
-      for (const g of lg.groups) {
-        list.appendChild(sectionHead(`${g.prefix}/`, g.items.length, 2));
-        for (const a of g.items) addRow(a, [], 1);
-      }
+      renderTree(lg.root, 0);
       if (remotes.length) {
         const byOrigin = new Map<string, { row: Row; display: string; sub: string }[]>();
         for (const a of remotes) {
@@ -174,12 +183,9 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
         }
         for (const [origin, arr] of byOrigin) {
           list.appendChild(sectionHead(`${S.t('pickerRemotes')} · ${origin}`, arr.length));
-          const rg = groupByPrefix(arr, a => a.display);
+          const rg = buildPrefixTree(arr, a => a.display);
           for (const a of rg.top) addRow(a, [], 0);
-          for (const g of rg.groups) {
-            list.appendChild(sectionHead(`${g.prefix}/`, g.items.length, 2));
-            for (const a of g.items) addRow(a, [], 1);
-          }
+          renderTree(rg.root, 0);
         }
       }
     }

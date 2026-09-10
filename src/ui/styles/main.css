@@ -298,8 +298,6 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-side-item.group { color: var(--vscode-descriptionForeground); }
 .gg-side-item.repo .gg-side-sub { color: var(--vscode-charts-green); font-size: 11px; }
 .gg-side-item.branch.head .gg-side-name { font-weight: 600; }
-.gg-side-item.branch { padding-left: 14px; }
-.gg-side-item.remote { padding-left: 26px; }
 .gg-side-item.tag { padding-left: 28px; }   /* A3（#22）：与分支区顶层行（28px）层级对齐 */
 .gg-side-name { overflow: hidden; text-overflow: ellipsis; }
 .gg-side-sub { font-size: 11px; color: var(--vscode-descriptionForeground); margin-left: auto; }
@@ -837,18 +835,18 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   background: color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent);
 }
 
-/* 前缀分组组头（Issue #24 / #23）：折叠箭头 + 前缀名 + 计数；两级分组四级缩进——
-   一级组头 12px（基准）→ 一级组内顶层分支行 28px → 二级组头 26px → 二级组内分支行 44px */
+/* 前缀分组组头（Issue #24 / #23；v0.23.2 递归多级）：折叠箭头 + 前缀名 + 计数；
+   缩进随嵌套深度逐级递增（CSS 变量，JS 按 depth/level 注入）——
+   一级组头 12px（基准）→ 一级组内顶层分支行 28px（--d=0）→ 二级组头 26px（--k=0）
+   → 二级组内行 44px（--d=1）→ 三级组头 42px（--k=1）→ 三级组内行 60px（--d=2）……每级 +16px */
 .gg-side-caret { flex: none; width: 12px; text-align: center; font-size: 10px; color: var(--vscode-descriptionForeground); }
 .gg-side-count { flex: none; margin-left: auto; font-size: 10px; color: var(--vscode-descriptionForeground); opacity: 0.85; }
 .gg-side-item.pgroup { cursor: pointer; user-select: none; }
 .gg-side-item.pgroup.l1 { font-weight: 600; }
 .gg-side-item.pgroup.l1 .gg-side-caret { font-size: 11px; }
-.gg-side-group > .gg-side-item.branch,
-.gg-side-group > .gg-side-item.remote { padding-left: 28px; }
-.gg-side-group > .gg-side-group > .gg-side-item.pgroup { padding-left: 26px; }
-.gg-side-group > .gg-side-group > .gg-side-item.branch,
-.gg-side-group > .gg-side-group > .gg-side-item.remote { padding-left: 44px; }
+.gg-side-group .gg-side-item.branch,
+.gg-side-group .gg-side-item.remote { padding-left: calc(28px + var(--d, 0) * 16px); }
+.gg-side-item.pgroup:not(.l1) { padding-left: calc(26px + var(--k, 0) * 16px); }
 
 /* 分支筛选按钮（Issue #24）：替代原生 select，点击弹 branchPicker */
 .gg-filter-btn {
@@ -883,10 +881,10 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-bp-flag { margin-left: 6px; flex: none; color: var(--vscode-charts-green); font-size: 11px; }
 .gg-bp-empty { padding: 14px 12px; color: var(--vscode-descriptionForeground); font-size: 12px; text-align: center; }
 .gg-bp-row.create .gg-bp-ic { color: var(--vscode-charts-green); font-weight: 600; }
-/* A1（#22）：选择器三级缩进——大区头 12px（基准）→ 区内顶层行 28px → 前缀组头 26px → 组内行 44px（查询态平铺保持 12px） */
-.gg-bp-row.d0 { padding-left: 28px; }
-.gg-bp-row.d1 { padding-left: 44px; }
-.gg-bp-head.l2 { padding-left: 26px; }
+/* A1（#22）；v0.23.2 递归多级缩进——行 .d + --d（0=顶层 28px 起，每级 +16px）、组头 .l2 + --k（0=26px 起）；
+   查询态平铺行不设 .d（12px 基准） */
+.gg-bp-row.d { padding-left: calc(28px + var(--d, 0) * 16px); }
+.gg-bp-head.l2 { padding-left: calc(26px + var(--k, 0) * 16px); }
 /* C2（#22）：远程行三段信息（名/已有本地标/remote）间距，防粘连 */
 .gg-bp-row .gg-side-flag { margin-left: 8px; }
 .gg-bp-row .gg-bp-sub { margin-left: 8px; }

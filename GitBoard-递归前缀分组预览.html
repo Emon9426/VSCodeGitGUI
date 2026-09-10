@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GitBoard 递归前缀分组预览（v0.23.2）</title>
+<!-- 直接引用构建产物 out/webview.css，目检即真实样式；此处仅补 VS Code 主题变量（Dark+ 离线模拟） -->
+<link rel="stylesheet" href="./out/webview.css">
+<style>
+:root {
+  --vscode-font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  --vscode-editor-font-family: Consolas, "Courier New", monospace;
+  --vscode-foreground: #cccccc;
+  --vscode-descriptionForeground: #9d9d9d;
+  --vscode-sideBar-background: #181818;
+  --vscode-editorWidget-background: #252526;
+  --vscode-panel-border: #333333;
+  --vscode-list-hoverBackground: #2a2d2e;
+  --vscode-list-activeSelectionBackground: #04395e;
+  --vscode-list-activeSelectionForeground: #ffffff;
+  --vscode-list-inactiveSelectionBackground: #37373d;
+  --vscode-charts-blue: #4fc1ff;
+  --vscode-charts-green: #3fb950;
+  --vscode-dropdown-border: #666;
+  --vscode-input-background: #3c3c3c;
+  --vscode-input-foreground: #cccccc;
+  --vscode-input-border: #3c3c3c;
+  --vscode-focusBorder: #0078d4;
+  --vscode-button-background: #0078d4;
+  --vscode-button-foreground: #ffffff;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  font-family: var(--vscode-font-family); font-size: 13px;
+  color: var(--vscode-foreground); background: var(--vscode-sideBar-background);
+}
+.stage { display: flex; height: 100%; }
+.stage > .pane { flex: 1; overflow: auto; padding: 8px; }
+.stage > .pane + .pane { border-left: 1px solid var(--vscode-panel-border); }
+.pane-title {
+  padding: 4px 8px; font-size: 11px; color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--vscode-panel-border); margin-bottom: 8px;
+}
+.gg-bp { width: auto; max-width: none; }
+.gg-bp-list { max-height: none; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="pane">
+    <div class="pane-title">① 侧栏分支区（本地 + 远程·origin，递归多级前缀分组）</div>
+    <div class="gg-side" id="side"></div>
+  </div>
+  <div class="pane">
+    <div class="pane-title">② 分支选择器（同一套分组与缩进）</div>
+    <div class="gg-bp" id="picker"></div>
+  </div>
+</div>
+
+<script type="module">
+// ---- 夹具：多级前缀（release/1.0、release/2.0、feature/ui/login 三级）----
+const locals = [
+  { name: 'main', isHead: true, subject: 'chore: 发布 v0.23.2' },
+  { name: 'develop', subject: 'feat: 开发分支' },
+  { name: 'release/1.0/fix-crash', subject: 'fix: 崩溃修复' },
+  { name: 'release/1.0/fix-leak', subject: 'fix: 泄漏修复' },
+  { name: 'release/2.0/feat-graph', subject: 'feat: 图形列' },
+  { name: 'release/hotfix', subject: '热修通道' },
+  { name: 'feature/ui/login', subject: 'feat: 登录页' },
+  { name: 'feature/ui/signup', subject: 'feat: 注册页' },
+  { name: 'feature/api', subject: 'feat: 接口层' },
+  { name: 'wip/试验/临时/三层', subject: '三层嵌套' },
+];
+const remotes = [
+  { name: 'origin/main', subject: 'chore: 发布 v0.23.2' },
+  { name: 'origin/release/1.0/fix-crash', subject: 'fix: 崩溃修复' },
+  { name: 'origin/release/2.0/feat-graph', subject: 'feat: 图形列' },
+  { name: 'origin/feature/api', subject: 'feat: 接口层' },
+  { name: 'origin/feature/ui/login', subject: 'feat: 登录页' },
+];
+
+// ---- 与 src/ui/app/branchGroup.ts 同步的最小复刻 ----
+const buildTree = (items, nameOf) => {
+  const top = [], root = { seg: '', path: '', items: [], children: [] };
+  for (const it of items) {
+    const segs = nameOf(it).split('/');
+    if (segs.length === 1 || segs.some(s => !s)) { top.push(it); continue; }
+    let node = root;
+    for (let i = 0; i < segs.length - 1; i++) {
+      let ch = node.children.find(c => c.seg === segs[i]);
+      if (!ch) { ch = { seg: segs[i], path: node.path ? node.path + '/' + segs[i] : segs[i], items: [], children: [] }; node.children.push(ch); }
+      node = ch;
+    }
+    node.items.push(it);
+  }
+  (function sort(n) { n.children.sort((a, b) => a.seg.localeCompare(b.seg)); n.children.forEach(sort); })(root);
+  return { top, root };
+};
+const countNode = n => n.items.length + n.children.reduce((s, c) => s + countNode(c), 0);
+const stripTo = (path, name) => path && name.startsWith(path + '/') ? name.slice(path.length + 1) : name;
+const strip = n => (n.includes('/') ? n.slice(n.indexOf('/') + 1) : n);
+
+// ---- 侧栏渲染（复刻 sidebar.ts：collapseGroup --k / 行 --d）----
+const side = document.getElementById('side');
+const sec = el('div', 'gg-side-sec');
+sec.appendChild(el('div', 'gg-side-h', `分支 (${locals.length + remotes.length})`));
+const list = el('div', 'gg-side-list');
+sec.appendChild(list);
+side.appendChild(sec);
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+function branchRow(b, depth, display) {
+  const item = el('div', 'gg-side-item branch' + (b.isHead ? ' head' : ''));
+  item.style.setProperty('--d', String(depth));
+  item.title = b.subject ?? b.name;
+  if (b.isHead) item.appendChild(el('span', 'gg-dot'));
+  item.appendChild(el('span', 'gg-side-name', display ?? b.name));
+  return item;
+}
+function remoteRow(b, depth, display) {
+  const item = el('div', 'gg-side-item remote');
+  item.style.setProperty('--d', String(depth));
+  item.title = b.subject ?? b.name;
+  item.appendChild(el('span', 'gg-side-name', display ?? b.name));
+  if (locals.some(x => x.name === strip(b.name))) item.appendChild(el('span', 'gg-side-flag', '已有本地'));
+  return item;
+}
+function collapseGroup(label, count, renderItems, level = 2) {
+  const box = el('div', 'gg-side-group');
+  const head = el('div', 'gg-side-item group pgroup' + (level === 1 ? ' l1' : ''));
+  if (level > 1) head.style.setProperty('--k', String(level - 2));
+  head.appendChild(el('span', 'gg-side-caret', '▾'));
+  head.appendChild(el('span', 'gg-side-name', label));
+  head.appendChild(el('span', 'gg-side-count', String(count)));
+  head.addEventListener('click', () => {
+    const collapsed = head.querySelector('.gg-side-caret').textContent === '▾';
+    head.querySelector('.gg-side-caret').textContent = collapsed ? '▸' : '▾';
+    [...box.children].slice(1).forEach(n => n.style.display = collapsed ? 'none' : '');
+  });
+  box.appendChild(head);
+  renderItems(box);
+  return box;
+}
+function renderTree(into, node, depth, nameOf, rowOf) {
+  for (const b of node.items) into.appendChild(rowOf(b, depth, stripTo(node.path, nameOf(b))));
+  for (const ch of node.children) {
+    into.appendChild(collapseGroup(ch.seg + '/', countNode(ch), box => renderTree(box, ch, depth + 1, nameOf, rowOf), depth + 2));
+  }
+}
+// 大区：本地
+list.appendChild(collapseGroup('⑂ 本地分支', locals.length, box => {
+  const { top, root } = buildTree(locals, b => b.name);
+  for (const b of top) box.appendChild(branchRow(b, 0));
+  renderTree(box, root, 0, b => b.name, (b, d, disp) => branchRow(b, d, disp));
+}, 1));
+// 大区：远程 · origin
+list.appendChild(collapseGroup('⇅ 远程分支 · origin', remotes.length, box => {
+  const { top, root } = buildTree(remotes, b => strip(b.name));
+  for (const b of top) box.appendChild(remoteRow(b, 0, strip(b.name)));
+  renderTree(box, root, 0, b => strip(b.name), (b, d, disp) => remoteRow(b, d, disp));
+}, 1));
+
+// ---- 分支选择器渲染（复刻 branchPicker.ts：head.l2 --k / row.d --d）----
+const picker = document.getElementById('picker');
+const plist = el('div', 'gg-bp-list');
+picker.appendChild(el('div', 'gg-bp-empty', '（无查询 · 分组态）')).classList.add('hidden');
+function bpHead(text, count, level = 1) {
+  const h = el('div', 'gg-bp-head' + (level > 1 ? ' l2' : ''), text);
+  if (level > 1) h.style.setProperty('--k', String(level - 2));
+  if (count !== undefined) h.appendChild(el('span', 'gg-bp-count', String(count)));
+  return h;
+}
+function bpRow(name, depth, disp) {
+  const row = el('div', 'gg-bp-row d');
+  row.style.setProperty('--d', String(depth));
+  row.appendChild(el('span', 'gg-bp-ic', '⑂'));
+  row.appendChild(el('span', 'gg-bp-name', disp ?? name));
+  return row;
+}
+function bpTree(node, depth) {
+  for (const b of node.items) plist.appendChild(bpRow(b.name, depth, stripTo(node.path, b.name)));
+  for (const ch of node.children) {
+    plist.appendChild(bpHead(ch.seg + '/', countNode(ch), depth + 2));
+    bpTree(ch, depth + 1);
+  }
+}
+const lt = buildTree(locals.filter(b => !b.isHead), b => b.name);
+plist.appendChild(bpHead('本地分支', locals.length - 1));
+for (const b of lt.top) plist.appendChild(bpRow(b.name, 0));
+bpTree(lt.root, 0);
+plist.appendChild(bpHead('远程分支 · origin', remotes.length));
+const rt = buildTree(remotes, b => strip(b.name));
+for (const b of rt.top) plist.appendChild(bpRow(b.name, 0, strip(b.name)));
+(function bpTreeR(node, depth) {
+  for (const b of node.items) plist.appendChild(bpRow(b.name, depth, stripTo(node.path, strip(b.name))));
+  for (const ch of node.children) {
+    plist.appendChild(bpHead(ch.seg + '/', countNode(ch), depth + 2));
+    bpTreeR(ch, depth + 1);
+  }
+})(rt.root, 0);
+picker.appendChild(plist);
+</script>
+</body>
+</html>

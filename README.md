@@ -72,14 +72,14 @@ code --install-extension EmonZhang3438.gitboard
 **方式一：命令行安装 vsix（推荐）**
 
 ```bash
-code --install-extension gitboard-0.23.1.vsix
+code --install-extension gitboard-0.23.2.vsix
 ```
 
 安装后执行 **Ctrl+Shift+P → “开发者：重新加载窗口”**（每次覆盖安装新版本后都需要；可对照工具栏右侧版本号确认当前构建已生效）。
 
 **方式二：VS Code 界面安装**
 
-扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.23.1.vsix` → 重新加载窗口。
+扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.23.2.vsix` → 重新加载窗口。
 
 **方式三：从源码构建**
 
@@ -248,7 +248,7 @@ pull 或提交产生冲突时，自动切到工作副本视图并弹出引导横
 | `gitboard.gitPath` | 自动检测 | git 可执行文件路径 |
 | `gitboard.graphStyle` | **github** | 走线风格：**github（GitHub 风细线圆弧转弯、空心合并点）** / curved（短半径圆角）/ angular（直角折线） |
 | `gitboard.graphBranchScope` | **local** | 提交图默认范围：**local（本地分支及其上游）** / all（全部引用） / current（当前分支及其上游）；工具栏「全部/本地/当前」分段可随时切换 |
-| `gitboard.branchGroupByPrefix` | true | 侧栏分支按名称前缀（`/` 前段）分组，组头可折叠、计数，折叠状态跨会话保持 |
+| `gitboard.branchGroupByPrefix` | true | 侧栏与选择器分支按名称前缀递归多级分组（`/` 逐段嵌套，缩进逐级递增），组头可折叠、计数，折叠状态跨会话保持 |
 | `gitboard.notifyWidth` | 420 | 右下角通知区宽度（320–560 像素）；拖拽通知区左缘可实时调整并跨会话记忆（优先于此设置） |
 | `gitboard.commitPageSize` | 500 | 每页加载提交数（100–5000） |
 | `gitboard.logOrder` | topo | 提交排序：topo（走线规整，默认）/ date（超大仓库更快） |
@@ -299,6 +299,7 @@ npm run build && npm run package
 
 ### 更新日志
 
+- **v0.23.2**（2026-09-10）：分支分组升级**递归多级前缀嵌套**——侧栏与检出/筛选选择器同步：多段前缀逐级分组（`release/1.0/x` → `release/` 组 > `1.0/` 子组），缩进逐级递增（组头 12/26/42/58px、分支行 28/44/60/76px，每级 +16px，任意深度）；组内行显示剥前缀短名（远程分支同时剥 remote 名），层级一目了然；折叠状态跨会话记忆且兼容旧键。
 - **v0.23.1**（2026-09-10）：侧栏支持拖拽调宽——右缘拖拽手柄（170–460px，悬停高亮），宽度跨会话记忆；折叠态手柄自动隐藏。
 - **v0.23.0**（2026-09-10）：UI 层级与可读性整备（[#22](https://github.com/Emon9426/VSCodeGitGUI/issues/22) 全界面几何审查落地）——①**层级缩进补齐**：检出/筛选选择器三级缩进（大区头/顶层行/前缀组头/组内行 12/28/26/44px，查询态平铺不缩进）、工作副本目录分组 12/28px、侧栏标签行对齐分支区、侧栏区头字重 600 修正层级倒挂；②**通知区可调**：新增 `gitboard.notifyWidth` 配置（320–560，默认 420），左缘拖拽实时调宽并跨会话记忆；③**对齐修复**：提交列表表头与数据列滚动条槽同源（修 2–5px 错位，附防回归断言）、检出选择器远程行信息间距；④**窄视口紧凑**：主区宽 <1080px 时视图切换自动收为纯图标；⑤**清理**：文件页提示文案去 emoji 残留、字号收敛为 5 档（10–14px）。
 - **v0.22.1**（2026-09-10）：侧栏分支两级分组缩进强化——一级组头（本地分支/远程·origin）→ 组内顶层分支行 → 二级前缀组头 → 组内分支行四级递进缩进（12/28/26/44px），分组层级一目了然。
@@ -398,7 +399,7 @@ code --install-extension EmonZhang3438.gitboard
 **Option 1 — CLI (recommended)**
 
 ```bash
-code --install-extension gitboard-0.23.1.vsix
+code --install-extension gitboard-0.23.2.vsix
 ```
 
 Then run **Ctrl+Shift+P → “Developer: Reload Window”** (required after every upgrade; check the version label on the toolbar).
@@ -495,7 +496,7 @@ Failed operations raise a **persistent bottom-right notification** (plain-langua
 
 ### Settings
 
-Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angular), `graphBranchScope` (**local** default / all / current — default commit-graph scope), `branchGroupByPrefix` (sidebar prefix grouping), `commitPageSize`, `logOrder`, `maxAutoLoad`, `defaultPullStrategy`, `dateFormat`, `rowHeight`, `detailPanelPosition`, `language`, `fetchOnOpen`, `autoFetchInterval`, `netStallTimeout`, `opVerify`, `pullFetchSummary`, `notifyWidth`, `revealSelectStyle` (**classic** default — switch to separate/quoted if "Reveal in file manager" misbehaves on your Windows build), `startView`, `ai.enabled` (Copilot features — commit messages & error diagnosis; entries hide when unavailable) / `ai.modelFamily` / `ai.language` / `ai.learnFromHistory` / `ai.useWorkspaceInstructions`, `commit.clearMessage` / `commit.pushAfter`, plus `gitPath` for a custom git binary.
+Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angular), `graphBranchScope` (**local** default / all / current — default commit-graph scope), `branchGroupByPrefix` (sidebar & picker recursive prefix grouping), `commitPageSize`, `logOrder`, `maxAutoLoad`, `defaultPullStrategy`, `dateFormat`, `rowHeight`, `detailPanelPosition`, `language`, `fetchOnOpen`, `autoFetchInterval`, `netStallTimeout`, `opVerify`, `pullFetchSummary`, `notifyWidth`, `revealSelectStyle` (**classic** default — switch to separate/quoted if "Reveal in file manager" misbehaves on your Windows build), `startView`, `ai.enabled` (Copilot features — commit messages & error diagnosis; entries hide when unavailable) / `ai.modelFamily` / `ai.language` / `ai.learnFromHistory` / `ai.useWorkspaceInstructions`, `commit.clearMessage` / `commit.pushAfter`, plus `gitPath` for a custom git binary.
 
 ### FAQ
 
@@ -513,6 +514,7 @@ Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angul
 
 ### Changelog
 
+- **v0.23.2** (2026-09-10): branch grouping upgraded to **recursive multi-level prefix nesting** — sidebar and picker alike: multi-segment prefixes nest level by level (`release/1.0/x` → group `release/` > subgroup `1.0/`), with indentation stepping deeper each level (headers 12/26/42/58px, rows 28/44/60/76px, +16px per level, unlimited depth); grouped rows show prefix-stripped short names (remote rows also drop the remote name) so the hierarchy reads at a glance; collapse states stay remembered across sessions with backward-compatible keys.
 - **v0.23.1** (2026-09-10): the sidebar is now resizable — drag its right edge (170–460px, hover highlight), width remembered across sessions; the handle hides when the sidebar is collapsed.
 - **v0.23.0** (2026-09-10): hierarchy & readability pass ([#22](https://github.com/Emon9426/VSCodeGitGUI/issues/22) full-UI geometry audit) — ① **indentation everywhere**: the branch picker gains three indent levels (section / top-level / prefix-header / grouped rows at 12/28/26/44px; flat in search mode), the working-copy directory groups step 12/28px, sidebar tag rows align with branch rows, and sidebar section headers get weight 600 (fixing the inverted hierarchy); ② **resizable notifications**: new `gitboard.notifyWidth` setting (320–560, default 420) plus drag-to-resize on the notification area's left edge, remembered across sessions; ③ **alignment fixes**: the commit-list header and rows now share the same scrollbar-gutter source (fixing a 2–5px drift, with a regression assertion), and picker remote rows get proper spacing between name/flags; ④ **compact narrow layout**: below 1080px the view switcher collapses to icons; ⑤ **cleanup**: emoji removed from the file-page hint, font sizes converged to 5 steps (10–14px).
 - **v0.22.1** (2026-09-10): clearer sidebar branch-group indentation — level-1 group headers (Local / Remote·origin) → top-level branches → level-2 prefix headers → grouped branches now step in four levels (12/28/26/44px) so the hierarchy reads at a glance.
