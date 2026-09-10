@@ -29,6 +29,7 @@ GitBoard 是一个 VS Code 桌面插件，以**图形化提交历史**为核心�
 
 - 🎨 **GitHub 风彩色拓扑提交图**（可切换圆角 / 直角风格），HEAD / 分支 / 远程 / 标签徽标；
 - ✅ **SourceTree 式工作副本提交**——勾选即暂存，Copilot AI 一键生成提交信息；
+- 🧠 **操作报错 AI 诊断与一键修复**——失败通知一步直达 Copilot 三段式分析，修复命令白名单分级安全执行；
 - 🔀 **IDEA / Beyond Compare 式三栏合并冲突解决器**；
 - 📥 **Pull / Fetch 变更摘要**——作者 → 目录 → 文件三层分组；
 - 📁 **文件历史页**——移动 / 重命名文件夹后历史完整跟随，任意两版本比对；
@@ -46,16 +47,17 @@ GitBoard 是一个 VS Code 桌面插件，以**图形化提交历史**为核心�
 | 提交详情 | 完整 SHA（一键复制）、作者/提交者、完整提交注释、变更文件列表（状态与 ± 行数，按目录分组、组内只显示文件名）；文件 Ctrl/⌘ 累积多选、Shift 范围多选，文件头 ↗ 按钮或右键一次在编辑器打开多个文件；面板高度按百分比记忆，不同尺寸屏幕相对高度一致；diff 工具栏「在 VS Code 中打开」按钮直接打开工作区文件 |
 | 差异对比 | 面板内联 diff（紧凑模式只看增删行，`⋯` 折叠无差异段落）+ VS Code 内置差异编辑器（语法高亮）；合并提交按第一父口径显示 |
 | 文件操作 | 打开工作区文件、查看任意历史版本（只读）、在系统文件管理器中定位（已删除文件自动回退父目录）、复制路径；Windows 长路径（>259 字符）自动降级定位到最深可用祖先目录并选中 |
-| GUI Git 操作 | Fetch（--all --prune）、Pull（merge/rebase/ff-only）、Push（含设置上游）、重置到提交（soft/mixed/hard，hard 需红色确认）、切换分支、检出远程分支、分离 HEAD；SourceTree 式后台自动获取（默认 10 分钟，可配可关）；操作进度行实时显示 git 明细与耗时、网络操作可取消 |
+| GUI Git 操作 | Fetch（--all --prune）、Pull（merge/rebase/ff-only）、Push（含设置上游）、重置到提交（soft/mixed/hard，hard 需红色确认）、切换分支（检出选择器子序列模糊搜索，远程分支内联命名一步检出）、分离 HEAD；SourceTree 式后台自动获取（默认 10 分钟，可配可关）；操作进度行实时显示 git 明细与耗时、网络操作可取消 |
 | 工作副本提交 | 已暂存/未暂存分组，**勾选即暂存、取消即取消暂存**；文件列表按目录分组、文件名过长完整换行；一键移除 `~$` Office 临时文件；单文件 HEAD↔工作副本差异；提交 / 提交并推送 / 修订上次提交 / 暂存全部并提交；最近 8 条信息复用；丢弃（双重确认）；删除文件（转未暂存 D）；行内悬浮按钮（新选项卡打开 / 复制文件名 / 复制路径 / 删除）；文件状态手动刷新按钮；草稿按仓库持久化；提交后推送询问条仅在无其他推送入口时出现 |
 | AI 提交信息 | GitHub Copilot 生成：流式填充、可停止/重生成/选模型；学习近 10 条提交的风格与语言；自动遵循 `.copilot/`、`.github/copilot-instructions.md` 等工程指示文件；复用 VS Code 当前登录账号，零凭证。大批量提交加固：统计与差异封顶截断、60s 无响应自动停止；差异不可用时自动降级为文件名 + 目录结构推断，并如实标注 |
+| AI 错误诊断 | 操作失败弹常驻错误通知（重试 + 折叠 git 输出）；Copilot 可用时附「**AI 分析**」——三段式流式诊断（原因 / 解决步骤含可执行 git 命令 / 预防），URL 凭证自动脱敏后才发送；修复命令经本地白名单独立分级 run/confirm/copy，危险命令逐条红色确认，执行由宿主按索引重校验防篡改（v0.22.0） |
 | 合并与冲突解决 | IDEA / Beyond Compare 式**三栏合并器**：我的版本 – 合并版本（最终保存的就是它，可编辑）– 他人版本；块级按钮（用我的/用他人/两个都要/都不要）+ 左右栏 «» 一键采纳 + 行内编辑，全程不显示 git 冲突标记，右缘冲突分布导航条；pull/提交遇冲突自动引导横幅；push 被拒引导"拉取并推送"；二进制冲突二选一 + 系统程序预览；一方删除场景；超限文件（>16000 行/2MB）显式警告；随时中止还原现场；全部解决后弹确认完成合并（rebase 语义自动反转）；解决进度落盘，重开无损 |
 | Pull/Fetch 摘要 | 每次拉到新提交后弹窗展示**纯净变更摘要**（排除合并等操作提交）：**作者 → 目录 → 文件** 三层分组；文件行带工作区大小与修改时间、行尾按钮一键打开或定位；同作者同文件多提交合并 ×N；重命名显示 `旧名 → 新名`；中文路径无八进制转义；`gitboard.pullFetchSummary` 开关，默认开启 |
 | 文件历史页 | 工具栏第四视图「🗂 文件」：左区资源管理器（文件夹视图/详细信息双视图、Win11 式地址栏、多选 + 删除/移动/重命名独立按钮）+ 右区**跨移动/重命名跟随的完整提交历史**（路径链与时期徽标、里程碑行、就地展开详情、只读打开历史版本、勾选任意两版比对）。详见[第 11 节](#11-文件历史页v0140) |
 | 筛选 | 分支/远程/标签过滤 + 作者多选下拉 + 时间段（可叠加，条件按仓库记忆） |
 | 工程切换 | 左侧栏「工程」区：保存常用工程文件夹（自定义名称），双击当前窗口切换、右键新窗口打开/重命名/移除 |
 | 大仓库性能 | 分页加载（500/页，上限可配）、DOM 虚拟滚动 + Canvas 只绘视口、.git 监视防抖自动刷新 |
-| 界面 | 跟随 VS Code 明暗主题；**侧栏可折叠**（工具栏 «/»，折叠后 18px 把手一键展开，状态记忆）；列宽拖拽持久化；中英双语；状态栏当前分支；活动栏图标角标显示未提交改动文件数 |
+| 界面 | 跟随 VS Code 明暗主题；**侧栏可折叠可调宽**（工具栏 «/» 折叠、右缘拖拽调宽 170–460px，状态跨会话记忆）；列宽拖拽持久化；中英双语；状态栏当前分支；活动栏图标角标显示未提交改动文件数 |
 
 ### 安装
 
@@ -70,14 +72,14 @@ code --install-extension EmonZhang3438.gitboard
 **方式一：命令行安装 vsix（推荐）**
 
 ```bash
-code --install-extension gitboard-0.20.0.vsix
+code --install-extension gitboard-0.23.1.vsix
 ```
 
 安装后执行 **Ctrl+Shift+P → “开发者：重新加载窗口”**（每次覆盖安装新版本后都需要；可对照工具栏右侧版本号确认当前构建已生效）。
 
 **方式二：VS Code 界面安装**
 
-扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.20.0.vsix` → 重新加载窗口。
+扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.23.1.vsix` → 重新加载窗口。
 
 **方式三：从源码构建**
 
@@ -98,10 +100,10 @@ npm run package     # 产出 gitboard-x.y.z.vsix
 
 #### 1. 界面布局
 
-对照上方总览图的编号：**①** 工具栏（Fetch/Pull/Push/刷新/设置/版本号 + 筛选控件）；**②** 左侧栏（**工程**、仓库、本地分支含 `↑领先 ↓落后` 徽标、远程、标签）；**③** 提交图（彩色走线、节点、ref 徽标）；**④** 详情概要（SHA、作者、时间、完整注释）；**⑤** 变更文件列表；**⑥** 内联差异。
+对照上方总览图的编号：**①** 工具栏（Fetch/Pull/Push/检出/图形范围切换/刷新/设置/版本号 + 筛选控件）；**②** 左侧栏（**工程**、仓库、本地分支含 `↑领先 ↓落后` 徽标、远程、标签）；**③** 提交图（彩色走线、节点、ref 徽标）；**④** 详情概要（SHA、作者、时间、完整注释）；**⑤** 变更文件列表；**⑥** 内联差异。
 
 - 工具栏最左端的分段控件在「**⎔ 提交图 ⇄ ☰ 纯提交 ⇄ ▣ 工作副本 ⇄ 🗂 文件**」四个视图间一键切换，各视图的状态互相保留；
-- **侧栏折叠（v0.14.1）**：工具栏最左「«」按钮把工程/仓库/分支/远程面板整体收起，图形与提交列表获得全部宽度；折叠后左缘保留 18px 竖把手（»），点击即恢复；折叠状态跨会话记忆；
+- **侧栏折叠（v0.14.1）**：工具栏最左「«」按钮把工程/仓库/分支/远程面板整体收起，图形与提交列表获得全部宽度；折叠后左缘保留 18px 竖把手（»），点击即恢复；折叠状态跨会话记忆；**侧栏调宽（v0.23.1）**：侧栏右缘拖拽手柄实时调宽（170–460px，悬停高亮），宽度跨会话记忆，折叠态手柄自动隐藏；
 - 详情面板高度可拖拽、可折叠（按百分比记忆，不同尺寸屏幕相对高度一致），位置可在设置中改为右侧；
 - **☰ 纯提交**：隐藏合并提交，只列常规提交，左侧为窄**圆点时间线**图形列（每行一个圆点，HEAD 加红色圆环），列宽固定。
 
@@ -113,6 +115,7 @@ npm run package     # 产出 gitboard-x.y.z.vsix
 - 徽标颜色：绿色=本地分支、紫色=远程分支、黄色=标签、`HEAD → main` 表示当前分支；
 - 列表滚动到底部自动加载下一页（默认每页 500 条，自动加载上限 20000 条，超出后点“继续加载更多”）；
 - `↑` / `↓` 键盘上下移动选中；仓库发生变更（提交/切换分支/fetch）自动防抖刷新；
+- **图形范围过滤（v0.21.0）**：工具栏「**全部 / 本地 / 当前**」分段控件切换提交图绘制范围——默认「本地」= 本地分支及其上游的提交（远端领先状态照常入图），多分支仓库不再被仅存于远端的分支与标签淹没；`gitboard.graphBranchScope` 可改默认值；
 - **操作进度行**：Fetch/Pull/Push/Refresh 进行时，工具栏下方出现进度条——蓝色填充按 git 进度推进（无百分比阶段为流动动画）、显示 git 明细、实时耗时，网络操作可中途取消；完成绿色闪现后自动收起；
 - 窄视口自适应：空间不足时工具栏自动换行、各列按最小宽收缩、列头与内容严格对齐，不再出现元素叠压。
 
@@ -131,7 +134,7 @@ npm run package     # 产出 gitboard-x.y.z.vsix
 - **Fetch**：工具栏 ⟳，默认 `--all --prune`（可配置）；也可在侧栏远程主机/远程分支上右键按单个远程获取；打开视图时可配置自动 fetch；
 - **Pull / Push**：工具栏 ⤓ / ⤒，作用于当前分支的上游配置（`branch.<name>.remote/merge`，与原生 git 语义一致）；Pull 策略可选 merge / rebase / ff-only；Push 无上游时弹窗引导创建；所有网络操作显示实时进度、可取消，且带停滞防护（低速中断 + 无输出超时，见 `gitboard.netStallTimeout`）；
 - **重置到某次提交**：提交行右键 →“重置到此提交…”，选择 soft / mixed / hard；工作区有未提交修改且选择 hard 时，必须点击红色确认按钮（防误触）；
-- **切换分支**：双击侧栏分支即检出；双击远程分支弹出命名框，创建本地跟踪分支；提交行右键可“检出此提交”（分离 HEAD）；
+- **切换分支**：双击侧栏分支即检出；工具栏 **「⑂ 检出」** 按钮或命令面板 `GitBoard: 检出分支…` 打开**模糊搜索选择器**（v0.21.0）——分支名子序列匹配 + 命中高亮，本地分支回车即检出，远程分支内联输入本地名一步创建跟踪分支（工具栏分支筛选下拉为同一选择器）；提交行右键可“检出此提交”（分离 HEAD）；
 - **后台自动获取**（SourceTree 式）：面板打开期间按 `gitboard.autoFetchInterval`（默认 10 分钟，0=关闭）静默 fetch，拉到新提交后分支 ↓n 徽标与提交图自动更新，不走进度条、不弹摘要。
 
 #### 5. 筛选
@@ -218,6 +221,12 @@ pull 或提交产生冲突时，自动切到工作副本视图并弹出引导横
 - **移动后引导**：移动/重命名后提示"纯变更单独提交"（混合移动+内容修改会破坏 git 的 R100 重命名识别）；在系统资源管理器手动拖动后，回到 GitBoard 会自动检测并给出同样引导；
 - 入口：工具栏「🗂 文件」/ VS Code 资源管理器右键「**查看文件历史**」。
 
+#### 12. 错误通知与 AI 诊断（v0.22.0）
+
+- **错误通知**：Fetch / Pull / Push / 合并等操作失败时，右下角弹**常驻错误通知**（不阻塞其他操作）——人话原因 + 可折叠的 git 原始输出 + 「重试」按钮；push 被拒（non-fast-forward）则弹专门的「拉取并推送」引导确认；
+- **AI 分析**：Copilot 可用（VS Code ≥ 1.99 且已登录）且失败非取消/停滞时，通知附「**AI 分析**」按钮——一步直达诊断模态，流式渲染三段式分析（**原因 → 解决步骤（含可直接执行的 git 命令）→ 预防**）；首次使用弹隐私确认，错误信息与 git 输出中的 URL 凭证自动脱敏（`://user:token@` → `://***@`）后才发送；`Esc` 可中途停止；
+- **一键修复**：诊断附带修复方案时，修复命令经**本地白名单独立分级**——`run`（安全，直接执行）/ `confirm`（逐条弹红色危险确认）/ `copy`（仅复制命令）；不信任模型自报等级——`--force`、`clean`、`config` 与未知旗标永远只允许复制；执行只传步骤索引，宿主端重校验防篡改；「一键执行（n）」顺序执行、任一步失败即停，并可携带最新错误**重新诊断**形成闭环。
+
 ### 快捷键
 
 | 按键 | 功能 |
@@ -225,7 +234,7 @@ pull 或提交产生冲突时，自动切到工作副本视图并弹出引导横
 | `Ctrl+Alt+G`（macOS `Cmd+Alt+G`） | 打开提交图 |
 | `Ctrl+Alt+C`（macOS `Cmd+Alt+C`） | 打开工作副本（提交）视图并聚焦信息栏 |
 | `Ctrl+Enter` | 提交（提交信息框内） |
-| `Esc` | 停止 AI 生成 |
+| `Esc` | 停止 AI 生成 / 取消 AI 诊断流式 |
 | `↑` / `↓` | 移动选中提交 |
 | `Enter` | 打开文件所在差异（在详情面板中） |
 | `F2` / `Del` / `Ctrl+L` | 文件页：重命名 / 删除 / 编辑地址栏 |
@@ -256,7 +265,7 @@ pull 或提交产生冲突时，自动切到工作副本视图并弹出引导横
 | `gitboard.pullFetchSummary` | true | Pull/Fetch 拉到新提交后弹窗显示纯净提交摘要 |
 | `gitboard.revealSelectStyle` | classic | 「在资源管理器中显示」的 explorer 传参形态（explorer 对 `/select` 的解析随 Windows 版本而异）：classic = 无引号原样单参数（各版本通用）；separate / quoted 为异构环境兜底 |
 | `gitboard.startView` | graph | 打开时的初始视图：提交图 / 工作副本 / 上次使用 |
-| `gitboard.ai.enabled` | true | 启用 Copilot 生成提交信息（不可用时自动隐藏入口） |
+| `gitboard.ai.enabled` | true | 启用 Copilot AI 能力：生成提交信息 + 操作报错 AI 诊断（Copilot 不可用时相关入口自动隐藏） |
 | `gitboard.ai.modelFamily` | 默认模型 | 首选 Copilot 模型 family |
 | `gitboard.ai.language` | auto | 生成语言（auto = 跟随近期提交） |
 | `gitboard.ai.learnFromHistory` | true | 学习近 10 条提交的风格与语言 |
@@ -282,6 +291,7 @@ npm run build && npm run package
 - **支持 vscode.dev / github.dev 吗？** 不支持，插件需要在本机执行 git 命令。
 - **超大仓库卡吗？** 分页 + 虚拟滚动保证流畅；可运行 `git commit-graph write --reachable` 进一步加速翻页。
 - **✨ AI 生成按钮没出现？** 需要 VS Code ≥ 1.99 且已登录 GitHub Copilot（与 Copilot Chat 同一账号）；未登录或不可用时按钮自动隐藏，其余提交功能不受影响。也可检查 `gitboard.ai.enabled` 是否开启。
+- **错误通知上没有「AI 分析」按钮？** 与 ✨ 同一条件：VS Code ≥ 1.99、已登录 Copilot、`gitboard.ai.enabled` 开启，且扩展 ≥ v0.22.0、失败非取消/停滞且 git 有输出；push 被拒走专门的「拉取并推送」确认框，不带该按钮。快速自检：提交信息栏有 AI 模型下拉即 Copilot 可用。
 - **AI 会发送什么内容？** 已暂存差异（暂存为空时为全部更改）与工程指示文件内容，经 GitHub Copilot 服务处理（使用你当前登录的账号与配额）；首次使用会弹窗确认，超限文件只发送统计不发送内容。
 - **一次性提交很多代码时 AI 会卡死吗？** 不会：文件统计与差异均封顶截断，prompt 始终在模型上下文内；Copilot 60 秒无响应会自动停止并提示重试/换模型；即使 git 读取差异失败也会立即报错并解锁界面。
 - **移动文件夹后历史会丢吗？** 不会。文件页的历史查询基于 `git log --follow` + 目录边界反查，跨移动/重命名完整跟随；唯一要求是**纯移动单独成提交**（移动的同时大改内容会破坏 git 的重命名识别），扩展会在你移动后主动提醒。
@@ -349,6 +359,7 @@ Large repos are handled with paged loading, virtualized scrolling and layered re
 
 - 🎨 **GitHub-style colored topology graph** (curved / angular styles available);
 - ✅ **SourceTree-style working-copy commits** with Copilot-generated messages;
+- 🧠 **AI error diagnosis & one-click fix** — a failed op's notification opens a streamed Copilot analysis; fix commands run through a local whitelist;
 - 🔀 **IDEA / Beyond Compare style 3-way merge resolver**;
 - 📥 **Pull/fetch summaries** grouped author → directory → file;
 - 📁 **File history page** that follows moves & renames, with any-two-version compare;
@@ -362,16 +373,17 @@ Large repos are handled with paged loading, virtualized scrolling and layered re
 | Commit details | Full SHA (one-click copy), author/committer, full message, changed files with status and ± counts grouped by directory (filename-only rows); Ctrl/⌘ multi-select and Shift range-select, open them all at once; panel height remembered as a percentage; "open in VS Code" button on the diff toolbar |
 | Diffs | Inline diff (compact mode shows changed lines only, `⋯` folds unchanged runs) + the built-in diff editor with syntax highlighting; merges diffed against their first parent |
 | File actions | Open working file, open any revision read-only, reveal in the system file manager (falls back to the parent folder for deleted files), copy path; long Windows paths (>259 chars) automatically degrade to the deepest revealable ancestor folder |
-| Git operations | Fetch (--all --prune), Pull (merge/rebase/ff-only), Push (with upstream setup), Reset to commit (soft/mixed/hard — hard needs a red confirmation), checkout branches, checkout remote branch as local tracking, detached HEAD; SourceTree-style background auto-fetch (10 min by default, configurable); a progress bar under the toolbar shows git detail, elapsed time, and a cancel button for network ops |
+| Git operations | Fetch (--all --prune), Pull (merge/rebase/ff-only), Push (with upstream setup), Reset to commit (soft/mixed/hard — hard needs a red confirmation), checkout branches (fuzzy-search picker; remote branches ask for a local name inline), checkout remote branch as local tracking, detached HEAD; SourceTree-style background auto-fetch (10 min by default, configurable); a progress bar under the toolbar shows git detail, elapsed time, and a cancel button for network ops |
 | Working-copy commits | Staged/Unstaged groups, **check a box to `git add` / uncheck to unstage**; files grouped by directory, long filenames wrap; one-click `~$` Office lock-file cleanup; single-file HEAD↔worktree diff; Commit / Commit & Push / Amend / Stage-all-and-commit; recent-message reuse; discard with double confirmation; delete files (tracked files move to Unstaged as D); hover quick actions (open in new tab / copy name / copy path / delete); on-demand status refresh button; per-repo drafts; the post-commit "push?" ask-bar appears only when no other push affordance exists |
 | AI commit messages | One-click generation via GitHub Copilot: streamed inline, stop/regenerate/model picker; style learned from the last 10 commits; automatically follows `.copilot/` and `.github/` instruction files; uses your signed-in account — zero credentials. Hardened for huge changesets: capped summary & diff, 60s watchdog, UI always unlocks; falls back to file-name/folder-structure inference when the diff is unusable, honestly noted |
+| AI error diagnosis | Failed ops raise a persistent error notification (retry + collapsible git output); when Copilot is available an **AI Analyze** button streams a three-part diagnosis (cause / fix steps with runnable git commands / prevention), URL credentials masked before sending; fix commands pass a local whitelist with run/confirm/copy tiers, red confirmations for dangerous steps, and index-based host-side re-validation (v0.22.0) |
 | Merge & conflict resolution | IDEA / Beyond Compare style **3-way merge editor**: Mine – Merged (what gets saved, editable) – Theirs; per-chunk buttons (use mine / theirs / keep both / neither) + «» adopt arrows + inline editing, git conflict markers never shown, conflict minimap; pull/commit conflicts open a guidance banner; rejected pushes guide you to pull-and-push; binary = pick-one-side + system preview; deleted-side scenarios; oversized files get an explicit warning and reduce to whole-file choices; abort anytime; a confirmation finishes the merge (rebase semantics flipped automatically); progress is saved to the file itself — reopening is lossless |
 | Pull/Fetch summary | After every pull/fetch that brings new commits, a popup lists the **pure changes** (merge ops excluded) grouped **author → directory → file**: filename rows (never truncated) with working-tree size & mtime, inline open/reveal buttons, same-file commits merged into ×N rows, renames as `old → new`; toggle with `gitboard.pullFetchSummary`, on by default |
 | File history page | Fourth view "🗂 Files": an explorer (tiles/details views, Win11-style address bar, multi-select with Delete / Move to… / Rename buttons) + a right panel with the **full history following moves/renames** (path chain, era badges, milestone rows, inline details, read-only revisions, any-two-version compare) |
 | Filtering | Branch/remote/tag filter + multi-select author dropdown + date range, stackable and remembered per repository |
 | Projects | "Projects" section in the sidebar: save favorite workspace folders with custom names; double-click to switch the current window, right-click for new window / rename / remove |
 | Large-repo performance | Paged loading (500/page, configurable cap), virtualized rows + viewport-only canvas rendering, debounced auto-refresh on `.git` changes |
-| UI | Follows VS Code light/dark themes; **collapsible sidebar** («/» toggle, 18px edge handle to restore, remembered); drag-resizable persisted columns; English/中文; status-bar branch; activity-bar icon badge with the uncommitted-change count |
+| UI | Follows VS Code light/dark themes; **collapsible, drag-resizable sidebar** («/» toggle, 18px edge handle to restore, 170–460px width, remembered); drag-resizable persisted columns; English/中文; status-bar branch; activity-bar icon badge with the uncommitted-change count |
 
 ### Install
 
@@ -386,7 +398,7 @@ code --install-extension EmonZhang3438.gitboard
 **Option 1 — CLI (recommended)**
 
 ```bash
-code --install-extension gitboard-0.20.0.vsix
+code --install-extension gitboard-0.23.1.vsix
 ```
 
 Then run **Ctrl+Shift+P → “Developer: Reload Window”** (required after every upgrade; check the version label on the toolbar).
@@ -414,7 +426,7 @@ npm install && npm run package
 
 ![Pure view](res/screenshots/pure-view.png)
 
-**2. Browsing** — **GitHub style (default since v0.14.6)**: 2px thin lines, a low-saturation palette (separate sets for light/dark themes), quarter-arc lane changes with a short horizontal middle, arc-style merge elbows; solid dots for commits, hollow rings for merges, HEAD emphasized with a thick background-colored border. Prefer the old look? Set `gitboard.graphStyle` to `curved` (short-radius S curves, merge outer rings, HEAD red ring) or `angular` (right angles). Chips: green = local branch, purple = remote, yellow = tag, `HEAD → main` = current branch. Scrolling near the bottom auto-loads the next page (500/page by default; auto-load caps at 20,000). `↑`/`↓` move the selection. A progress bar under the toolbar tracks network operations with git detail, elapsed time and a cancel button. Narrow viewports degrade gracefully — the toolbar wraps and columns shrink without overlap.
+**2. Browsing** — **GitHub style (default since v0.14.6)**: 2px thin lines, a low-saturation palette (separate sets for light/dark themes), quarter-arc lane changes with a short horizontal middle, arc-style merge elbows; solid dots for commits, hollow rings for merges, HEAD emphasized with a thick background-colored border. Prefer the old look? Set `gitboard.graphStyle` to `curved` (short-radius S curves, merge outer rings, HEAD red ring) or `angular` (right angles). Chips: green = local branch, purple = remote, yellow = tag, `HEAD → main` = current branch. Scrolling near the bottom auto-loads the next page (500/page by default; auto-load caps at 20,000). `↑`/`↓` move the selection. A progress bar under the toolbar tracks network operations with git detail, elapsed time and a cancel button. A **scope segmented control (All / Local / Current)** narrows what the graph draws (v0.21.0) — the default "Local" shows local branches plus their upstreams, so multi-branch repos aren't drowned in remote-only branch and tag tips (`gitboard.graphBranchScope` changes the default). Narrow viewports degrade gracefully — the toolbar wraps and columns shrink without overlap.
 
 **3. Details & diffs** — click a row for the full SHA (click to copy), author/committer, dates and the complete message. Click a file to preview its diff inline — compact mode highlights only added/removed lines and folds unchanged runs into `⋯` rows; switch to "with context" for full context. Double-click a file (or use the header button) to open VS Code's built-in diff editor. Ctrl/⌘-click toggles files into a selection, Shift-click selects a range; the ↗ button opens all selected files at once (missing files are skipped with a notice). Merges are diffed against their first parent.
 
@@ -422,7 +434,7 @@ npm install && npm run package
 
 ![Operations](res/screenshots/operations.png)
 
-① commit-row context menu (detached checkout, reset, copy SHA/subject); ② file context menu (open working file, read-only revision, reveal in file manager, copy path); ③ branch menu (double-click a branch to check it out; double-click a remote branch to create a local tracking branch); ④ the reset dialog — hard resets require an explicit red confirmation when uncommitted changes exist. **Fetch** (⟳) defaults to `--all --prune`; per-remote fetch from the sidebar context menu. **Pull/Push** act on the current branch's configured upstream (`branch.<name>.remote/merge`); a push without upstream offers to create one. Background **auto-fetch** (SourceTree-style) runs silently every 10 minutes by default (`gitboard.autoFetchInterval`, 0 = off) and updates badges/graph without popups.
+① commit-row context menu (detached checkout, reset, copy SHA/subject); ② file context menu (open working file, read-only revision, reveal in file manager, copy path); ③ branch menu (double-click a branch to check it out; double-click a remote branch to create a local tracking branch); ④ the reset dialog — hard resets require an explicit red confirmation when uncommitted changes exist. The **⑂ Check out** button (or `GitBoard: Check Out Branch…` in the command palette, v0.21.0) opens a **fuzzy-search picker** — subsequence matching with hit highlighting; local branches check out on Enter, remote branches ask for a local name inline. **Fetch** (⟳) defaults to `--all --prune`; per-remote fetch from the sidebar context menu. **Pull/Push** act on the current branch's configured upstream (`branch.<name>.remote/merge`); a push without upstream offers to create one. Background **auto-fetch** (SourceTree-style) runs silently every 10 minutes by default (`gitboard.autoFetchInterval`, 0 = off) and updates badges/graph without popups.
 
 **5. Filtering**
 
@@ -466,6 +478,10 @@ The fourth view "🗂 Files" lets you move/rename folders without losing history
 - **Move guidance**: after a move/rename you are nudged to commit it alone (mixing moves with content changes breaks git's R100 rename detection); manual moves made in the system explorer are detected on return with the same nudge;
 - Entry points: the "🗂 Files" toolbar tab, or right-click a file in the VS Code explorer → **"Show File History"**.
 
+**12. Error notifications & AI diagnosis (v0.22.0)**
+
+Failed operations raise a **persistent bottom-right notification** (plain-language reason + collapsible git output + Retry) instead of a blocking dialog; a rejected push opens a dedicated pull-and-push confirmation. When Copilot is available (VS Code ≥ 1.99, signed in) and the failure isn't a cancel/stall, the notification carries an **AI Analyze** button that opens a diagnosis modal streaming a three-part analysis — cause / fix steps with runnable git commands / prevention. A first-use privacy confirmation appears; URL credentials are masked (`://user:token@` → `://***@`) before anything is sent; `Esc` stops the stream. When the diagnosis attaches a fix plan, commands pass a **local whitelist with independent tiers**: run (execute directly) / confirm (a red danger dialog per step) / copy-only — the model's self-reported tier is never trusted (`--force`, `clean`, `config` and unknown flags always degrade to copy), and steps execute by index with host-side re-validation against tampering. "Run all" executes sequentially, stops on the first failure, and can re-diagnose with the latest error.
+
 ### Keybindings
 
 | Key | Action |
@@ -473,13 +489,13 @@ The fourth view "🗂 Files" lets you move/rename folders without losing history
 | `Ctrl+Alt+G` / `Cmd+Alt+G` | Open the commit graph |
 | `Ctrl+Alt+C` / `Cmd+Alt+C` | Open the Working Copy view |
 | `Ctrl+Enter` | Commit (inside the message box) |
-| `Esc` | Stop AI generation |
+| `Esc` | Stop AI generation / cancel AI diagnosis streaming |
 | `↑` / `↓` | Move selection |
 | `F2` / `Del` / `Ctrl+L` | Files view: rename / delete / edit address bar |
 
 ### Settings
 
-Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angular), `graphBranchScope` (**local** default / all / current — default commit-graph scope), `branchGroupByPrefix` (sidebar prefix grouping), `commitPageSize`, `logOrder`, `maxAutoLoad`, `defaultPullStrategy`, `dateFormat`, `rowHeight`, `detailPanelPosition`, `language`, `fetchOnOpen`, `autoFetchInterval`, `netStallTimeout`, `opVerify`, `pullFetchSummary`, `revealSelectStyle` (**classic** default — switch to separate/quoted if "Reveal in file manager" misbehaves on your Windows build), `startView`, `ai.enabled` / `ai.modelFamily` / `ai.language` / `ai.learnFromHistory` / `ai.useWorkspaceInstructions`, `commit.clearMessage` / `commit.pushAfter`, plus `gitPath` for a custom git binary.
+Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angular), `graphBranchScope` (**local** default / all / current — default commit-graph scope), `branchGroupByPrefix` (sidebar prefix grouping), `commitPageSize`, `logOrder`, `maxAutoLoad`, `defaultPullStrategy`, `dateFormat`, `rowHeight`, `detailPanelPosition`, `language`, `fetchOnOpen`, `autoFetchInterval`, `netStallTimeout`, `opVerify`, `pullFetchSummary`, `notifyWidth`, `revealSelectStyle` (**classic** default — switch to separate/quoted if "Reveal in file manager" misbehaves on your Windows build), `startView`, `ai.enabled` (Copilot features — commit messages & error diagnosis; entries hide when unavailable) / `ai.modelFamily` / `ai.language` / `ai.learnFromHistory` / `ai.useWorkspaceInstructions`, `commit.clearMessage` / `commit.pushAfter`, plus `gitPath` for a custom git binary.
 
 ### FAQ
 
@@ -489,6 +505,7 @@ Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angul
 - **vscode.dev?** Not supported — the extension runs your local `git`.
 - **Huge repos?** Paging + virtualization keep it smooth; `git commit-graph write --reachable` speeds up paging further.
 - **No ✨ AI button?** Needs VS Code ≥ 1.99 and an active Copilot sign-in; the button hides itself when unavailable. Check `gitboard.ai.enabled`.
+- **No "AI Analyze" button on error notifications?** Same conditions as ✨: VS Code ≥ 1.99 with an active Copilot sign-in, `gitboard.ai.enabled` on, extension ≥ v0.22.0, and a failure that isn't a cancel/stall with git output present. Rejected pushes open the dedicated pull-and-push dialog instead. Quick check: the commit-bar AI model dropdown appears iff Copilot is available.
 - **What does AI send?** The staged diff (or all changes when nothing is staged) plus workspace instruction files, under your signed-in account and quota; a one-time confirmation appears first; oversized files are reduced to stats only.
 - **Does AI hang on huge changesets?** No: summary and diff are capped, a 60s watchdog stops stalled requests, and any failure unlocks the UI immediately.
 - **Does history survive folder moves?** Yes — the file page uses `git log --follow` plus directory-boundary reverse lookup, so history follows moves/renames completely. The one rule: **commit pure moves separately** (mixing a move with content changes breaks git's rename detection); GitBoard nudges you right after a move.
