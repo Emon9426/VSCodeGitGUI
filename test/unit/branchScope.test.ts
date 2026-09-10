@@ -3,7 +3,7 @@
  * （local=全部分支+仍存在的上游 / current=HEAD 分支+上游 / ref 精选直通 / 其余 null→--all）。
  */
 import { describe, expect, it } from 'vitest';
-import { scopeStartRefs } from '../../src/git/parse';
+import { scopeStartRefs, buildRefTree, type RawRef } from '../../src/git/parse';
 
 const B = (name: string, upstream?: string) => ({ name, fullName: 'refs/heads/' + name, upstream });
 
@@ -68,5 +68,19 @@ describe('scopeStartRefs：all / 未识别 → null（--all）', () => {
   it('all 与缺省 scopeMode 均返回 null', () => {
     expect(scopeStartRefs([B('main')], REMOTES, 'main', { ref: null, scopeMode: 'all' })).toBeNull();
     expect(scopeStartRefs([B('main')], REMOTES, 'main', { ref: null })).toBeNull();
+  });
+});
+
+describe('buildRefTree：origin/HEAD 符号引用过滤（实机测试暴露的既有缺陷）', () => {
+  it("git 的 refname:short 把 refs/remotes/origin/HEAD 剥成 'origin'——按全名过滤，不产生无意义 origin 行", () => {
+    const refs: RawRef[] = [
+      { prefix: 'refs/heads/', fullName: 'refs/heads/main', sha: 'a1', short: 'main' },
+      { prefix: 'refs/remotes/', fullName: 'refs/remotes/origin/HEAD', sha: 'a1', short: 'origin' },   // 实测 git 2.49 输出
+      { prefix: 'refs/remotes/', fullName: 'refs/remotes/origin/main', sha: 'a1', short: 'origin/main' },
+    ];
+    const { branches, remotes } = buildRefTree(refs, 'main');
+    expect(branches).toHaveLength(1);
+    expect(remotes).toHaveLength(1);
+    expect(remotes[0]!.branches.map(b => b.name)).toEqual(['origin/main']);   // 无 'origin' 行
   });
 });

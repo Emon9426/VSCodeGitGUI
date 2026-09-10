@@ -405,7 +405,9 @@ export function buildRefTree(refs: RawRef[], headBranch?: string): { branches: B
         isHead: r.short === headBranch, subject: r.subject, lastDate: r.date, author: r.author,
       });
     } else if (r.prefix === 'refs/remotes/') {
-      if (r.short.endsWith('/HEAD')) continue;   // origin/HEAD 符号引用不展示
+      // origin/HEAD 符号引用不展示：git 的 %(refname:short) 会把它剥成 'origin'（不带 /HEAD 尾巴），
+      // 须按全名判断（Issue #24 实机测试暴露：short 判断从未命中，侧栏出现无意义的 origin 行）
+      if (r.fullName.endsWith('/HEAD')) continue;
       const slash = r.short.indexOf('/');
       const remote = slash === -1 ? r.short : r.short.slice(0, slash);
       const list = remotes.get(remote) ?? [];
