@@ -17,7 +17,7 @@ import { GitService, EMPTY_TREE, SCAN_CAP, authorDateWindow, cleanAuthorName } f
 import { FilesService, safeRelPath } from '../git/files';
 import { PullSummaryService } from '../git/summary';
 import { RepoWatcher } from '../git/watcher';
-import { classifyMergeSession, detectMove, semanticToOurs } from '../git/parse';
+import { classifyMergeSession, detectMove, scopeStartRefs, semanticToOurs } from '../git/parse';
 import { OpRunner, type OpSpec, type PullStrategy } from '../ops/runner';
 import { OpVerifier, type VerifyResult } from '../ops/verify';
 import { DiffContentProvider, GITBOARD_SCHEME, EMPTY_REF, gitboardUri } from './diffProvider';
@@ -35,6 +35,8 @@ function readConfig(): ConfigDto {
     rowHeightPx: rowHeight === 'compact' ? 20 : rowHeight === 'loose' ? 28 : 24,
     graphStyle: cfg.get('graphStyle', 'github'),
     graphColumnWidth: cfg.get('graphColumnWidth', 180),
+    graphBranchScope: cfg.get('graphBranchScope', 'local'),
+    branchGroupByPrefix: cfg.get('branchGroupByPrefix', true),
     maxTagChips: cfg.get('maxTagChips', 2),
     showRemoteChips: cfg.get('showRemoteChips', true),
     detailPanelPosition: cfg.get('detailPanelPosition', 'bottom'),
@@ -70,12 +72,13 @@ export function builtinGitPath(): string | undefined {
   }
 }
 
-/** 空筛选默认值 */
-const DEFAULT_FILTER: LogFilter = { ref: null, authors: [], since: '', until: '', noMerges: false };
+/** 空筛选默认值（sanitize 兜底；per-repo 初始值走 defaultFilter() 取配置范围档） */
+const DEFAULT_FILTER: LogFilter = { ref: null, scopeMode: 'all', authors: [], since: '', until: '', noMerges: false };
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function sanitizeLogFilter(src: any): LogFilter {
   const ref = typeof src?.ref === 'string' && src.ref ? src.ref : null;
+  const scopeMode = src?.scopeMode === 'local' || src?.scopeMode === 'current' || src?.scopeMode === 'all' ? src.scopeMode : undefined;
   const raw: unknown[] = Array.isArray(src?.authors) ? src.authors : [];
   const authors = [...new Set(
     raw
@@ -85,7 +88,7 @@ function sanitizeLogFilter(src: any): LogFilter {
   const since = typeof src?.since === 'string' && DATE_RE.test(src.since) ? src.since : '';
   const until = typeof src?.until === 'string' && DATE_RE.test(src.until) ? src.until : '';
   const noMerges = !!src?.noMerges;
-  return { ref, authors, since, until, noMerges };
+  return { ref, scopeMode, authors, since, until, noMerges };
 }
 
 export class GraphPanel {
@@ -292,11 +295,12 @@ export class GraphPanel {
       case 'diff':
         return this.service!.diffOf(this.currentRoot(), args.mode, String(args.sha), String(args.path), args.base ? String(args.base) : undefined);
       case 'setFilter': {
-        const cur = this.filters.get(this.currentRepoId!) ?? DEFAULT_FILTER;
+        const cur = this.filters.get(this.currentRepoId!) ?? this.defaultFilter();
         // authors 显式传空数组表示清空（不能用 ?? 回退 cur）；noMerges 同理由纯视图切换驱动
         this.filters.set(this.currentRepoId!, sanitizeLogFilter({
           ...cur,
           ref: args.ref === undefined ? cur.ref : args.ref,
+          scopeMode: args.scopeMode === undefined ? cur.scopeMode : args.scopeMode,
           authors: args.authors === undefined ? cur.authors : args.authors,
           since: args.since ?? cur.since,
           until: args.until ?? cur.until,
@@ -485,6 +489,13 @@ export class GraphPanel {
       }
       case 'ui:saveSideCollapsed': {
         await this.context.globalState.update('gitboard.sideCollapsed', !!args.collapsed);
+        return null;
+      }
+      case 'ui:saveBranchGroups': {
+        // 分支分组折叠组名集合（Issue #24）：字符串数组清洗后整体覆写
+        const raw = Array.isArray(args.collapsed) ? args.collapsed : [];
+        const collapsed = [...new Set(raw.map((s: any) => String(s).slice(0, 100)).filter(Boolean))].slice(0, 500);
+        await this.context.globalState.update('gitboard.branchGroupsCollapsed', collapsed);
         return null;
       }
       case 'ui:openSettings':
@@ -820,7 +831,7 @@ export class GraphPanel {
     try {
       // 一次 status 同时喂 buildState（分支信息）与工作副本矩阵（v0.7.2 少跑一次）
       const status = await this.service.statusFullOf(root);
-      const filter = this.filters.get(repoId) ?? DEFAULT_FILTER;
+      const filter = this.filters.get(repoId) ?? this.defaultFilter();
       const { state, scanned: scanned0 } = await this.service.buildState(root, repoId, filter, this.config.commitPageSize, version, {
         statusInfo: status.info,
         order: this.config.logOrder,
@@ -838,13 +849,14 @@ export class GraphPanel {
           localBranches: new Set(state.branches.map(b => b.name)),
           remoteBranches: new Set(state.remotes.flatMap(g => g.branches.map(b => b.name))),
         };
+        const scopeRefs = this.scopeRefsOf(state.branches, state.remotes, state.head.branch, filter);
         let fp0 = '';
         try { fp0 = this.refsFingerprintOf(await this.service.refsOf(root)); } catch { /* 校验尽力而为 */ }
         const extra: Commit[] = [];
         let more = state.hasMore;
         let scanned = scanned0;
         while (state.commits.length + extra.length < target && more) {
-          const page = await this.commitsFill(root, filter, scanned, this.config.commitPageSize, ctx, this.config.logOrder);
+          const page = await this.commitsFill(root, filter, scanned, this.config.commitPageSize, ctx, this.config.logOrder, scopeRefs);
           scanned = page.scanned;
           this.scanCursors.set(repoId, { filterKey: fk, scanned });
           if (!page.commits.length) { more = page.hasMore; break; }   // 空产出：如实保留扫描状态（cap 截断时 true，区别于扫尽）
@@ -872,10 +884,10 @@ export class GraphPanel {
       if (this.lastSelectedSha && !cache.has(this.lastSelectedSha)) {
         this.lastSelectedSha = undefined;
       }
-      // 指纹去重：refs/HEAD/dirty/筛选/分页状态未变则不重复推送
+      // 指纹去重：refs/HEAD/dirty/筛选（含范围档）/分页状态未变则不重复推送
       const fp = JSON.stringify([
         state.head.sha, state.head.branch, state.head.detached,
-        state.status.dirtyCount, state.filterRef, state.logFilter, state.hasMore,
+        state.status.dirtyCount, state.filterRef, state.scopeMode, state.logFilter, state.hasMore,
         state.branches.map(b => b.fullName + b.sha).join(';'),
         state.remotes.flatMap(g => g.branches.map(b => b.name + b.sha)).join(';'),
         state.tags.map(t => t.name + t.sha).join(';'),
@@ -903,7 +915,8 @@ export class GraphPanel {
       localBranches: new Set(this.lastState?.branches.map(b => b.name) ?? []),
       remoteBranches: new Set(this.lastState?.remotes.flatMap(g => g.branches.map(b => b.name)) ?? []),
     };
-    const filter = this.filters.get(repoId) ?? DEFAULT_FILTER;
+    const filter = this.filters.get(repoId) ?? this.defaultFilter();
+    const scopeRefs = this.scopeRefsOf(this.lastState?.branches ?? [], this.lastState?.remotes ?? [], this.lastState?.head.branch, filter);
     const fk = JSON.stringify(filter);
     // 扫描游标（Issue #5）：带日期窗口时续扫偏移 ≠ 产出计数；无游标（同 filter 首查）回退产出计数——
     // 无窗口时两者恒等，语义不变
@@ -915,7 +928,7 @@ export class GraphPanel {
     const ver0 = this.stateVersions.get(repoId) ?? 0;
     let fp0 = '';
     try { fp0 = this.refsFingerprintOf(await this.service.refsOf(root)); } catch { /* 校验尽力而为 */ }
-    const { commits, hasMore, scanned } = await this.commitsFill(root, filter, scanOffset, this.config.commitPageSize, ctx, this.config.logOrder);
+    const { commits, hasMore, scanned } = await this.commitsFill(root, filter, scanOffset, this.config.commitPageSize, ctx, this.config.logOrder, scopeRefs);
     if ((this.stateVersions.get(repoId) ?? 0) !== ver0) {
       void this.refresh(true);
       return null;
@@ -942,15 +955,15 @@ export class GraphPanel {
    * 如实返回 hasMore，前端下次 loadMore 从 scanCursors 续扫）。
    * 无日期窗口时单发即精确（git 侧过滤与 -n/--skip 同管道），直接走 commitsPage。
    */
-  private async commitsFill(root: string, filter: LogFilter, scanOffset: number, limit: number, ctx: { localBranches: Set<string>; remoteBranches: Set<string> }, order: 'topo' | 'date'): Promise<{ commits: Commit[]; hasMore: boolean; scanned: number }> {
+  private async commitsFill(root: string, filter: LogFilter, scanOffset: number, limit: number, ctx: { localBranches: Set<string>; remoteBranches: Set<string> }, order: 'topo' | 'date', scopeRefs?: readonly string[] | null): Promise<{ commits: Commit[]; hasMore: boolean; scanned: number }> {
     if (!authorDateWindow(filter.since, filter.until)) {
-      return this.service!.commitsPage(root, filter, scanOffset, limit, ctx, order);
+      return this.service!.commitsPage(root, filter, scanOffset, limit, ctx, order, scopeRefs);
     }
     const collected: Commit[] = [];
     let scan = scanOffset;
     let hasMore = true;
     while (true) {
-      const page = await this.service!.commitsPage(root, filter, scan, limit, ctx, order);
+      const page = await this.service!.commitsPage(root, filter, scan, limit, ctx, order, scopeRefs);
       scan = page.scanned;
       collected.push(...page.commits);
       hasMore = page.hasMore;
@@ -959,6 +972,18 @@ export class GraphPanel {
       if (scan - scanOffset >= SCAN_CAP) break;              // 补扫上限
     }
     return { commits: collected, hasMore, scanned: scan };
+  }
+
+  /** per-repo 初始筛选：范围档取自配置（Issue #24 D2：默认 local） */
+  private defaultFilter(): LogFilter {
+    return { ref: null, scopeMode: this.config.graphBranchScope, authors: [], since: '', until: '', noMerges: false };
+  }
+
+  /** 由最近一次 repoState 的 refs 快照组装范围起点（loadMore/补页；快照漂移由指纹校验兜底） */
+  private scopeRefsOf(branches: { name: string; fullName: string; upstream?: string }[], remotes: { branches: { fullName: string }[] }[], headBranch: string | undefined, filter: LogFilter): string[] | null {
+    const remoteFullNames = new Set<string>();
+    for (const g of remotes) for (const b of g.branches) remoteFullNames.add(b.fullName);
+    return scopeStartRefs(branches, remoteFullNames, headBranch, filter);
   }
 
   /** refs 快照指纹：全部 ref 的 sha 串联（loadMore 在途漂移检测用，实时读取而非 lastState 缓存） */
@@ -1843,7 +1868,7 @@ export class GraphPanel {
   }
 
   /** ready 事件的附加字段：面板高度百分比 + 工程列表/命中标记 + 工作区根路径 */
-  private readyExtras(): { detailPct?: number; projects: ProjectInfo[]; activeProjectIds: string[]; workspaceFolders: string[]; filesLayout?: { paneW: number; cols: number[] }; sideCollapsed?: boolean; workFilesW?: number } {
+  private readyExtras(): { detailPct?: number; projects: ProjectInfo[]; activeProjectIds: string[]; workspaceFolders: string[]; filesLayout?: { paneW: number; cols: number[] }; sideCollapsed?: boolean; workFilesW?: number; branchGroupsCollapsed?: string[] } {
     const projects = this.readProjects();
     const folders = (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath);
     const activeProjectIds = projects.filter(p => folders.some(f => this.samePath(f, p.path))).map(p => p.id);
@@ -1851,6 +1876,7 @@ export class GraphPanel {
     const filesLayout = this.context.globalState.get<{ paneW: number; cols: number[] }>('gitboard.filesLayout');
     const sideCollapsed = this.context.globalState.get<boolean>('gitboard.sideCollapsed');
     const workLayout = this.context.globalState.get<{ filesW?: number }>('gitboard.workLayout');
+    const groupsCollapsed = this.context.globalState.get<string[]>('gitboard.branchGroupsCollapsed');
     return {
       detailPct: typeof detailPct === 'number' && Number.isFinite(detailPct) ? detailPct : undefined,
       projects,
@@ -1859,6 +1885,7 @@ export class GraphPanel {
       filesLayout: filesLayout && typeof filesLayout.paneW === 'number' ? filesLayout : undefined,
       sideCollapsed: sideCollapsed === true ? true : undefined,
       workFilesW: typeof workLayout?.filesW === 'number' && Number.isFinite(workLayout.filesW) ? workLayout.filesW : undefined,
+      branchGroupsCollapsed: Array.isArray(groupsCollapsed) ? groupsCollapsed : undefined,
     };
   }
 

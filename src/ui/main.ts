@@ -38,7 +38,8 @@ const app: App = {
   },
   setFilter(ref) {
     if (S.state) S.state.filterRef = ref;
-    void rpc('setFilter', { ref, ...S.logFilter }).catch(showErr);
+    // 范围档随请求透传（Issue #24）：宿主侧 ref 非空时忽略 scopeMode
+    void rpc('setFilter', { ref, scopeMode: S.state?.scopeMode ?? S.config.graphBranchScope, ...S.logFilter }).catch(showErr);
   },
   setLogFilter(f) {
     const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -48,7 +49,7 @@ const app: App = {
       until: DATE.test(f.until) ? f.until : '',
       noMerges: f.noMerges ?? S.logFilter.noMerges,
     };
-    void rpc('setFilter', { ref: S.state?.filterRef ?? null, ...S.logFilter }).catch(showErr);
+    void rpc('setFilter', { ref: S.state?.filterRef ?? null, scopeMode: S.state?.scopeMode ?? S.config.graphBranchScope, ...S.logFilter }).catch(showErr);
   },
   selectCommit(sha) {
     S.selectedSha = sha;

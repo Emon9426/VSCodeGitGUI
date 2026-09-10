@@ -93,7 +93,8 @@ export interface App {
 export const S = {
   config: {
     language: 'auto', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'github',
-    graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+    graphColumnWidth: 180, graphBranchScope: 'local', branchGroupByPrefix: true,
+    maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
     commitPageSize: 500, maxAutoLoad: 20000, fetchOnOpen: true, autoFetchInterval: 10, fetchPrune: true,
     netStallTimeout: 180,
     opVerify: 'quick',

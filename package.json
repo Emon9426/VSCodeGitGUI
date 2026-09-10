@@ -262,6 +262,21 @@
           "maximum": 260,
           "description": "%cfg.graphColumnWidth%"
         },
+        "gitboard.graphBranchScope": {
+          "type": "string",
+          "default": "local",
+          "enum": [
+            "local",
+            "all",
+            "current"
+          ],
+          "description": "%cfg.graphBranchScope%"
+        },
+        "gitboard.branchGroupByPrefix": {
+          "type": "boolean",
+          "default": true,
+          "description": "%cfg.branchGroupByPrefix%"
+        },
         "gitboard.showRemoteChips": {
           "type": "boolean",
           "default": true,

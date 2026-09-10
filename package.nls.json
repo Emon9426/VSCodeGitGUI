@@ -27,6 +27,8 @@
   "cfg.rowHeight": "Row height of the commit list.",
   "cfg.graphStyle": "Graph line style: github (GitHub-style thin lines, arc turns, hollow merge dots; default), curved (short-radius corners) or angular (right-angle).",
   "cfg.graphColumnWidth": "Width of the graph column in pixels.",
+  "cfg.graphBranchScope": "Default commit-graph scope: local (local branches plus their upstreams; default), all (all refs) or current (current branch plus its upstream).",
+  "cfg.branchGroupByPrefix": "Group branches by name prefix (the segment before \"/\") in the sidebar, with collapsible group headers.",
   "cfg.showRemoteChips": "Show remote-branch chips on commit rows.",
   "cfg.maxTagChips": "Maximum tag chips shown on one commit row.",
   "cfg.detailPanelPosition": "Position of the commit detail panel.",
