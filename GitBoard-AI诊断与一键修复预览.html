@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GitBoard AI 诊断与一键修复预览（Issue #8 · 待批准 mock）</title>
+<style>
+  /* 近似 VS Code Dark+ 主题（实现时全部替换为 --vscode-* 主题变量） */
+  :root {
+    --bg: #1e1e1e; --panel: #252526; --widget: #2d2d30;
+    --fg: #cccccc; --t2: #9d9d9d; --t3: rgba(157,157,157,.72);
+    --border: #3c3c3c;
+    --blue: #3794ff; --green: #89d185; --yellow: #cca700; --red: #f14c4c; --purple: #b180d7;
+    --mono: Consolas, 'Courier New', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 13px 'Segoe UI', 'Microsoft YaHei', sans-serif; padding: 24px 28px 60px; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .sub { color: var(--t2); font-size: 12px; margin-bottom: 26px; }
+  .sub b { color: var(--yellow); }
+  h2 { font-size: 14px; margin: 34px 0 6px; padding-left: 10px; border-left: 3px solid var(--blue); }
+  h2 .tag { font-size: 10.5px; font-weight: 600; color: var(--t2); margin-left: 8px; letter-spacing: .05em; }
+  .desc { color: var(--t2); font-size: 12px; margin: 0 0 14px 13px; }
+  .cols { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+  .col { flex: 1; min-width: 400px; }
+  .col-label { font-size: 11px; font-weight: 600; letter-spacing: .05em; color: var(--t2); text-transform: uppercase; margin-bottom: 8px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; position: relative; }
+  .svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .meta { font-size: 10.5px; color: var(--t3); margin-top: 4px; padding-left: 2px; }
+  .btn { font: 600 11px 'Segoe UI', sans-serif; padding: 2px 10px; border-radius: 4px; cursor: pointer; }
+  .btn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+  .btn.pri { background: var(--blue); color: #fff; border: none; }
+  .btn.danger { background: transparent; color: var(--red); border: 1px solid color-mix(in srgb, var(--red) 55%, transparent); }
+  .btn:disabled { opacity: .45; cursor: default; }
+
+  /* ===== 1. 入口：错误通知 ===== */
+  .notif { width: 400px; background: var(--widget); border: 1px solid; border-radius: 6px; margin-bottom: 10px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.4); overflow: hidden; }
+  .notif .row1 { display: flex; align-items: center; gap: 8px; padding: 8px 8px 0 10px; }
+  .notif .ttl { font-size: 12.5px; font-weight: 600; }
+  .notif .x { margin-left: auto; color: var(--t2); cursor: pointer; padding: 0 4px; }
+  .notif .body { padding: 2px 10px 6px 32px; color: var(--t2); font-size: 12px; }
+  .notif .acts { display: flex; gap: 6px; padding: 0 10px 8px 32px; }
+  .notif .detail { margin: 0 10px 8px 32px; font-family: var(--mono); font-size: 11px; color: var(--t3);
+    background: rgba(0,0,0,.25); border-radius: 4px; padding: 5px 8px; max-height: 88px; overflow: auto; }
+  .notif .detail summary { cursor: pointer; color: var(--t2); }
+  .notif.err { border-left: 3px solid var(--red); border-color: color-mix(in srgb, var(--red) 42%, transparent);
+    background: color-mix(in srgb, var(--red) 7%, var(--widget)); }
+  .notif.err .ic { color: var(--red); }
+  .notif.ai .btn.ai { color: var(--purple); border-color: color-mix(in srgb, var(--purple) 55%, transparent); display: inline-flex; align-items: center; gap: 5px; }
+
+  /* ===== 2/3. 诊断模态 ===== */
+  .stage { background: rgba(0,0,0,.45); border-radius: 8px; padding: 26px 0; display: flex; justify-content: center; }
+  .modal { width: 560px; max-width: 100%; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.55); overflow: hidden; }
+  .modal .mhead { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .modal .mhead .mttl { font-size: 13px; font-weight: 600; }
+  .modal .mhead .x { margin-left: auto; color: var(--t2); cursor: pointer; }
+  .modal .msub { padding: 6px 12px; font-family: var(--mono); font-size: 11px; color: var(--t2);
+    border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; display: flex; gap: 8px; flex-wrap: wrap; }
+  .modal .msub .dot { color: var(--t3); }
+  .modal .mbody { padding: 12px; max-height: 340px; overflow: auto; }
+  .modal .sec { margin-bottom: 10px; }
+  .modal .sec .sh { font-size: 12px; font-weight: 600; color: var(--blue); margin-bottom: 3px; }
+  .modal .sec p { font-size: 12.5px; line-height: 1.55; color: var(--fg); }
+  .modal .sec .muted { color: var(--t2); }
+  .cursor { display: inline-block; width: 7px; height: 13px; background: var(--blue); vertical-align: -2px; margin-left: 2px; animation: blink 1s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .mfoot { display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--border); align-items: center; }
+
+  /* 修复方案区 */
+  .fix { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .fix .fhead { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: color-mix(in srgb, var(--purple) 8%, var(--widget));
+    border-bottom: 1px solid var(--border); }
+  .fix .fhead .ft { font-size: 12px; font-weight: 600; }
+  .fix .fhead .chip { margin-left: auto; font-size: 11px; color: var(--yellow); }
+  .fix .step { display: flex; align-items: center; gap: 8px; padding: 6px 10px; min-height: 32px; border-bottom: 1px solid var(--border); }
+  .fix .step:last-child { border-bottom: none; }
+  .fix .num { width: 16px; height: 16px; border-radius: 50%; background: var(--widget); border: 1px solid var(--border);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; color: var(--t2); flex: none; font-variant-numeric: tabular-nums; }
+  .fix .st { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fix .cmd { font-family: var(--mono); font-size: 11px; color: var(--t2); margin-left: auto; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; max-width: 46%; background: rgba(0,0,0,.25); border-radius: 4px; padding: 2px 7px; flex: none; }
+  .badge { font-size: 10.5px; font-weight: 600; border-radius: 3px; padding: 1px 6px; flex: none; letter-spacing: .02em; }
+  .badge.run { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); border: 1px solid color-mix(in srgb, var(--green) 38%, transparent); }
+  .badge.confirm { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border: 1px solid color-mix(in srgb, var(--yellow) 38%, transparent); }
+  .badge.copy { color: var(--t3); background: transparent; border: 1px solid var(--border); }
+  .sticon { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .ok { color: var(--green); } .fail { color: var(--red); }
+  .spin { width: 11px; height: 11px; border: 1.6px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: rot .8s linear infinite; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  .fix .stopped { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 12px;
+    background: color-mix(in srgb, var(--red) 8%, transparent); color: var(--red); border-top: 1px solid var(--border); }
+  .fix .stopped .sub2 { color: var(--t2); font-size: 11.5px; }
+  .fix .allok { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 12px;
+    background: color-mix(in srgb, var(--green) 8%, transparent); color: var(--green); border-top: 1px solid var(--border); }
+
+  /* ===== 4. 危险确认（S6 配方） ===== */
+  .confirm .ct { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--red); margin-bottom: 6px; }
+  .confirm .cbody { font-size: 12.5px; color: var(--fg); line-height: 1.55; }
+  .confirm .irrev { margin-top: 8px; padding: 6px 9px; border-radius: 4px; font-size: 11.5px; color: var(--red);
+    background: color-mix(in srgb, var(--red) 9%, transparent); border: 1px solid color-mix(in srgb, var(--red) 32%, transparent);
+    display: flex; gap: 6px; align-items: center; }
+  .confirm .mono { font-family: var(--mono); font-size: 11.5px; background: rgba(0,0,0,.3); border-radius: 4px; padding: 2px 6px; }
+  .confirm .cbtns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+  /* ===== 6. 白名单表 ===== */
+  table.wl { border-collapse: collapse; width: 100%; font-size: 12px; }
+  table.wl th { text-align: left; color: var(--t2); font-weight: 600; padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 11px; }
+  table.wl td { padding: 5px 8px; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); vertical-align: top; }
+  table.wl td.cmds { font-family: var(--mono); font-size: 11px; color: var(--t2); }
+  table.wl tr:last-child td { border-bottom: none; }
+
+  .note { font-size: 11.5px; color: var(--t3); margin-top: 26px; border-top: 1px dashed var(--border); padding-top: 10px; line-height: 1.7; }
+  .note b { color: var(--t2); }
+</style>
+</head>
+<body>
+
+<h1>GitBoard · AI 诊断与一键修复预览</h1>
+<div class="sub">Issue #8 · P1（诊断）+ P2（一键修复）· <b>待批准 mock</b> · 实现时配色全部替换为 --vscode-* 主题变量，密度遵循 S5 规范（12px 面板内边距 / 20px 命中区 / tabular-nums）</div>
+
+<!-- ===== 1. 入口 ===== -->
+<h2>1. 入口 · 操作失败错误通知<span class="tag">P1 §2</span></h2>
+<div class="desc">现有常驻错误通知（Issue #18 S2）的 actions 追加「AI 分析」按钮；按钮仅当 Copilot 可用（S.work.aiModels 非空）且失败非取消/网络停滞时渲染。stderr 中的 URL 凭证已按 maskSecrets 掩码后才进入通知与诊断上下文。</div>
+<div class="cols">
+  <div class="col">
+    <div class="col-label">可诊断（有 AI 分析入口）</div>
+    <div class="panel">
+      <div class="notif err ai">
+        <div class="row1">
+          <svg class="svg ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.6v4.2M8 11.2v.2"/></svg>
+          <span class="ttl">推送失败</span>
+          <span class="x">✕</span>
+        </div>
+        <div class="body">推送到 origin 时出错</div>
+        <div class="acts">
+          <button class="btn pri">重试</button>
+          <button class="btn ai"><svg class="svg" viewBox="0 0 16 16"><path d="M8 2l1.2 3 3 1.2-3 1.2L8 10.4 6.8 7.4 3.8 6.2l3-1.2z"/><path d="M12.6 9.6l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z"/></svg>AI 分析</button>
+        </div>
+        <details class="detail"><summary>git 输出</summary>
+To https://***@github.com/Emon9426/VSCodeGitGUI.git
+ ! [rejected]        main -&gt; main (non-fast-forward)
+error: failed to push some refs (hint: Updates were rejected…)</details>
+      </div>
+      <div class="meta">常驻通知 · 点「AI 分析」一步直达诊断模态（无中间面板）</div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="col-label">无 Copilot / 取消类（无 AI 入口）</div>
+    <div class="panel">
+      <div class="notif err">
+        <div class="row1">
+          <svg class="svg ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.6v4.2M8 11.2v.2"/></svg>
+          <span class="ttl">推送失败</span>
+          <span class="x">✕</span>
+        </div>
+        <div class="body">推送到 origin 时出错</div>
+        <div class="acts"><button class="btn pri">重试</button></div>
+      </div>
+      <div class="meta">aiModels 为空 / gitboard.ai.enabled 关闭 / 用户取消 / 网络停滞 → 按钮不出现，零额外噪音</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 2. 诊断模态：生成中 ===== -->
+<h2>2. 诊断模态 · 流式生成中<span class="tag">P1 §2</span></h2>
+<div class="desc">openModal 骨架；副行展示命令行 · 退出码 · 模型名（tabular-nums）；正文 pre-wrap 流式渲染，可「停止」（err.aiDiagnoseCancel）。</div>
+<div class="cols"><div class="col"><div class="panel">
+  <div class="stage"><div class="modal">
+    <div class="mhead">
+      <svg class="svg" style="color:var(--purple)" viewBox="0 0 16 16"><path d="M8 2l1.2 3 3 1.2-3 1.2L8 10.4 6.8 7.4 3.8 6.2l3-1.2z"/><path d="M12.6 9.6l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z"/></svg>
+      <span class="mttl">AI 诊断：推送到 origin 失败</span><span class="x">✕</span>
+    </div>
+    <div class="msub">git push --progress origin main <span class="dot">·</span> 退出码 1 <span class="dot">·</span> main…origin/main <span class="dot">·</span> claude-4.5-sonnet</div>
+    <div class="mbody">
+      <div class="sec"><div class="sh">原因</div>
+        <p>远端 origin/main 包含本地没有的提交（non-fast-forward）。通常因另一台设备已推<span class="cursor"></span></p>
+      </div>
+    </div>
+    <div class="mfoot"><button class="btn ghost"><svg class="svg" viewBox="0 0 16 16"><rect x="5" y="3" width="6" height="10" rx="1"/></svg>停止</button></div>
+  </div></div>
+</div></div></div>
+
+<!-- ===== 3. 诊断模态：完成 + 修复方案区 ===== -->
+<h2>3. 诊断模态 · 完成 + 修复方案区<span class="tag">P2 §1 / §2</span></h2>
+<div class="desc">三段式分析（原因 / 解决步骤 / 预防可选）渲染完成后，宿主已解析 ```gitboard-fix 块并完成白名单校验，steps 随 diagDone 下发；徽标三色 = 本地校验器独立分级（不读模型自报 risk）。修复块解析失败或全部 copy 级 → 整区不渲染，退化为纯诊断。</div>
+<div class="cols"><div class="col"><div class="panel">
+  <div class="stage"><div class="modal">
+    <div class="mhead">
+      <svg class="svg" style="color:var(--purple)" viewBox="0 0 16 16"><path d="M8 2l1.2 3 3 1.2-3 1.2L8 10.4 6.8 7.4 3.8 6.2l3-1.2z"/><path d="M12.6 9.6l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z"/></svg>
+      <span class="mttl">AI 诊断：推送到 origin 失败</span><span class="x">✕</span>
+    </div>
+    <div class="msub">git push --progress origin main <span class="dot">·</span> 退出码 1 <span class="dot">·</span> claude-4.5-sonnet</div>
+    <div class="mbody">
+      <div class="sec"><div class="sh">原因</div>
+        <p>远端 origin/main 包含本地没有的提交（non-fast-forward）：另一台设备推送过 2 个提交，本地直推会被拒绝保护。</p></div>
+      <div class="sec"><div class="sh">解决步骤</div>
+        <p>1. 先拉取远端变更并以变基方式重放本地提交；<br>2. 变基完成后重新推送即可。</p></div>
+      <div class="sec"><div class="sh">预防</div>
+        <p class="muted">推送前先拉取，或在设置中启用推送前自动拉取。</p></div>
+      <div class="fix">
+        <div class="fhead">
+          <svg class="svg" style="color:var(--purple)" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg>
+          <span class="ft">修复方案</span><span style="font-size:11px;color:var(--t3)">AI 建议 · 已校验</span>
+          <span class="chip">2 条需确认 0</span>
+        </div>
+        <div class="step"><span class="num">1</span><span class="st">拉取并变基远端变更</span><span class="cmd">git pull --rebase</span><span class="badge run">可直接执行</span></div>
+        <div class="step"><span class="num">2</span><span class="st">重新推送</span><span class="cmd">git push origin main</span><span class="badge run">可直接执行</span></div>
+      </div>
+    </div>
+    <div class="mfoot">
+      <button class="btn pri">一键执行（2）</button>
+      <button class="btn ghost">全部复制</button>
+      <button class="btn ghost" style="margin-left:auto">复制诊断</button>
+    </div>
+  </div></div>
+  <div class="meta">步骤行 32px 高：编号 → 标题 → 命令（mono，超宽截断 hover 展开）→ 级别徽标；「一键执行」仅执行 run 级 + 通过确认后的 confirm 级，copy 级跳过</div>
+</div></div></div>
+
+<!-- ===== 4. confirm 级危险确认 ===== -->
+<h2>4. confirm 级 · S6 危险确认<span class="tag">P2 §2 / §3.4</span></h2>
+<div class="desc">confirm 级步骤在执行前逐条弹确认（「一键」不豁免确认）；配方与 reset hard 警示一致：警示图标 + 标题 + 不可撤销副行 + danger 按钮。run 级无此弹窗。</div>
+<div class="cols"><div class="col"><div class="panel">
+  <div class="stage"><div class="modal confirm" style="width:440px">
+    <div class="mhead">
+      <span class="mttl">确认执行：重置暂存区到指定提交</span><span class="x">✕</span>
+    </div>
+    <div class="mbody">
+      <div class="ct">
+        <svg class="svg" viewBox="0 0 16 16" style="width:16px;height:16px"><path d="M8 2.5L14 13H2z"/><path d="M8 6.4v3M8 11.3v.2"/></svg>
+        即将执行第 2 步
+      </div>
+      <div class="cbody">该步骤将执行 <span class="mono">git reset --mixed HEAD~2</span>，两个提交的改动会退回未暂存区（工作副本内容保留）。</div>
+      <div class="irrev">
+        <svg class="svg" viewBox="0 0 16 16"><rect x="5" y="3" width="6" height="10" rx="1"/><path d="M8 6v2.6"/></svg>
+        已暂存的分组与冲突处理进度将丢失，该操作不可通过撤销恢复。
+      </div>
+      <div class="cbtns"><button class="btn ghost">取消（停止序列）</button><button class="btn danger">执行此步骤</button></div>
+    </div>
+  </div></div>
+</div></div></div>
+
+<!-- ===== 5. 执行态 ===== -->
+<h2>5. 执行态 · 进行中 / 成功 / 失败停止<span class="tag">P2 §1 / §3.4</span></h2>
+<div class="desc">执行复用现有 op 体系：进度卡片、取消（op.cancel）、opResult 通知、OpVerifier 假成功校验、成功自动刷新全部白送。任一步失败即停，行标 ✗ +「重新诊断」闭环。</div>
+<div class="cols">
+  <div class="col">
+    <div class="col-label">执行中（步骤 2 运行 → opstatus 卡片同步出现）</div>
+    <div class="panel"><div class="fix">
+      <div class="fhead"><span class="ft">修复方案</span><span style="font-size:11px;color:var(--t3)">AI 建议 · 已校验</span></div>
+      <div class="step"><span class="sticon ok"><svg class="svg" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6.5"/></svg></span><span class="st">拉取并变基远端变更</span><span class="cmd">git pull --rebase</span><span class="badge run">可直接执行</span></div>
+      <div class="step"><span class="sticon"><span class="spin"></span></span><span class="st">重新推送</span><span class="cmd">git push origin main</span><span class="badge run">可直接执行</span></div>
+    </div><div class="meta">「一键执行」执行中禁用防重入（B4 首点禁用模式）</div></div>
+  </div>
+  <div class="col">
+    <div class="col-label">失败停止（✗ + 停止位 + 重新诊断）</div>
+    <div class="panel"><div class="fix">
+      <div class="fhead"><span class="ft">修复方案</span><span style="font-size:11px;color:var(--t3)">AI 建议 · 已校验</span></div>
+      <div class="step"><span class="sticon ok"><svg class="svg" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6.5"/></svg></span><span class="st">拉取并变基远端变更</span><span class="cmd">git pull --rebase</span><span class="badge run">可直接执行</span></div>
+      <div class="step"><span class="sticon fail"><svg class="svg" viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></span><span class="st">重新推送</span><span class="cmd">git push origin main</span><span class="badge run">可直接执行</span></div>
+      <div class="stopped">
+        <svg class="svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.9v3.4M8 11v.2"/></svg>
+        已停止于第 2 步：推送失败（退出码 128，凭证被拒）
+        <button class="btn ghost" style="margin-left:auto">重新诊断</button>
+      </div>
+    </div><div class="meta">「重新诊断」携带本次失败 stderr 发起新诊断，形成闭环；全部成功则整区标 ✓ 并自动刷新仓库</div></div>
+  </div>
+</div>
+
+<!-- ===== 6. 级别与白名单 ===== -->
+<h2>6. 级别徽标与白名单分级（v1）<span class="tag">P2 §3.1 / §4</span></h2>
+<div class="desc">级别由本地校验器 validateStep 独立判定（argv[0] 必须 git、旗标逐项枚举、ref/路径格式校验、shell 元字符拒绝——execFile 参数数组本就不过 shell）。模型自报 risk 仅展示不参与判定；白名单外一律 copy。</div>
+<div class="cols"><div class="col"><div class="panel">
+  <table class="wl">
+    <tr><th style="width:86px">级别</th><th>命令形态（映射到现有 OpSpec）</th><th style="width:150px">交互</th></tr>
+    <tr><td><span class="badge run">run · 可直接执行</span></td><td class="cmds">fetch / pull / push（无 force）/ add / merge|rebase --abort</td><td>「一键执行」直接执行</td></tr>
+    <tr><td><span class="badge confirm">confirm · 需确认</span></td><td class="cmds">reset --soft|--mixed / checkout &lt;ref&gt; / push --force-with-lease</td><td>逐条 S6 危险确认</td></tr>
+    <tr><td><span class="badge copy">copy · 仅复制</span></td><td class="cmds">push --force / clean / stash / config / remote / 任意 -c / 白名单外</td><td>仅复制按钮，永不执行</td></tr>
+  </table>
+</div></div></div>
+
+<div class="note">
+  <b>对应方案：</b>P1 诊断方案（Issue #8 评论 · 2026-09-06）§2/§3；P2 一键修复方案 §1/§2/§3。<br>
+  <b>实现锚点：</b>通知 actions = overlays.ts notify()；模态 = openModal 骨架 + .gg-fix-* 新类；执行 = startOp（Promise 化）复用队列/进度/OpVerifier；校验器 = src/ai/fixplan.ts 纯函数（注入样例必测）。<br>
+  <b>本页为静态 mock：</b>数据为演示值（non-fast-forward 场景）；徽标三色对应本地分级；实现时全部改用 --vscode-* 主题变量与 SVG 图标（不依赖 emoji）。
+</div>
+
+</body>
+</html>

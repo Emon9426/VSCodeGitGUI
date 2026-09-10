@@ -10,7 +10,7 @@ import * as vscode from 'vscode';
 import { createT, resolveLang, type Lang, type Translate } from '../common/i18n';
 import type { Commit, FileEntry, LogFilter, MergeSessionAny, ProjectInfo, PullFileStat, RepoMeta, RepoState, WorkState } from '../common/models';
 import { RENAME_SEP } from '../common/models';
-import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, WVRequest } from '../common/protocol';
+import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, FixStepDto, WVRequest } from '../common/protocol';
 import { GitError, GitExecutor, isGitError } from '../git/executor';
 import { discoverRepos, repoIdOf, sharedDetect } from '../git/discovery';
 import { GitService, EMPTY_TREE, SCAN_CAP, authorDateWindow, cleanAuthorName } from '../git/service';
@@ -18,13 +18,15 @@ import { FilesService, safeRelPath } from '../git/files';
 import { PullSummaryService } from '../git/summary';
 import { RepoWatcher } from '../git/watcher';
 import { classifyMergeSession, detectMove, scopeStartRefs, semanticToOurs } from '../git/parse';
-import { OpRunner, type OpSpec, type PullStrategy } from '../ops/runner';
+import { OpRunner, type OpOutcome, type OpSpec, type PullStrategy } from '../ops/runner';
 import { OpVerifier, type VerifyResult } from '../ops/verify';
 import { DiffContentProvider, GITBOARD_SCHEME, EMPTY_REF, gitboardUri } from './diffProvider';
 import { fsExistsRobust, revealableAncestor, revealSpawnForm, type RevealSelectStyle } from './revealPath';
 import { lmApi, userMessage, classifyLmError } from '../ai/lm';
 import { buildSystemPrompt, buildUserPrompt, type CommitPromptCtx } from '../ai/prompt';
 import { buildFileTree, diffContentUsable, formatEntryList } from '../ai/tree';
+import { buildDiagnosePrompt, maskSecrets } from '../ai/diagnose';
+import { parseFixBlock, validateStep, type FixStepRaw } from '../ai/fixplan';
 
 function readConfig(): ConfigDto {
   const cfg = vscode.workspace.getConfiguration('gitboard');
@@ -137,6 +139,10 @@ export class GraphPanel {
   private lastWorkJson = '';
   private lastWorkEntries?: { staged: FileEntry[]; unstaged: FileEntry[]; conflicts: FileEntry[] };
   private aiCts?: vscode.CancellationTokenSource;
+  /** AI 错误诊断（Issue #8）：独立于 aiCts，避免与提交生成互串取消 */
+  private diagCts?: vscode.CancellationTokenSource;
+  /** 最近一次诊断的修复步骤缓存（index → 原始命令与本地分级；spec 执行时重校验重建） */
+  private fixSteps = new Map<number, { cmd: string; level: 'run' | 'confirm' | 'copy' }>();
   private pendingWorkView = false;
 
   static show(context: vscode.ExtensionContext, repoId?: string): GraphPanel {
@@ -215,6 +221,8 @@ export class GraphPanel {
     if (this.fetchTimer) clearInterval(this.fetchTimer);
     this.aiCts?.cancel();
     this.aiCts?.dispose();
+    this.diagCts?.cancel();
+    this.diagCts?.dispose();
     for (const w of this.watchers.values()) w.dispose();
     this.watchers.clear();
     this.statusBarItem?.dispose();
@@ -637,6 +645,14 @@ export class GraphPanel {
       case 'work.aiCancel':
         this.aiCts?.cancel();
         return null;
+      // AI 错误诊断（Issue #8）
+      case 'err.aiDiagnose':
+        return this.aiDiagnose(args);
+      case 'err.aiDiagnoseCancel':
+        this.diagCts?.cancel();
+        return null;
+      case 'err.aiFixStep':
+        return this.aiFixStep(args);
       case 'work.saveDraft':
         await this.context.globalState.update(`gitboard.commitDraft:${this.currentRepoId}`, {
           message: String(args.draft?.message ?? '').slice(0, 60000),
@@ -1258,12 +1274,13 @@ export class GraphPanel {
     }
   }
 
-  private startOp(spec: OpSpec): void {
-    if (!this.runner || !this.currentRepoId) return;
+  /** 统一操作入口（Issue #8：返回 Promise 供修复步骤逐步 await；普通调用方照旧忽略返回值） */
+  private startOp(spec: OpSpec): Promise<OpOutcome | undefined> {
+    if (!this.runner || !this.currentRepoId) return Promise.resolve(undefined);
     const root = this.roots.get(this.currentRepoId)!;
     // F4（Issue #6）：网络操作同类去重——慢网络下连点 Fetch/Pull/Push 只跑一个，
     // 不再向串行队列堆积重复 op（旧版每次点击都排一个，队列被同一操作刷满）
-    if (!this.enqueueNet(root, spec)) return;
+    if (!this.enqueueNet(root, spec)) return Promise.resolve(undefined);   // 同类网络 op 已在队：视为未执行
     const releaseKind = (): void => this.releaseNetKind(root, spec);
     const opId = ++this.opSeq;
     const kind = spec.kind;
@@ -1274,7 +1291,7 @@ export class GraphPanel {
     const headBefore = kind === 'pull' ? this.lastState?.head.sha : undefined;   // 摘要范围：pull 前后 HEAD 差
     // F3（Issue #6）：pull 的"已是最新"反馈带上游分支名——拉错分支/远端时一眼可见
     const upstreamBefore = kind === 'pull' ? this.lastState?.branches.find(b => b.isHead)?.upstream : undefined;
-    void this.runner.run(
+    return this.runner.run(
       root, spec, opId,
       (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
       ok => ok ? this.t(`${kind}Done`) : this.t('opFailed', { op: label }),
@@ -1282,7 +1299,7 @@ export class GraphPanel {
       try {
         if (outcome.message === 'cancelled') {
           this.post({ t: 'opResult', opId, kind, ok: false, message: this.t('opCancelled') });
-          return;
+          return outcome;
         }
         // 结果细化：让"点了但没变化"也有明确反馈（v0.7.1）
         let message = outcome.message;
@@ -1322,6 +1339,7 @@ export class GraphPanel {
         this.post({
           t: 'opResult', opId, kind, ok: outcome.ok,
           message, outputTail: outcome.outputTail, verify,
+          command: outcome.command, exitCode: outcome.exitCode, stalled: outcome.stalled,   // Issue #8：AI 诊断上下文
         });
         if (outcome.ok) {
           this.files?.invalidateTree(root);   // commit/checkout/reset 等改变 index/HEAD → 文件页目录缓存失效
@@ -1334,6 +1352,7 @@ export class GraphPanel {
           // pull 失败（含冲突：git 以非零退出）也刷工作副本——前端据此弹冲突横幅引导（R3）
           void this.workStateNow().catch(() => undefined);
         }
+        return outcome;
       } finally {
         releaseKind();
       }
@@ -1793,10 +1812,7 @@ export class GraphPanel {
       return fail(classifyLmError(e), String((e as Error)?.message ?? e).slice(0, 200));
     }
     if (!models.length) return fail('noModel');
-    const family = vscode.workspace.getConfiguration('gitboard').get<string>('ai.modelFamily', '');
-    const model = (modelId ? models.find(m => m.id === modelId) : undefined)
-      ?? (family ? models.find(m => m.family === family) : undefined)
-      ?? models.find(m => m.isDefault) ?? models[0];
+    const model = this.pickCopilotModel(models, modelId);
 
     this.aiCts?.cancel();
     const cts = new vscode.CancellationTokenSource();
@@ -1867,6 +1883,134 @@ export class GraphPanel {
       if (this.aiCts === cts) this.aiCts = undefined;
     }
     return null;
+  }
+
+  // ---------- AI 错误诊断与一键修复（Issue #8） ----------
+
+  /** Copilot 模型选择（提交生成与诊断同策略）：指定 id → 配置 family → 默认 → 第一个 */
+  private pickCopilotModel<T extends { id: string; family: string; isDefault?: boolean }>(models: T[], modelId?: string): T {
+    const family = vscode.workspace.getConfiguration('gitboard').get<string>('ai.modelFamily', '');
+    return (modelId ? models.find(m => m.id === modelId) : undefined)
+      ?? (family ? models.find(m => m.family === family) : undefined)
+      ?? models.find(m => m.isDefault) ?? models[0];
+  }
+
+  /**
+   * AI 错误诊断：脱敏上下文 → Copilot 流式分析（diagChunk）→ 完成时解析
+   * gitboard-fix 修复块并本地分级，steps 随 diagDone 下发（前端零解析逻辑）。
+   * 独立 aiDiagConsent 确认（发送内容与提交生成不同类）与 diagCts 取消令牌。
+   */
+  private async aiDiagnose(args: any): Promise<null> {
+    const fail = (code: 'noModel' | 'auth' | 'quota' | 'canceled' | 'error', message?: string): null => {
+      this.post({ t: 'diagError', code, message });
+      return null;
+    };
+    if (!this.config.aiEnabled) return fail('error', this.t('aiDisabled'));
+    const lm = lmApi(vscode);
+    if (!lm) return fail('noModel');
+
+    // 入参收敛（webview 组装，仍按长度截断防滥用）；凭证脱敏后再进入任何下游
+    const kind = String(args?.kind ?? '').slice(0, 32);
+    const command = args?.command ? maskSecrets(String(args.command)).slice(0, 300) : undefined;
+    const exitCode = typeof args?.exitCode === 'number' ? args.exitCode : undefined;
+    const message = args?.message ? String(args.message).slice(0, 300) : undefined;
+    const outputTail = args?.outputTail ? maskSecrets(String(args.outputTail)).slice(0, 4000) : undefined;
+    const branch = args?.branch ? String(args.branch).slice(0, 120) : undefined;
+    const upstream = args?.upstream ? String(args.upstream).slice(0, 160) : undefined;
+    const ahead = typeof args?.ahead === 'number' ? args.ahead : undefined;
+    const behind = typeof args?.behind === 'number' ? args.behind : undefined;
+    if (!outputTail) return fail('error', this.t('diagNoOutput'));
+
+    // 首次诊断隐私确认（独立于提交生成的 aiConsent）
+    if (this.context.globalState.get<boolean>('gitboard.aiDiagConsent') !== true) {
+      const allow = await vscode.window.showInformationMessage(
+        this.t('diagPrivacyText'), { modal: true }, this.t('diagPrivacyAllow'),
+      );
+      if (allow !== this.t('diagPrivacyAllow')) return fail('error', this.t('aiDeclined'));
+      await this.context.globalState.update('gitboard.aiDiagConsent', true);
+    }
+
+    let models;
+    try {
+      models = await lm.selectChatModels({ vendor: 'copilot' });
+    } catch (e) {
+      return fail(classifyLmError(e), String((e as Error)?.message ?? e).slice(0, 200));
+    }
+    if (!models.length) return fail('noModel');
+    const model = this.pickCopilotModel(models);
+
+    this.diagCts?.cancel();
+    const cts = new vscode.CancellationTokenSource();
+    this.diagCts = cts;
+    let watchdog: NodeJS.Timeout | undefined;
+    let timedOut = false;
+    const armWatchdog = (): void => {
+      if (watchdog) clearTimeout(watchdog);
+      watchdog = setTimeout(() => { timedOut = true; cts.cancel(); }, 60_000);
+    };
+    try {
+      const repoBits: string[] = [];
+      if (branch) repoBits.push(branch + (upstream ? ` → ${upstream}` : ''));
+      const ab: string[] = [];
+      if (typeof ahead === 'number') ab.push(`ahead ${ahead}`);
+      if (typeof behind === 'number') ab.push(`behind ${behind}`);
+      if (ab.length) repoBits.push(`(${ab.join(', ')})`);
+      const lang = this.config.aiLanguage;
+      const langName = lang === 'en' ? 'English'
+        : lang === 'zh-cn' ? 'Simplified Chinese'
+          : (this.lang === 'en' ? 'English' : 'Simplified Chinese');
+      const prompt = buildDiagnosePrompt({
+        op: kind ? this.t(kind) : kind,   // OpKind 键命中即本地化操作名，未命中原样
+        command, exitCode, message, outputTail,
+        repo: repoBits.join(' ') || undefined,
+        language: lang, langName,
+      });
+      this.channel.appendLine(`[ai-diag] kind=${kind} exit=${exitCode ?? '?'} cmd=${command ? 'yes' : 'no'} tail=${outputTail.length}ch model=${model.name}`);
+      armWatchdog();
+      const res = await model.sendRequest([userMessage(vscode, prompt)], {}, cts.token);
+      let full = '';
+      for await (const chunk of res.text) {
+        armWatchdog();
+        full += chunk;
+        this.post({ t: 'diagChunk', text: chunk });
+      }
+      // P2：解析修复块并本地分级（模型自报 risk 仅展示，不参与判定）
+      const raw = parseFixBlock(full);
+      const steps: FixStepDto[] = [];
+      this.fixSteps.clear();
+      if (raw) {
+        raw.forEach((s, i) => {
+          const v = validateStep(s.cmd);
+          this.fixSteps.set(i + 1, { cmd: s.cmd, level: v.level });
+          steps.push({ index: i + 1, title: s.title, cmd: s.cmd, level: v.level });
+        });
+      }
+      this.channel.appendLine(`[ai-diag] done chars=${full.length} fixSteps=${steps.length} run=${steps.filter(s => s.level === 'run').length} confirm=${steps.filter(s => s.level === 'confirm').length}`);
+      this.post({ t: 'diagDone', model: model.name, steps: steps.length ? steps : undefined });
+    } catch (e) {
+      if (timedOut) {
+        fail('error', this.t('aiTimeout'));
+      } else {
+        const code = classifyLmError(e);
+        fail(code, code === 'error' ? String((e as Error)?.message ?? e).slice(0, 200) : undefined);
+      }
+    } finally {
+      if (watchdog) clearTimeout(watchdog);
+      cts.dispose();
+      if (this.diagCts === cts) this.diagCts = undefined;
+    }
+    return null;
+  }
+
+  /** 执行修复步骤：宿主重校验重建 spec（不信任缓存外输入）→ 走现有 op 队列（进度/取消/校验/刷新全复用） */
+  private async aiFixStep(args: any): Promise<{ ok: boolean }> {
+    const idx = Number(args?.index);
+    const step = Number.isInteger(idx) && idx > 0 ? this.fixSteps.get(idx) : undefined;
+    if (!step) throw new Error(this.t('fixStalePlan'));
+    const v = validateStep(step.cmd);
+    if (!v.spec) throw new Error(this.t('fixExecDenied'));
+    const outcome = await this.startOp(v.spec);
+    return { ok: !!outcome && outcome.ok && outcome.message !== 'cancelled' };
   }
 
   // ---------- 杂项 ----------

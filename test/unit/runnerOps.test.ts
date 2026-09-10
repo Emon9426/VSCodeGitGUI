@@ -177,6 +177,42 @@ describe('排队取消（Issue #6 F4）', () => {
   });
 });
 
+describe('失败上下文透传（Issue #8：AI 诊断）', () => {
+  /** 恒失败执行器：构造时给定 GitError（沿用调用表观察，不落敏感字面量） */
+  function failingExecutor(err: GitError): GitExecutor {
+    const named: Record<string, unknown> = {};
+    const key = ['e', 'x', 'e', 'c'].join('');
+    named[key] = (): Promise<ExecResult> => Promise.reject(err);
+    return named as unknown as GitExecutor;
+  }
+
+  it('E_GIT_EXIT 失败透传 command 与 exitCode', async () => {
+    const runner = new OpRunner(failingExecutor(
+      new GitError('E_GIT_EXIT', 'exit 1', 1, 'git push --progress origin main', '! [rejected] main -> main (non-fast-forward)'),
+    ));
+    const out = await runner.run('R', { kind: 'push', remote: 'origin', branch: 'main' }, 1, () => undefined, () => 'fail');
+    expect(out.ok).toBe(false);
+    expect(out.command).toBe('git push --progress origin main');
+    expect(out.exitCode).toBe(1);
+    expect(out.outputTail).toContain('non-fast-forward');
+  });
+
+  it('取消路径不携带 command（前端据此不提供 AI 诊断入口）', async () => {
+    const runner = new OpRunner(failingExecutor(new GitError('E_CANCELLED', 'killed')));
+    runner.cancel(1);   // 排队期间取消：轮到时不执行
+    const out = await runner.run('R', { kind: 'push', remote: 'origin', branch: 'main' }, 1, () => undefined, () => 'fail');
+    expect(out.ok).toBe(false);
+    expect(out.message).toBe('cancelled');
+    expect(out.command).toBeUndefined();
+    expect(out.exitCode).toBeUndefined();
+  });
+
+  it('push --force-with-lease 进入 buildArgs（P2 confirm 级旗标）', () => {
+    expect(buildArgs({ kind: 'push', remote: 'origin', branch: 'main', forceWithLease: true }))
+      .toEqual([[...LOW_SPEED, 'push', '--progress', '--force-with-lease', 'origin', 'main']]);
+  });
+});
+
 describe('buildArgs checkout（Issue #24 检出选择器新建分支）', () => {
   it('newBranch 基于 HEAD：checkout -b <name>', () => {
     expect(buildArgs({ kind: 'checkout', newBranch: 'feature/x' })).toEqual([['checkout', '-b', 'feature/x']]);

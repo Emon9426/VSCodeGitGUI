@@ -23,6 +23,7 @@ export interface OpSpec {
   strategy?: PullStrategy;     // pull
   autostash?: boolean;         // pull
   setUpstream?: boolean;       // push
+  forceWithLease?: boolean;    // push：--force-with-lease（Issue #8 修复方案 confirm 级）
   sha?: string;                // reset / checkout(detached) / tagCreate
   mode?: ResetMode;            // reset
   ref?: string;                // checkout / checkout newBranch 的起点（缺省 HEAD）
@@ -51,6 +52,10 @@ export interface OpOutcome {
   stdoutTail?: string;
   /** 网络操作长时间无输出被看门狗中断（F2：panel 据此映射"网络停滞"文案） */
   stalled?: boolean;
+  /** 失败时最后执行的 git 命令行（Issue #8：AI 诊断上下文；取消/停滞路径无值） */
+  command?: string;
+  /** 失败时的 git 退出码（Issue #8：AI 诊断上下文） */
+  exitCode?: number;
 }
 
 const PCT_RE = /(\d+)%/;
@@ -187,7 +192,11 @@ export class OpRunner {
         return { ok: false, stalled: true, message: buildDone(false), outputTail: 'network stalled: no-output watchdog fired' };
       }
       const tail = e instanceof GitError ? e.stderrTail : String(e);
-      return { ok: false, message: buildDone(false), outputTail: tail };
+      return {
+        ok: false, message: buildDone(false), outputTail: tail,
+        command: e instanceof GitError ? e.command : undefined,
+        exitCode: e instanceof GitError ? e.exitCode : undefined,
+      };
     } finally {
       if (watchdog) clearInterval(watchdog);
     }
@@ -238,6 +247,7 @@ export function buildArgs(spec: OpSpec): string[][] {
     case 'push': {
       const args = [...LOW_SPEED_USER, 'push', '--progress'];
       if (spec.setUpstream) args.push('-u');
+      if (spec.forceWithLease) args.push('--force-with-lease');
       args.push(spec.remote ?? 'origin', spec.branch ?? 'HEAD');
       return [args];
     }

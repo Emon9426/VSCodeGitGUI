@@ -108,6 +108,8 @@ const PATHS: Record<string, readonly string[]> = {
   search: ['M2.4 6.8a4.4 4.4 0 1 0 8.8 0 4.4 4.4 0 1 0 -8.8 0', 'M10.6 10.6 14 14'],
   /** 重命名/文档 */
   docRename: ['M3.2 1.8h6l3.6 3.6v8.8H3.2z', 'M9 2v3.4h3.4', 'M5.6 9.6h4.8'],
+  /** 执行修复步骤：实心播放三角（Issue #8） */
+  playTriangle: ['M5.4 3.2v9.6l7.2-4.8z'],
 };
 
 export type IconName = keyof typeof PATHS;
