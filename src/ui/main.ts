@@ -19,6 +19,7 @@ import { createOpStatus } from './app/opStatus';
 import { createFilesView } from './app/filesView';
 import { createFilePanel } from './app/filePanel';
 import { showPullSummary } from './app/pullSummary';
+import { openBranchPicker } from './app/branchPicker';
 import { confirmDialog, promptDialog, resetDialog, toast, openModal } from './app/overlays';
 import { fileIconSvg } from './icons';
 
@@ -38,7 +39,15 @@ const app: App = {
   },
   setFilter(ref) {
     if (S.state) S.state.filterRef = ref;
-    void rpc('setFilter', { ref, ...S.logFilter }).catch(showErr);
+    // 范围档随请求透传（Issue #24）：宿主侧 ref 非空时忽略 scopeMode
+    void rpc('setFilter', { ref, scopeMode: S.state?.scopeMode ?? S.config.graphBranchScope, ...S.logFilter }).catch(showErr);
+  },
+  setScope(mode) {
+    if (S.state) {
+      S.state.scopeMode = mode;
+      S.state.filterRef = null;   // 切范围即退出单 ref 精选（"全部/本地/当前"与具体 ref 互斥）
+    }
+    void rpc('setFilter', { ref: null, scopeMode: mode, ...S.logFilter }).catch(showErr);
   },
   setLogFilter(f) {
     const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -48,7 +57,7 @@ const app: App = {
       until: DATE.test(f.until) ? f.until : '',
       noMerges: f.noMerges ?? S.logFilter.noMerges,
     };
-    void rpc('setFilter', { ref: S.state?.filterRef ?? null, ...S.logFilter }).catch(showErr);
+    void rpc('setFilter', { ref: S.state?.filterRef ?? null, scopeMode: S.state?.scopeMode ?? S.config.graphBranchScope, ...S.logFilter }).catch(showErr);
   },
   selectCommit(sha) {
     S.selectedSha = sha;
@@ -160,6 +169,12 @@ const app: App = {
     void promptDialog(S.t('checkoutAs'), S.t('branchNameLabel'), suggest).then(name => {
       if (name) void rpc('op:checkout', { trackFrom: { name, remoteBranch } }).catch(showErr);
     });
+  },
+  checkoutTrack(name, remoteBranch) {
+    void rpc('op:checkout', { trackFrom: { name, remoteBranch } }).catch(showErr);
+  },
+  checkoutCreate(name, base) {
+    void rpc('op:checkout', { newBranch: name, ref: base }).catch(showErr);
   },
   checkoutDetached(sha) {
     void confirmDialog(S.t('checkoutDetached'), sha.slice(0, 12), S.t('yes')).then(ok => {
@@ -480,6 +495,12 @@ const app: App = {
     applyLayout();
     toolbar.update();
   },
+  toggleBranchGroup(key) {
+    const set = S.branchGroupsCollapsed;
+    if (set.has(key)) set.delete(key); else set.add(key);
+    void rpc('ui:saveBranchGroups', { collapsed: [...set] }).catch(() => undefined);
+    sidebar.update();
+  },
 };
 
 function showErr(e: unknown): void {
@@ -681,6 +702,23 @@ function armResolveHint(path: string): void {
   }, 5000);
 }
 
+/** 当前分支主干段集合（Issue #24 B3）：HEAD 提交沿第一父回溯——图形层对这些分段加粗 */
+function computeTrunkSegs(): void {
+  const set = new Set<number>();
+  const head = S.commits.find(c => c.refs.some(r => r.isHead));
+  if (head) {
+    const bySha = new Map(S.commits.map(c => [c.sha, c]));
+    let cur: typeof head | undefined = head;
+    const guard = new Set<string>();
+    while (cur && !guard.has(cur.sha)) {
+      guard.add(cur.sha);
+      if (cur.seg !== undefined) set.add(cur.seg);
+      cur = cur.parents[0] ? bySha.get(cur.parents[0]) : undefined;
+    }
+  }
+  S.trunkSegs = set;
+}
+
 function applyColWidths(w: { graph?: number; msg?: number; author?: number; sha?: number }): void {
   for (const key of ['graph', 'msg', 'author', 'sha'] as const) {
     const v = w[key];
@@ -715,6 +753,7 @@ window.addEventListener('message', e => {
         filesview.el.style.width = S.files.paneW + 'px';
       }
       if (typeof m.sideCollapsed === 'boolean') S.sideCollapsed = m.sideCollapsed;
+      if (Array.isArray(m.branchGroupsCollapsed)) S.branchGroupsCollapsed = new Set(m.branchGroupsCollapsed);
       if (typeof m.workFilesW === 'number') workview.applyFilesWidth(m.workFilesW);   // 工作副本列宽跨会话恢复
       restoreSha = m.selectedSha;
       applyThemeKind();
@@ -766,6 +805,7 @@ window.addEventListener('message', e => {
       S.state = st;
       S.commits = st.commits;
       S.graph = computeLanes(st.commits);
+      computeTrunkSegs();
       emptyAppendStreak = 0;   // 列表整体重建：空页熔断计数随新快照复位
       // 列表已整体重建：作废在途分页请求（其页属旧快照，拼接必错位）
       pendingLoad = undefined;
@@ -805,6 +845,7 @@ window.addEventListener('message', e => {
           emptyAppendStreak = 0;
           S.commits.push(...m.commits);
           S.graph = computeLanes(S.commits);
+          computeTrunkSegs();
         } else {
           emptyAppendStreak++;
         }
@@ -942,6 +983,10 @@ window.addEventListener('message', e => {
     case 'showWork':
       app.setView('work');
       commitBar.focusInput();
+      break;
+    // 检出分支选择器（Issue #24）：命令面板 / 工具栏入口 → 模糊搜索检出
+    case 'showCheckout':
+      openBranchPicker(app, 'checkout');
       break;
     case 'pullSummary':
       showPullSummary(m.kind, m.entries, m.truncated, m.stat, app);

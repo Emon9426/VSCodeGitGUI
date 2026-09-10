@@ -2,7 +2,7 @@
   "name": "gitboard",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.19.3",
+  "version": "0.21.0",
   "publisher": "EmonZhang3438",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -75,6 +75,10 @@
       {
         "command": "gitboard.commit",
         "title": "%cmd.commit%"
+      },
+      {
+        "command": "gitboard.checkoutBranch",
+        "title": "%cmd.checkoutBranch%"
       },
       {
         "command": "gitboard.setLanguage",
@@ -261,6 +265,21 @@
           "minimum": 120,
           "maximum": 260,
           "description": "%cfg.graphColumnWidth%"
+        },
+        "gitboard.graphBranchScope": {
+          "type": "string",
+          "default": "local",
+          "enum": [
+            "local",
+            "all",
+            "current"
+          ],
+          "description": "%cfg.graphBranchScope%"
+        },
+        "gitboard.branchGroupByPrefix": {
+          "type": "boolean",
+          "default": true,
+          "description": "%cfg.branchGroupByPrefix%"
         },
         "gitboard.showRemoteChips": {
           "type": "boolean",

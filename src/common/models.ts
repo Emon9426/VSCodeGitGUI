@@ -63,9 +63,17 @@ export interface TagInfo {
   date?: string;
 }
 
-/** 提交列表筛选：ref（分支/远程/标签）+ 作者多选 + 时间段 + 纯提交（隐藏合并提交） */
+/**
+ * 图形范围（Issue #24）：all=全部引用（--all）；local=本地分支+各自上游；
+ * current=当前分支+其上游。ref 精选（单 ref）优先于 scopeMode。
+ */
+export type GraphScope = 'all' | 'local' | 'current';
+
+/** 提交列表筛选：ref（分支/远程/标签）+ 范围 + 作者多选 + 时间段 + 纯提交（隐藏合并提交） */
 export interface LogFilter {
   ref: string | null;
+  /** ref 非空时忽略；缺省视为 'all'（宿主侧 defaultFilter 以配置补齐） */
+  scopeMode?: GraphScope;
   authors: string[];
   since: string;    // YYYY-MM-DD 或空
   until: string;    // YYYY-MM-DD 或空
@@ -81,6 +89,8 @@ export interface RepoState {
   tags: TagInfo[];
   status: { dirtyCount: number };
   filterRef: string | null;
+  /** 当前图形范围（Issue #24；ref 精选时仍回显最近的范围档） */
+  scopeMode?: GraphScope;
   logFilter: { authors: string[]; since: string; until: string; noMerges: boolean };
   commits: Commit[];         // 已加载首页（后续经 commitsAppend 追加）
   commitsLoaded: number;
