@@ -343,8 +343,10 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   border-bottom: 1px solid var(--vscode-panel-border, #333);
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   overflow: hidden;   /* 与列表体裁剪口径一致，头身对齐 */
-  /* 预留与 .gg-list 滚动条等宽（10px）的槽，保证列头与行内容同宽严格对齐 */
-  padding-right: 10px;
+  /* C1（#22）：滚动条槽与列表体同源——写死 10px 在实际槽宽不同时产生头身错位（实测 2–5px），
+     改为同 overflow-y:scroll + gutter，与 .gg-list 的 stable 槽等宽（无内容可滚，仅占槽） */
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 .gg-col-h {
   position: relative;
@@ -884,6 +886,14 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-bp-row.d0 { padding-left: 28px; }
 .gg-bp-row.d1 { padding-left: 44px; }
 .gg-bp-head.l2 { padding-left: 26px; }
+/* C2（#22）：远程行三段信息（名/已有本地标/remote）间距，防粘连 */
+.gg-bp-row .gg-side-flag { margin-left: 8px; }
+.gg-bp-row .gg-bp-sub { margin-left: 8px; }
+
+/* C3（#22）：窄视口工具栏紧凑——视图切换收为纯图标（悬停有全名 title）、分段钮缩边距 */
+.gg-tb-narrow .gg-viewseg-btn span:not(.gg-viewseg-badge) { display: none; }
+.gg-tb-narrow .gg-viewseg-btn { padding: 3px 8px; }
+.gg-tb-narrow .gg-scope-btn { padding: 3px 6px; }
 .gg-bp-inline { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .gg-bp-inline.hidden { display: none; }
 .gg-bp-inline-label { flex: none; font-size: 12px; }

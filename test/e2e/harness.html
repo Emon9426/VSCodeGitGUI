@@ -87,9 +87,22 @@
   await twoFrames(); await sleep(150);
   const topAfterRefresh = topSubject();
 
-  finish(topAfterFirst === 'E2E-OLD-0' && topAfterRefresh === 'E2E-NEW-COMMIT'
+  // 5. 头身对齐防回归（#22 C1）：列头与数据单元格各列 x 差 ≤1px（滚动条槽同源后应严格对齐）
+  const heads = [...document.querySelectorAll('.gg-list-header .gg-col-h')];
+  const firstRow = [...document.querySelectorAll('.gg-list .gg-row')].find(r => r.style.display !== 'none');
+  const cells = firstRow ? [...firstRow.children] : [];
+  const misaligned = [];
+  if (heads.length === cells.length && heads.length) {
+    for (let i = 0; i < heads.length; i++) {
+      const dx = Math.abs(heads[i].getBoundingClientRect().x - cells[i].getBoundingClientRect().x);
+      if (dx > 1) misaligned.push(`col${i}=${Math.round(dx)}px`);
+    }
+  }
+  const alignOk = heads.length === cells.length && heads.length > 0 && misaligned.length === 0;
+
+  finish(topAfterFirst === 'E2E-OLD-0' && topAfterRefresh === 'E2E-NEW-COMMIT' && alignOk
     ? 'PASS'
-    : `FAIL firstTop="${topAfterFirst}" afterRefreshTop="${topAfterRefresh}"`);
+    : `FAIL firstTop="${topAfterFirst}" afterRefreshTop="${topAfterRefresh}" align=${alignOk ? 'ok' : misaligned.join(',') || 'no-rows'}`);
 
   function topSubject() {
     const rows = [...document.querySelectorAll('.gg-list .gg-row')];
