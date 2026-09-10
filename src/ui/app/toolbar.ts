@@ -22,6 +22,17 @@ export function createToolbar(app: App): Toolbar {
   });
 
   const branchLabel = el('span', 'gg-branch-label');
+  // 图形范围分段（Issue #24）：全部 / 本地 / 当前——一键直达，与单 ref 精选互斥
+  const scopeSeg = el('div', 'gg-scope-seg');
+  const scopeBtns: Record<'all' | 'local' | 'current', HTMLButtonElement> = {
+    all: el('button', 'gg-scope-btn') as HTMLButtonElement,
+    local: el('button', 'gg-scope-btn') as HTMLButtonElement,
+    current: el('button', 'gg-scope-btn') as HTMLButtonElement,
+  };
+  for (const key of ['all', 'local', 'current'] as const) {
+    scopeBtns[key].addEventListener('click', () => app.setScope(key));
+  }
+  scopeSeg.append(scopeBtns.all, scopeBtns.local, scopeBtns.current);
   const filterSel = el('select', 'gg-select gg-filter-sel') as HTMLSelectElement;
   filterSel.addEventListener('change', () => {
     app.setFilter(filterSel.value || null);
@@ -198,7 +209,7 @@ export function createToolbar(app: App): Toolbar {
   sideToggle.addEventListener('click', () => app.toggleSide());
 
   const left = el('div', 'gg-toolbar-left');
-  left.append(sideToggle, viewSeg, repoSel, branchLabel, filterSel, filterBox);
+  left.append(sideToggle, viewSeg, repoSel, branchLabel, scopeSeg, filterSel, filterBox);
   const right = el('div', 'gg-toolbar-right');
   right.append(fetchBtn, pullBtn, pushBtn, refreshBtn, langBtn, gearBtn, versionLabel);
   root.append(left, right);
@@ -265,6 +276,15 @@ export function createToolbar(app: App): Toolbar {
       }
     } else {
       branchLabel.textContent = '';
+    }
+    // 图形范围分段（Issue #24）：文案/提示随语言刷新；单 ref 精选时三档全不亮（由过滤下拉表达）
+    const scope = st?.scopeMode ?? S.config.graphBranchScope;
+    const scopeKeys: ['all', 'local', 'current'] = ['all', 'local', 'current'];
+    for (const key of scopeKeys) {
+      const btn = scopeBtns[key];
+      btn.textContent = S.t(`scope${key[0].toUpperCase()}${key.slice(1)}`);
+      btn.title = S.t(`scope${key[0].toUpperCase()}${key.slice(1)}Tip`);
+      btn.classList.toggle('on', !st?.filterRef && scope === key);
     }
     // 过滤下拉
     filterSel.textContent = '';

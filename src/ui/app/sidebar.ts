@@ -163,6 +163,8 @@ export function createSidebar(app: App): Sidebar {
     if (b.ahead) badge.appendChild(el('b', 'a', `↑${b.ahead}`));
     if (b.behind) badge.appendChild(el('b', 'd', `↓${b.behind}`));
     if (b.ahead || b.behind) item.appendChild(badge);
+    // 未设上游（Issue #24）：本地独有、尚未推送
+    if (!b.upstream && !b.isHead) item.appendChild(el('span', 'gg-side-flag', S.t('branchUnpushed')));
     item.title = b.subject ?? b.name;
     filterClick(item, b.fullName);
     item.addEventListener('dblclick', () => app2.checkoutRef(b.name));
@@ -182,6 +184,9 @@ export function createSidebar(app: App): Sidebar {
   function remoteRow(app2: App, b: BranchInfo, group: string): HTMLElement {
     const item = el('div', `gg-side-item remote${S.state?.filterRef === b.fullName ? ' filtered' : ''}`);
     item.appendChild(el('span', 'gg-side-name', b.name));
+    // 本地已有同名分支（Issue #24）：远端影子指针标记，回答"哪个分支在远程、哪个在本地"
+    const stripped = b.name.includes('/') ? b.name.slice(b.name.indexOf('/') + 1) : b.name;
+    if (S.state?.branches.some(x => x.name === stripped)) item.appendChild(el('span', 'gg-side-flag', S.t('branchHasLocal')));
     item.title = b.subject ?? b.name;
     filterClick(item, b.fullName);
     item.addEventListener('dblclick', () => {

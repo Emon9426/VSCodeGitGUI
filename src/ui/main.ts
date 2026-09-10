@@ -41,6 +41,13 @@ const app: App = {
     // 范围档随请求透传（Issue #24）：宿主侧 ref 非空时忽略 scopeMode
     void rpc('setFilter', { ref, scopeMode: S.state?.scopeMode ?? S.config.graphBranchScope, ...S.logFilter }).catch(showErr);
   },
+  setScope(mode) {
+    if (S.state) {
+      S.state.scopeMode = mode;
+      S.state.filterRef = null;   // 切范围即退出单 ref 精选（"全部/本地/当前"与具体 ref 互斥）
+    }
+    void rpc('setFilter', { ref: null, scopeMode: mode, ...S.logFilter }).catch(showErr);
+  },
   setLogFilter(f) {
     const DATE = /^\d{4}-\d{2}-\d{2}$/;
     S.logFilter = {
@@ -682,6 +689,23 @@ function armResolveHint(path: string): void {
   }, 5000);
 }
 
+/** 当前分支主干段集合（Issue #24 B3）：HEAD 提交沿第一父回溯——图形层对这些分段加粗 */
+function computeTrunkSegs(): void {
+  const set = new Set<number>();
+  const head = S.commits.find(c => c.refs.some(r => r.isHead));
+  if (head) {
+    const bySha = new Map(S.commits.map(c => [c.sha, c]));
+    let cur: typeof head | undefined = head;
+    const guard = new Set<string>();
+    while (cur && !guard.has(cur.sha)) {
+      guard.add(cur.sha);
+      if (cur.seg !== undefined) set.add(cur.seg);
+      cur = cur.parents[0] ? bySha.get(cur.parents[0]) : undefined;
+    }
+  }
+  S.trunkSegs = set;
+}
+
 function applyColWidths(w: { graph?: number; msg?: number; author?: number; sha?: number }): void {
   for (const key of ['graph', 'msg', 'author', 'sha'] as const) {
     const v = w[key];
@@ -767,6 +791,7 @@ window.addEventListener('message', e => {
       S.state = st;
       S.commits = st.commits;
       S.graph = computeLanes(st.commits);
+      computeTrunkSegs();
       emptyAppendStreak = 0;   // 列表整体重建：空页熔断计数随新快照复位
       // 列表已整体重建：作废在途分页请求（其页属旧快照，拼接必错位）
       pendingLoad = undefined;
@@ -806,6 +831,7 @@ window.addEventListener('message', e => {
           emptyAppendStreak = 0;
           S.commits.push(...m.commits);
           S.graph = computeLanes(S.commits);
+          computeTrunkSegs();
         } else {
           emptyAppendStreak++;
         }

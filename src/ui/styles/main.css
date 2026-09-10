@@ -377,6 +377,9 @@ button.danger:hover { background: #c62121; }
 .gg-chip.remote { color: var(--vscode-charts-purple); background: color-mix(in srgb, var(--vscode-charts-purple) 18%, transparent); }
 .gg-chip.tag { color: var(--vscode-charts-yellow); background: color-mix(in srgb, var(--vscode-charts-yellow) 18%, transparent); }
 .gg-chip.more { opacity: 0.8; }
+/* Issue #24：HEAD 徽标恒醒目（描边加粗）；存在同名本地分支的远程徽标降淡（影子指针） */
+.gg-chip.current { font-weight: 600; border-color: currentColor; }
+.gg-chip.dim { opacity: 0.55; }
 
 .gg-graph-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
 /* 纯提交视图：图形列为固定窄时间线（28px），隐藏其列宽拖拽手柄（其余列手柄保留） */
@@ -690,6 +693,24 @@ button.danger:hover { background: #c62121; }
   min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; text-align: center;
   font-size: 10.5px; line-height: 16px; font-weight: 600;
   background: color-mix(in srgb, var(--vscode-charts-yellow) 75%, transparent); color: var(--vscode-editor-background);
+}
+
+/* 图形范围分段（Issue #24）：全部/本地/当前，与视图分段同骨架、更紧凑 */
+.gg-scope-seg { display: flex; border: 1px solid var(--vscode-dropdown-border, #666); border-radius: 5px; overflow: hidden; flex: none; }
+.gg-scope-btn {
+  display: inline-flex; align-items: center;
+  border: none; border-radius: 0; padding: 3px 9px;
+  background: transparent; color: var(--vscode-foreground); font-size: 12px; white-space: nowrap;
+}
+.gg-scope-btn + .gg-scope-btn { border-left: 1px solid var(--vscode-dropdown-border, #666); }
+.gg-scope-btn.on { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+
+/* 侧栏分支小标（Issue #24）：未推送 / 已有本地 */
+.gg-side-flag {
+  flex: none; margin-left: 4px; padding: 0 4px; border-radius: 3px;
+  font-size: 10px; line-height: 14px;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent);
 }
 
 /* 工作副本模式下隐藏侧栏，空间让给文件列表与 diff */

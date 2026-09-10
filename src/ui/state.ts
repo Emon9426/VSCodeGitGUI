@@ -1,6 +1,6 @@
 /** Webview 侧全局 UI 状态（唯一事实来源在扩展宿主，这里只是呈现缓存）。 */
 import { createT, type Lang, type Translate } from '../common/i18n';
-import type { AiModelInfo, Commit, CommitDetail, DiffPayload, FileHistoryItem, FileItem, PathChain, ProjectInfo, RecentMessage, RepoMeta, RepoState, WorkState } from '../common/models';
+import type { AiModelInfo, Commit, CommitDetail, DiffPayload, FileHistoryItem, FileItem, GraphScope, PathChain, ProjectInfo, RecentMessage, RepoMeta, RepoState, WorkState } from '../common/models';
 import type { ConfigDto } from '../common/protocol';
 import type { GraphData } from '../graph/lanes';
 
@@ -8,6 +8,8 @@ import type { GraphData } from '../graph/lanes';
 export interface App {
   selectRepo(repoId: string): void;
   setFilter(ref: string | null): void;
+  /** 切换图形范围（Issue #24）：同时退出单 ref 精选（ref 置空） */
+  setScope(mode: GraphScope): void;
   /** 更新作者（多选）/时间段/纯提交筛选（与当前 ref 筛选合并后发送） */
   setLogFilter(f: { authors: string[]; since: string; until: string; noMerges?: boolean }): void;
   selectCommit(sha: string): void;
@@ -110,6 +112,8 @@ export const S = {
   state: undefined as RepoState | undefined,
   commits: [] as Commit[],
   graph: undefined as GraphData | undefined,
+  /** 当前分支主干段集合（Issue #24 B3：HEAD 沿第一父回溯，图形层加粗） */
+  trunkSegs: new Set<number>() as Set<number>,
   selectedSha: undefined as string | undefined,
   detail: undefined as CommitDetail | undefined,
   selectedFile: undefined as string | undefined,
