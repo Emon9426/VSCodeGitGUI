@@ -19,6 +19,7 @@ import { createOpStatus } from './app/opStatus';
 import { createFilesView } from './app/filesView';
 import { createFilePanel } from './app/filePanel';
 import { showPullSummary } from './app/pullSummary';
+import { openBranchPicker } from './app/branchPicker';
 import { confirmDialog, promptDialog, resetDialog, toast, openModal } from './app/overlays';
 import { fileIconSvg } from './icons';
 
@@ -168,6 +169,9 @@ const app: App = {
     void promptDialog(S.t('checkoutAs'), S.t('branchNameLabel'), suggest).then(name => {
       if (name) void rpc('op:checkout', { trackFrom: { name, remoteBranch } }).catch(showErr);
     });
+  },
+  checkoutTrack(name, remoteBranch) {
+    void rpc('op:checkout', { trackFrom: { name, remoteBranch } }).catch(showErr);
   },
   checkoutDetached(sha) {
     void confirmDialog(S.t('checkoutDetached'), sha.slice(0, 12), S.t('yes')).then(ok => {
@@ -976,6 +980,10 @@ window.addEventListener('message', e => {
     case 'showWork':
       app.setView('work');
       commitBar.focusInput();
+      break;
+    // 检出分支选择器（Issue #24）：命令面板 / 工具栏入口 → 模糊搜索检出
+    case 'showCheckout':
+      openBranchPicker(app, 'checkout');
       break;
     case 'pullSummary':
       showPullSummary(m.kind, m.entries, m.truncated, m.stat, app);

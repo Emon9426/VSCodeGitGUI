@@ -34,6 +34,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('gitboard.setLanguage', () => {
       void GraphPanel.show(context).pickLanguage();
     }),
+    // 检出分支选择器（Issue #24）：命令面板直达，webview 弹模糊搜索列表
+    vscode.commands.registerCommand('gitboard.checkoutBranch', () => {
+      GraphPanel.show(context).openCheckoutPicker();
+    }),
     // 文件历史页（v0.14）：资源管理器右键直达（定位该文件并显示历史）
     vscode.commands.registerCommand('gitboard.showFileHistory', (uri?: vscode.Uri) => {
       if (!uri || !uri.fsPath) return;

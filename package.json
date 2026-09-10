@@ -77,6 +77,10 @@
         "title": "%cmd.commit%"
       },
       {
+        "command": "gitboard.checkoutBranch",
+        "title": "%cmd.checkoutBranch%"
+      },
+      {
         "command": "gitboard.setLanguage",
         "title": "%cmd.setLanguage%"
       },

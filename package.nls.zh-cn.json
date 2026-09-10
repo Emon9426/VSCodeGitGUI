@@ -35,6 +35,7 @@
   "cfg.language": "界面语言。",
   "cfg.showStatusBarItem": "在状态栏显示当前分支。",
   "cmd.commit": "GitBoard: 提交更改",
+  "cmd.checkoutBranch": "GitBoard: 检出分支…",
   "cfg.startView": "打开 GitBoard 时显示的视图。",
   "cfg.startView.graph": "提交图",
   "cfg.startView.work": "工作副本（提交）",

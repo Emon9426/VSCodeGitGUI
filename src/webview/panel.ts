@@ -151,6 +151,8 @@ export class GraphPanel {
 
   private pendingRepoId?: string;
   private ready = false;
+  /** 命令面板「检出分支…」在 webview 就绪前到达：挂起待 ready 后弹检出选择器（Issue #24） */
+  private pendingCheckout = false;
   /** handleBootstrap 已开始（webview 在线，可随时推送事件；pendingWorkView 等排队仅在此之前有效） */
   private bootstrapped = false;
   /** 仓库扫描已完成至少一次（webview 重建走热路径，ready 直接带全量 repos） */
@@ -667,10 +669,27 @@ export class GraphPanel {
       this.post({ t: 'ready', config: this.config, repos: this.repos, language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha, version, ...this.readyExtras() });
       await this.afterReposReady();
       this.flushFilesReveal();   // explorer 右键在 bootstrap 期间排队的定位
+      this.flushCheckout();
       return;
     }
     this.post({ t: 'ready', config: this.config, repos: [], reposPending: true, language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha, version, ...this.readyExtras() });
     void this.ensureRepos();   // 后台：detect → discoverRepos → reposChanged → 自动选仓
+    this.flushCheckout();
+  }
+
+  /** 检出选择器（Issue #24）：面板就绪后通知 webview；未就绪先挂起 */
+  openCheckoutPicker(): void {
+    if (!this.ready) {
+      this.pendingCheckout = true;
+      return;
+    }
+    this.post({ t: 'showCheckout' });
+  }
+
+  private flushCheckout(): void {
+    if (!this.pendingCheckout) return;
+    this.pendingCheckout = false;
+    this.post({ t: 'showCheckout' });
   }
 
   /** 初始视图：命令直达 / startView 配置（work | last）——不依赖 git，随首个 ready 先行 */

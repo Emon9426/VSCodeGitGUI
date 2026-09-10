@@ -35,6 +35,7 @@
   "cfg.language": "UI language.",
   "cfg.showStatusBarItem": "Show the current branch in the status bar.",
   "cmd.commit": "GitBoard: Commit Changes",
+  "cmd.checkoutBranch": "GitBoard: Check Out Branch…",
   "cfg.startView": "Which view to show when opening GitBoard.",
   "cfg.startView.graph": "Commit graph",
   "cfg.startView.work": "Working copy (commit)",

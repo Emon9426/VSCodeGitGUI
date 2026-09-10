@@ -29,6 +29,8 @@ export interface App {
   revealInFM(path: string): void;
   checkoutRef(ref: string): void;
   checkoutRemoteAs(remoteBranch: string, suggest: string): void;
+  /** 远程分支检出（检出选择器内联输入，Issue #24）：本地名 + 远程分支全名 */
+  checkoutTrack(name: string, remoteBranch: string): void;
   checkoutDetached(sha: string): void;
   resetTo(sha: string): void;
   requestDiff(sha: string, path: string): void;

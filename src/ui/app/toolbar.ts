@@ -3,6 +3,7 @@
  */
 import { S, type App } from '../state';
 import { el, clearChildren, debounce } from '../util';
+import { openBranchPicker } from './branchPicker';
 
 export interface Toolbar {
   el: HTMLElement;
@@ -22,6 +23,9 @@ export function createToolbar(app: App): Toolbar {
   });
 
   const branchLabel = el('span', 'gg-branch-label');
+  // 检出分支（Issue #24）：模糊搜索选择器（本地直接检出 / 远程内联输入本地名）
+  const checkoutBtn = el('button', 'gg-tb-btn gg-checkout-btn') as HTMLButtonElement;
+  checkoutBtn.addEventListener('click', () => openBranchPicker(app, 'checkout'));
   // 图形范围分段（Issue #24）：全部 / 本地 / 当前——一键直达，与单 ref 精选互斥
   const scopeSeg = el('div', 'gg-scope-seg');
   const scopeBtns: Record<'all' | 'local' | 'current', HTMLButtonElement> = {
@@ -33,10 +37,12 @@ export function createToolbar(app: App): Toolbar {
     scopeBtns[key].addEventListener('click', () => app.setScope(key));
   }
   scopeSeg.append(scopeBtns.all, scopeBtns.local, scopeBtns.current);
-  const filterSel = el('select', 'gg-select gg-filter-sel') as HTMLSelectElement;
-  filterSel.addEventListener('change', () => {
-    app.setFilter(filterSel.value || null);
-  });
+  // 分支筛选（Issue #24）：原生 select 换 branchPicker（搜索 + 模糊匹配 + 分组 + 范围项）
+  const filterBtn = el('button', 'gg-filter-btn') as HTMLButtonElement;
+  const filterLabel = el('span', 'gg-filter-label');
+  const filterCaret = el('span', 'gg-author-caret', '▾');
+  filterBtn.append(filterLabel, filterCaret);
+  filterBtn.addEventListener('click', () => openBranchPicker(app, 'filter'));
 
   // ---------- 作者多选下拉（搜索 + 复选）+ 时间段筛选 ----------
   const authorBox = el('div', 'gg-author-dd');
@@ -209,7 +215,7 @@ export function createToolbar(app: App): Toolbar {
   sideToggle.addEventListener('click', () => app.toggleSide());
 
   const left = el('div', 'gg-toolbar-left');
-  left.append(sideToggle, viewSeg, repoSel, branchLabel, scopeSeg, filterSel, filterBox);
+  left.append(sideToggle, viewSeg, repoSel, branchLabel, checkoutBtn, scopeSeg, filterBtn, filterBox);
   const right = el('div', 'gg-toolbar-right');
   right.append(fetchBtn, pullBtn, pushBtn, refreshBtn, langBtn, gearBtn, versionLabel);
   root.append(left, right);
@@ -277,7 +283,7 @@ export function createToolbar(app: App): Toolbar {
     } else {
       branchLabel.textContent = '';
     }
-    // 图形范围分段（Issue #24）：文案/提示随语言刷新；单 ref 精选时三档全不亮（由过滤下拉表达）
+    // 图形范围分段（Issue #24）：文案/提示随语言刷新；单 ref 精选时三档全不亮（由筛选按钮表达）
     const scope = st?.scopeMode ?? S.config.graphBranchScope;
     const scopeKeys: ['all', 'local', 'current'] = ['all', 'local', 'current'];
     for (const key of scopeKeys) {
@@ -286,23 +292,27 @@ export function createToolbar(app: App): Toolbar {
       btn.title = S.t(`scope${key[0].toUpperCase()}${key.slice(1)}Tip`);
       btn.classList.toggle('on', !st?.filterRef && scope === key);
     }
-    // 过滤下拉
-    filterSel.textContent = '';
-    const optAll = el('option', undefined, S.t('filterAll')) as HTMLOptionElement;
-    optAll.value = '';
-    filterSel.appendChild(optAll);
-    if (st) {
-      for (const b of st.branches) addOpt(filterSel, b.name, b.fullName, '⑂ ');
-      for (const g of st.remotes) for (const b of g.branches) addOpt(filterSel, b.name, b.fullName, '');
-      for (const tg of st.tags) addOpt(filterSel, tg.name, tg.name, '');
-    }
-    filterSel.value = st?.filterRef ?? '';
+    // 检出按钮与分支筛选按钮
+    checkoutBtn.textContent = `⑂ ${S.t('checkoutBtn')}`;
+    checkoutBtn.title = S.t('checkoutPickerTitle');
+    const refShort = shortRefName(st);
+    filterLabel.textContent = refShort ?? S.t('filterBranch');
+    filterBtn.classList.toggle('active', !!refShort);
+    filterBtn.title = refShort ?? S.t('filterPickerTitle');
   }
 
-  function addOpt(selEl: HTMLSelectElement, label: string, value: string, prefix: string): void {
-    const o = el('option', undefined, prefix + label) as HTMLOptionElement;
-    o.value = value;
-    selEl.appendChild(o);
+  /** 当前 ref 精选的短显示名（本地⑂/远程⇅/标签），无精选返回 undefined */
+  function shortRefName(st: typeof S.state): string | undefined {
+    const ref = st?.filterRef;
+    if (!ref || !st) return undefined;
+    const b = st.branches.find(x => x.fullName === ref);
+    if (b) return `⑂ ${b.name}`;
+    for (const g of st.remotes) {
+      const r = g.branches.find(x => x.fullName === ref);
+      if (r) return `⇅ ${r.name}`;
+    }
+    const tg = st.tags.find(x => x.name === ref);
+    return tg ? tg.name : ref;
   }
 
   function updateProgress(): void {
