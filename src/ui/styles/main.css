@@ -826,15 +826,18 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   background: color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent);
 }
 
-/* 前缀分组组头（Issue #24 / #23）：折叠箭头 + 前缀名 + 计数；二轮起两级（一级 本地/远程 更醒目，二级缩进） */
+/* 前缀分组组头（Issue #24 / #23）：折叠箭头 + 前缀名 + 计数；两级分组四级缩进——
+   一级组头 12px（基准）→ 一级组内顶层分支行 28px → 二级组头 26px → 二级组内分支行 44px */
 .gg-side-caret { flex: none; width: 12px; text-align: center; font-size: 10px; color: var(--vscode-descriptionForeground); }
 .gg-side-count { flex: none; margin-left: auto; font-size: 10px; color: var(--vscode-descriptionForeground); opacity: 0.85; }
 .gg-side-item.pgroup { cursor: pointer; user-select: none; }
 .gg-side-item.pgroup.l1 { font-weight: 600; }
 .gg-side-item.pgroup.l1 .gg-side-caret { font-size: 10.5px; }
-.gg-side-group .gg-side-group .gg-side-item.pgroup { padding-left: 24px; }
-.gg-side-group .gg-side-group .gg-side-item.branch,
-.gg-side-group .gg-side-group .gg-side-item.remote { padding-left: 30px; }
+.gg-side-group > .gg-side-item.branch,
+.gg-side-group > .gg-side-item.remote { padding-left: 28px; }
+.gg-side-group > .gg-side-group > .gg-side-item.pgroup { padding-left: 26px; }
+.gg-side-group > .gg-side-group > .gg-side-item.branch,
+.gg-side-group > .gg-side-group > .gg-side-item.remote { padding-left: 44px; }
 
 /* 分支筛选按钮（Issue #24）：替代原生 select，点击弹 branchPicker */
 .gg-filter-btn {
