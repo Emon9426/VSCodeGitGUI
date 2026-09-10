@@ -214,7 +214,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-date-input { width: 128px; }
 .gg-range-sep { color: var(--vscode-descriptionForeground); }
 .gg-clear-btn { min-width: 26px; font-size: 13px; padding: 3px 5px; }
-.gg-version-label { font-size: 10.5px; color: var(--vscode-descriptionForeground); opacity: 0.7; margin-right: 4px; }
+.gg-version-label { font-size: 11px; color: var(--vscode-descriptionForeground); opacity: 0.7; margin-right: 4px; }
 
 /* 作者多选下拉（搜索 + 复选浮层） */
 .gg-author-dd { position: relative; flex: none; }
@@ -814,7 +814,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-viewseg-btn.on { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 .gg-viewseg-badge {
   min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; text-align: center;
-  font-size: 10.5px; line-height: 16px; font-weight: 600;
+  font-size: 11px; line-height: 16px; font-weight: 600;
   background: color-mix(in srgb, var(--vscode-charts-yellow) 75%, transparent); color: var(--vscode-editor-background);
 }
 
@@ -842,7 +842,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-side-count { flex: none; margin-left: auto; font-size: 10px; color: var(--vscode-descriptionForeground); opacity: 0.85; }
 .gg-side-item.pgroup { cursor: pointer; user-select: none; }
 .gg-side-item.pgroup.l1 { font-weight: 600; }
-.gg-side-item.pgroup.l1 .gg-side-caret { font-size: 10.5px; }
+.gg-side-item.pgroup.l1 .gg-side-caret { font-size: 11px; }
 .gg-side-group > .gg-side-item.branch,
 .gg-side-group > .gg-side-item.remote { padding-left: 28px; }
 .gg-side-group > .gg-side-group > .gg-side-item.pgroup { padding-left: 26px; }
@@ -869,7 +869,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-bp-list { max-height: 320px; overflow-y: auto; border: 1px solid var(--vscode-dropdown-border, #666); border-radius: 4px; padding: 4px 0; }
 .gg-bp-head {
   display: flex; align-items: center; gap: 6px;
-  padding: 5px 12px 2px; font-size: 10.5px; color: var(--vscode-descriptionForeground);
+  padding: 5px 12px 2px; font-size: 11px; color: var(--vscode-descriptionForeground);
 }
 .gg-bp-count { margin-left: auto; opacity: 0.85; }
 .gg-bp-row { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; cursor: pointer; font-size: 12px; }
@@ -878,7 +878,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-bp-ic { flex: none; width: 14px; text-align: center; font-size: 11px; color: var(--vscode-descriptionForeground); }
 .gg-bp-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gg-bp-name b { color: var(--vscode-charts-blue); font-weight: 600; }
-.gg-bp-sub { margin-left: auto; flex: none; font-size: 10.5px; color: var(--vscode-descriptionForeground); }
+.gg-bp-sub { margin-left: auto; flex: none; font-size: 11px; color: var(--vscode-descriptionForeground); }
 .gg-bp-flag { margin-left: 6px; flex: none; color: var(--vscode-charts-green); font-size: 11px; }
 .gg-bp-empty { padding: 14px 12px; color: var(--vscode-descriptionForeground); font-size: 12px; text-align: center; }
 .gg-bp-row.create .gg-bp-ic { color: var(--vscode-charts-green); font-weight: 600; }
@@ -948,7 +948,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-work-group-h:hover { background: var(--vscode-list-hoverBackground); }
 .gg-work-cnt {
   background: color-mix(in srgb, var(--vscode-descriptionForeground) 22%, transparent);
-  color: var(--vscode-foreground); border-radius: 8px; padding: 0 6px; font-size: 10.5px; line-height: 15px;
+  color: var(--vscode-foreground); border-radius: 8px; padding: 0 6px; font-size: 11px; line-height: 15px;
 }
 .gg-work-rows { display: flex; flex-direction: column; }
 .gg-work-row {
@@ -964,8 +964,8 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 /* 文件名完整优先：过长换行（break-all）不省略号——操作按钮已改悬浮层，不再挤占行宽 */
 .gg-work-fpath { flex: 1; min-width: 0; white-space: normal; word-break: break-all; font-family: var(--vscode-editor-font-family); font-size: 12px; }
 .gg-work-fpath .gg-work-fdir { color: var(--vscode-descriptionForeground); }
-.gg-work-fnum { flex: none; display: flex; font-size: 10.5px; color: var(--vscode-descriptionForeground); }
-.gg-work-fnum i { font-style: normal; font-size: 10.5px; }
+.gg-work-fnum { flex: none; display: flex; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.gg-work-fnum i { font-style: normal; font-size: 11px; }
 /* 行内快捷操作（悬浮层）：绝对定位悬浮于行尾，不占布局空间——文件名占满整行；行 hover 才浮现 */
 .gg-work-acts {
   position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
@@ -1072,7 +1072,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-cbar-commit:disabled, .gg-cbar-caret:disabled { opacity: 0.5; }
 
 /* ---- v0.8.0：提交后推送询问条 / 冲突分组 / 标签入口（询问条已统一为 .gg-banner，S3） ---- */
-.gg-btn.tiny { padding: 1px 7px; font-size: 10.5px; border-radius: 3px; }
+.gg-btn.tiny { padding: 1px 7px; font-size: 11px; border-radius: 3px; }
 .gg-btn.ghost {
   background: transparent; color: var(--vscode-foreground);
   border: 1px solid var(--vscode-dropdown-border, #666);
@@ -1138,14 +1138,14 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-merge-col.mine .gg-merge-colh b { color: var(--vscode-charts-blue); }
 .gg-merge-col.result .gg-merge-colh b { color: var(--vscode-charts-yellow); }
 .gg-merge-col.theirs .gg-merge-colh b { color: var(--vscode-charts-green); }
-.gg-merge-hint { color: var(--vscode-descriptionForeground); font-size: 10.5px; margin-left: auto; white-space: nowrap; }
+.gg-merge-hint { color: var(--vscode-descriptionForeground); font-size: 11px; margin-left: auto; white-space: nowrap; }
 
 .gg-merge-lines {
   flex: 1; overflow: auto; padding: 4px 0 30px;
   font-family: var(--vscode-editor-font-family); font-size: 12px; line-height: 1.5;
 }
 .gg-ml { display: flex; padding: 0 8px; white-space: pre; }
-.gg-ml-no { width: 42px; flex: none; text-align: right; padding-right: 8px; color: var(--vscode-descriptionForeground); opacity: 0.7; font-size: 10.5px; user-select: none; }
+.gg-ml-no { width: 42px; flex: none; text-align: right; padding-right: 8px; color: var(--vscode-descriptionForeground); opacity: 0.7; font-size: 11px; user-select: none; }
 .gg-ml-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .gg-ml.ctx { color: var(--vscode-editor-foreground); opacity: 0.62; }
 .gg-ml.ours { background: color-mix(in srgb, var(--vscode-charts-blue) 14%, transparent); }
@@ -1166,10 +1166,10 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   border-top: 1px dashed color-mix(in srgb, var(--vscode-charts-yellow) 40%, transparent);
   border-bottom: 1px dashed color-mix(in srgb, var(--vscode-charts-yellow) 40%, transparent);
 }
-.gg-mchunk-tag { font-size: 10.5px; color: var(--vscode-charts-yellow); font-weight: 600; }
+.gg-mchunk-tag { font-size: 11px; color: var(--vscode-charts-yellow); font-weight: 600; }
 .gg-mchunk-btn {
   background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
-  border: none; border-radius: 4px; font-size: 10.5px; padding: 2px 8px; cursor: pointer; white-space: nowrap;
+  border: none; border-radius: 4px; font-size: 11px; padding: 2px 8px; cursor: pointer; white-space: nowrap;
 }
 .gg-mchunk-btn:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground)); }
 .gg-mchunk-btn.mine { background: color-mix(in srgb, var(--vscode-charts-blue) 26%, transparent); color: var(--vscode-charts-blue); }
@@ -1216,7 +1216,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
 }
 .gg-merge-footmsg { font-size: 12px; font-weight: 600; color: var(--vscode-charts-green); }
-.gg-merge-stagehint { font-size: 10.5px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+.gg-merge-stagehint { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
 .gg-merge-note { padding: 20px; color: var(--vscode-descriptionForeground); font-size: 12px; }
 .gg-merge-note.err { color: var(--vscode-charts-red); }
 
@@ -1298,7 +1298,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   border-bottom: 1px solid var(--vscode-panel-border, #333); cursor: pointer; user-select: none; white-space: nowrap; }
 .gg-files-table th:hover { color: var(--vscode-foreground); }
 .gg-files-table th:last-child { text-align: right; }
-.gg-files-sort-arr { font-size: 9px; margin-left: 3px; color: var(--vscode-charts-blue, #0078d4); }
+.gg-files-sort-arr { font-size: 10px; margin-left: 3px; color: var(--vscode-charts-blue, #0078d4); }
 .gg-files-colrs { position: absolute; right: -4px; top: 4px; bottom: 4px; width: 9px; cursor: col-resize; z-index: 3;
   display: flex; justify-content: center; }
 .gg-files-colrs::after { content: ""; width: 2px; height: 100%; background: transparent; border-radius: 1px; transition: background .1s; }
@@ -1311,11 +1311,11 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-files-row.sel td { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
 .gg-files-nm { display: flex; align-items: center; gap: 7px; }
 .gg-files-nm-t { overflow: hidden; text-overflow: ellipsis; }
-.gg-files-cnt { color: var(--vscode-descriptionForeground); font-size: 10.5px; }
+.gg-files-cnt { color: var(--vscode-descriptionForeground); font-size: 11px; }
 .gg-files-row.sel .gg-files-cnt { opacity: .8; }
 .gg-files-dim { color: var(--vscode-descriptionForeground); font-size: 11px; }
 .gg-files-row.sel .gg-files-dim { color: color-mix(in srgb, var(--vscode-list-activeSelectionForeground) 80%, transparent); }
-.gg-files-sum, .gg-files-empty { padding: 7px 12px; font-size: 10.5px; color: var(--vscode-descriptionForeground); }
+.gg-files-sum, .gg-files-empty { padding: 7px 12px; font-size: 11px; color: var(--vscode-descriptionForeground); }
 .gg-fileic { flex: none; width: 16px; height: 16px; vertical-align: -3px; }
 
 /* ---- 列表区：文件夹（平铺）视图 ---- */
@@ -1326,7 +1326,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-files-card-ic { width: 30px; height: 30px; }
 .gg-files-card-nm { font-size: 11px; color: var(--vscode-foreground); max-width: 86px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
 .gg-files-card.sel .gg-files-card-nm { color: var(--vscode-list-activeSelectionForeground); }
-.gg-files-card-cnt { align-self: flex-start; font-size: 9px; color: var(--vscode-descriptionForeground);
+.gg-files-card-cnt { align-self: flex-start; font-size: 10px; color: var(--vscode-descriptionForeground);
   background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent); border-radius: 4px; padding: 0 4px; }
 
 /* ---- 右区：文件头（S5：水平内边距统一 12px 基准） ---- */
@@ -1335,7 +1335,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fp-ico { display: inline-flex; }
 .gg-fp-name { font-weight: 600; font-size: 13px; color: var(--vscode-foreground); }
 .gg-fp-crumb { color: var(--vscode-descriptionForeground); font-size: 11px; }
-.gg-fp-chain { display: inline-flex; gap: 4px; align-items: center; font-size: 10.5px; padding: 1px 8px; border-radius: 5px;
+.gg-fp-chain { display: inline-flex; gap: 4px; align-items: center; font-size: 11px; padding: 1px 8px; border-radius: 5px;
   color: var(--vscode-charts-purple, #b180d7); background: color-mix(in srgb, var(--vscode-charts-purple, #8250df) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--vscode-charts-purple, #8250df) 40%, transparent);
   max-width: 60%; overflow: hidden; white-space: nowrap; }
@@ -1363,13 +1363,13 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fp-multi-row { display: flex; align-items: center; gap: 8px; padding: 5px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 40%, transparent); color: var(--vscode-foreground); }
 .gg-fp-multi-row:last-child { border-bottom: none; }
-.gg-fp-multi-path { margin-left: auto; color: var(--vscode-descriptionForeground); font-size: 10.5px; font-family: var(--vscode-editor-font-family, monospace); }
+.gg-fp-multi-path { margin-left: auto; color: var(--vscode-descriptionForeground); font-size: 11px; font-family: var(--vscode-editor-font-family, monospace); }
 
 /* ---- 右区：历史列表 ---- */
 .gg-fp-hist { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .gg-fp-histhead { display: flex; align-items: center; gap: 8px; padding: 9px 12px 5px; flex: none; color: var(--vscode-descriptionForeground); font-size: 11px; }
 .gg-fp-cnt { color: var(--vscode-foreground); font-weight: 700; }
-.gg-fp-note { font-size: 10.5px; color: var(--vscode-charts-purple, #b180d7); }
+.gg-fp-note { font-size: 11px; color: var(--vscode-charts-purple, #b180d7); }
 .gg-fp-opshint { font-size: 11px; opacity: .8; }
 .gg-fp-list { flex: 1; overflow: auto; min-height: 0; padding-bottom: 6px; }
 .gg-fp-row { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 12px 0 12px; border-left: 2px solid transparent; cursor: pointer; }
@@ -1377,7 +1377,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fp-row.mile { background: color-mix(in srgb, var(--vscode-charts-purple, #8250df) 8%, transparent); border-left-color: var(--vscode-charts-purple, #8250df); }
 .gg-fp-row.open { background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent); border-left-color: var(--vscode-charts-blue, #0078d4); }
 .gg-fp-ck { width: 13px; height: 13px; border: 1px solid var(--vscode-descriptionForeground, #555); border-radius: 3px; flex: none;
-  display: flex; align-items: center; justify-content: center; font-size: 9px; color: #fff; cursor: pointer; background: transparent; }
+  display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; cursor: pointer; background: transparent; }
 .gg-fp-ck.on { background: var(--vscode-charts-blue, #0078d4); border-color: var(--vscode-charts-blue, #0078d4); }
 .gg-fp-tl { flex: none; width: 26px; display: flex; justify-content: center; position: relative; align-items: center; }
 .gg-fp-tl::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1.5px;
@@ -1399,7 +1399,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fp-tim { flex: none; color: var(--vscode-descriptionForeground); font-size: 11px; }
 .gg-fp-acts { flex: none; display: flex; gap: 3px; margin-left: 2px; }
 .gg-fp-act { width: 20px; height: 20px; border: 1px solid var(--vscode-panel-border, #333); border-radius: 4px;
-  display: flex; align-items: center; justify-content: center; font-size: 10.5px; color: var(--vscode-descriptionForeground);
+  display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--vscode-descriptionForeground);
   background: var(--vscode-editor-background); cursor: pointer; }
 .gg-fp-act:hover { border-color: var(--vscode-charts-blue, #0078d4); color: var(--vscode-foreground); }
 .gg-fp-empty { padding: 24px 16px; text-align: center; color: var(--vscode-descriptionForeground); font-size: 12px; }
