@@ -1,13 +1,13 @@
 /**
- * 左侧边栏（设计方案 4.2）：工程区（v0.11 跨工作区切换）、仓库区、分支区（两级分组：
- * 一级 本地/远程·<remote>，二级 / 前缀——Issue #24 二轮重设计）、标签。
+ * 左侧边栏（设计方案 4.2）：工程区（v0.11 跨工作区切换）、仓库区、分支区（v0.23.2 递归多级前缀分组：
+ * 一级 本地/远程·<remote>，前缀组按 "/" 逐段嵌套，缩进逐级递增——Issue #24 二轮重设计）、标签。
  * 单击分支 = 过滤提交图；双击 = 检出；右键 = 操作菜单。
  * 工程区：双击在当前窗口打开工程；右键可新窗口打开/重命名/移除。
  */
 import type { BranchInfo } from '../../common/models';
 import { S, type App } from '../state';
 import { el, clearChildren } from '../util';
-import { groupByPrefix } from './branchGroup';
+import { buildPrefixTree, countNode, stripTo, type PrefixNode } from './branchGroup';
 import { openBranchPicker } from './branchPicker';
 import { showContextMenu, confirmDialog, promptDialog, tagDialog } from './overlays';
 
@@ -105,25 +105,24 @@ export function createSidebar(app: App): Sidebar {
       // ---- 一级：本地（HEAD 分支恒置顶，buildRefTree 已排序）----
       branchSec.list.appendChild(collapseGroup('top:local', `⑂ ${S.t('pickerLocals')}`, st.branches.length, box => {
         if (S.config.branchGroupByPrefix) {
-          const { top, groups } = groupByPrefix(st.branches, b => b.name);
-          for (const b of top) box.appendChild(branchRow(app, b));
-          for (const g of groups) box.appendChild(prefixGroup('local:' + g.prefix, g.prefix, g.items, b => branchRow(app, b)));
+          // 递归多级前缀分组（v0.23.2）：组内行显示剥前缀短名，缩进逐级递增
+          const { top, root } = buildPrefixTree(st.branches, b => b.name);
+          for (const b of top) box.appendChild(branchRow(b, 0));
+          renderPrefixTree(box, root, 'local', 0, b => b.name, (b, depth, disp) => branchRow(b, depth, disp));
         } else {
-          for (const b of st.branches) box.appendChild(branchRow(app, b));
+          for (const b of st.branches) box.appendChild(branchRow(b, 0));
         }
       }, 1));
       // ---- 一级：远程（每 remote 一组；右键 fetch 菜单保留）----
       for (const g of st.remotes) {
         branchSec.list.appendChild(collapseGroup('top:remote:' + g.name, `⇅ ${S.t('pickerRemotes')} · ${g.name}`, g.branches.length, box => {
           if (S.config.branchGroupByPrefix) {
-            // 远程分支剥 remote 名后按前缀分组；组内行显示剥前缀名（紧凑，操作仍用全名）
-            const { top, groups } = groupByPrefix(g.branches, b => strip(b.name));
-            for (const b of top) box.appendChild(remoteRow(app, b, g.name));
-            for (const pg of groups) {
-              box.appendChild(prefixGroup('remote:' + g.name + ':' + pg.prefix, pg.prefix, pg.items, b => remoteRow(app, b, g.name, strip(b.name))));
-            }
+            // 远程分支剥 remote 名后按前缀分组；组内行显示剥 remote 名与前缀的短名（操作仍用全名）
+            const { top, root } = buildPrefixTree(g.branches, b => strip(b.name));
+            for (const b of top) box.appendChild(remoteRow(b, g.name, 0, strip(b.name)));
+            renderPrefixTree(box, root, 'remote:' + g.name, 0, b => strip(b.name), (b, depth, disp) => remoteRow(b, g.name, depth, disp));
           } else {
-            for (const b of g.branches) box.appendChild(remoteRow(app, b, g.name));
+            for (const b of g.branches) box.appendChild(remoteRow(b, g.name, 0, strip(b.name)));
           }
         }, 1, e => {
           e.preventDefault();
@@ -181,15 +180,17 @@ export function createSidebar(app: App): Sidebar {
     });
   }
 
-  /** 折叠组（Issue #24 二轮）：一级（本地 / 远程·<remote>）与二级（前缀）共用骨架；
-   *  折叠集合经宿主 globalState 跨会话保持 */
+  /** 折叠组（Issue #24 二轮；v0.23.2 递归多级）：一级（本地 / 远程·<remote>）与前缀组（任意深度）共用骨架；
+   *  缩进：level 1 基准 12px，level ≥2 组头 = 26 + (level-2)×16px（CSS 变量 --k）；
+   *  折叠集合经宿主 globalState 跨会话保持（key 含完整前缀路径，旧一级 key 天然兼容） */
   function collapseGroup(
     key: string, label: string, count: number, renderItems: (into: HTMLElement) => void,
-    level: 1 | 2 = 2, onContextMenu?: (e: MouseEvent) => void,
+    level: number = 2, onContextMenu?: (e: MouseEvent) => void,
   ): HTMLElement {
     const box = el('div', 'gg-side-group');
     const collapsed = S.branchGroupsCollapsed.has(key);
     const head = el('div', `gg-side-item group pgroup${level === 1 ? ' l1' : ''}`);
+    if (level > 1) head.style.setProperty('--k', String(level - 2));
     head.appendChild(el('span', 'gg-side-caret', collapsed ? '▸' : '▾'));
     head.appendChild(el('span', 'gg-side-name', label));
     head.appendChild(el('span', 'gg-side-count', String(count)));
@@ -201,15 +202,26 @@ export function createSidebar(app: App): Sidebar {
     return box;
   }
 
-  /** 二级前缀组（组名带尾斜杠） */
-  function prefixGroup(key: string, label: string, items: BranchInfo[], rowOf: (b: BranchInfo) => HTMLElement): HTMLElement {
-    return collapseGroup(key, `${label}/`, items.length, box => { for (const b of items) box.appendChild(rowOf(b)); });
+  /** 前缀组树递归渲染（v0.23.2）：node.items 直挂（depth 随层级递增），children 逐级 collapseGroup；
+   *  初始 root 以 depth=0 调用 → 一级前缀组头 level 2（26px）、其组内行 depth 1（44px），每深一级 +16px。
+   *  nameOf = 建树所用名（远程为剥 remote 名），短名据此剥离 */
+  function renderPrefixTree(
+    into: HTMLElement, node: PrefixNode<BranchInfo>, keyBase: string, depth: number,
+    nameOf: (b: BranchInfo) => string,
+    rowOf: (b: BranchInfo, depth: number, display: string) => HTMLElement,
+  ): void {
+    for (const b of node.items) into.appendChild(rowOf(b, depth, stripTo(node.path, nameOf(b))));
+    for (const ch of node.children) {
+      into.appendChild(collapseGroup(`${keyBase}:${ch.path}`, `${ch.seg}/`, countNode(ch), box =>
+        renderPrefixTree(box, ch, keyBase, depth + 1, nameOf, rowOf), depth + 2));
+    }
   }
 
-  function branchRow(app2: App, b: BranchInfo): HTMLElement {
+  function branchRow(b: BranchInfo, depth: number, display?: string): HTMLElement {
     const item = el('div', `gg-side-item branch${b.isHead ? ' head' : ''}${S.state?.filterRef === b.fullName ? ' filtered' : ''}`);
+    item.style.setProperty('--d', String(depth));
     if (b.isHead) item.appendChild(el('span', 'gg-dot'));
-    item.appendChild(el('span', 'gg-side-name', b.name));
+    item.appendChild(el('span', 'gg-side-name', display ?? b.name));
     const badge = el('span', 'gg-ab');
     if (b.ahead) badge.appendChild(el('b', 'a', `↑${b.ahead}`));
     if (b.behind) badge.appendChild(el('b', 'd', `↓${b.behind}`));
@@ -218,22 +230,23 @@ export function createSidebar(app: App): Sidebar {
     if (!b.upstream && !b.isHead) item.appendChild(el('span', 'gg-side-flag', S.t('branchUnpushed')));
     item.title = b.subject ?? b.name;
     filterClick(item, b.fullName);
-    item.addEventListener('dblclick', () => app2.checkoutRef(b.name));
+    item.addEventListener('dblclick', () => app.checkoutRef(b.name));
     item.addEventListener('contextmenu', e => {
       e.preventDefault();
       showContextMenu([
-        { label: S.t('checkout'), run: () => app2.checkoutRef(b.name) },
-        { label: S.t('pullThis'), disabled: !b.upstream, run: () => app2.runPull() },
-        { label: S.t('pushThis'), run: () => app2.runPush() },
+        { label: S.t('checkout'), run: () => app.checkoutRef(b.name) },
+        { label: S.t('pullThis'), disabled: !b.upstream, run: () => app.runPull() },
+        { label: S.t('pushThis'), run: () => app.runPush() },
         { sep: true },
-        { label: S.t('copyBranchName'), run: () => app2.copy(b.name) },
+        { label: S.t('copyBranchName'), run: () => app.copy(b.name) },
       ], e.clientX, e.clientY);
     });
     return item;
   }
 
-  function remoteRow(app2: App, b: BranchInfo, group: string, display?: string): HTMLElement {
+  function remoteRow(b: BranchInfo, group: string, depth: number, display?: string): HTMLElement {
     const item = el('div', `gg-side-item remote${S.state?.filterRef === b.fullName ? ' filtered' : ''}`);
+    item.style.setProperty('--d', String(depth));
     item.appendChild(el('span', 'gg-side-name', display ?? b.name));
     // 本地已有同名分支（Issue #24）：远端影子指针标记，回答"哪个分支在远程、哪个在本地"
     const stripped = b.name.includes('/') ? b.name.slice(b.name.indexOf('/') + 1) : b.name;
@@ -242,18 +255,18 @@ export function createSidebar(app: App): Sidebar {
     filterClick(item, b.fullName);
     item.addEventListener('dblclick', () => {
       const suggest = b.name.includes('/') ? b.name.split('/').slice(1).join('/') : b.name;
-      app2.checkoutRemoteAs(b.name, suggest);
+      app.checkoutRemoteAs(b.name, suggest);
     });
     item.addEventListener('contextmenu', e => {
       e.preventDefault();
       showContextMenu([
         { label: S.t('checkoutAs'), run: () => {
           const suggest = b.name.includes('/') ? b.name.split('/').slice(1).join('/') : b.name;
-          app2.checkoutRemoteAs(b.name, suggest);
+          app.checkoutRemoteAs(b.name, suggest);
         } },
-        { label: S.t('fetchRemote'), run: () => app2.runFetch(group) },
+        { label: S.t('fetchRemote'), run: () => app.runFetch(group) },
         { sep: true },
-        { label: S.t('copyBranchName'), run: () => app2.copy(b.name) },
+        { label: S.t('copyBranchName'), run: () => app.copy(b.name) },
       ], e.clientX, e.clientY);
     });
     return item;
