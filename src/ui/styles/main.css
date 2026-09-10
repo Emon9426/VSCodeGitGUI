@@ -746,6 +746,13 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 
 /* ---------------- Notification（Issue #18 S2：右下通知） ---------------- */
 .gg-notifs { position: fixed; right: 12px; bottom: 12px; z-index: 1200; display: flex; flex-direction: column; gap: 8px; width: 380px; }
+/* 左缘拖拽手柄（#22 B1）：调宽通知区，松开记忆 */
+.gg-notifs-grip {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+  cursor: ew-resize; border-radius: 3px 0 0 3px;
+  background: transparent;
+}
+.gg-notifs-grip:hover { background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 45%, transparent); }
 .gg-notif {
   background: var(--vscode-editorWidget-background, #222);
   border: 1px solid var(--vscode-widget-border, #444);

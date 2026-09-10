@@ -281,6 +281,13 @@
           "default": true,
           "description": "%cfg.branchGroupByPrefix%"
         },
+        "gitboard.notifyWidth": {
+          "type": "number",
+          "default": 420,
+          "minimum": 320,
+          "maximum": 560,
+          "description": "%cfg.notifyWidth%"
+        },
         "gitboard.showRemoteChips": {
           "type": "boolean",
           "default": true,

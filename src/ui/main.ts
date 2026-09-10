@@ -20,7 +20,7 @@ import { createFilesView } from './app/filesView';
 import { createFilePanel } from './app/filePanel';
 import { showPullSummary } from './app/pullSummary';
 import { openBranchPicker } from './app/branchPicker';
-import { confirmDialog, promptDialog, resetDialog, toast, notify, openModal } from './app/overlays';
+import { confirmDialog, promptDialog, resetDialog, toast, notify, openModal, bindNotifyWidthSave } from './app/overlays';
 import { buildDiagPayload, diagActive, diagCancelStreaming, diagNoteFailure, diagOnChunk, diagOnDone, diagOnError, startDiagnosis } from './app/diagnose';
 import { fileIconSvg, iconSvg } from './icons';
 
@@ -501,6 +501,10 @@ const app: App = {
     void rpc('ui:saveBranchGroups', { collapsed: [...set] }).catch(() => undefined);
     sidebar.update();
   },
+  saveNotifyWidth(width) {
+    S.notifyWidthSaved = width;
+    void rpc('ui:saveNotifyWidth', { width }).catch(() => undefined);
+  },
 };
 
 function showErr(e: unknown): void {
@@ -604,6 +608,8 @@ const commitBar = createCommitBar(app);
 const mergeview = createMergeView(app);
 const filesview = createFilesView(app, { onSelection: () => filepanel.update() });
 const filepanel = createFilePanel(app);
+// 通知区拖拽宽度保存（#22 B1）
+bindNotifyWidthSave(app.saveNotifyWidth);
 
 const mainEl = el('div', 'gg-main');
 const workWrap = el('div', 'gg-work-wrap hidden');
@@ -768,6 +774,7 @@ window.addEventListener('message', e => {
       }
       if (typeof m.sideCollapsed === 'boolean') S.sideCollapsed = m.sideCollapsed;
       if (Array.isArray(m.branchGroupsCollapsed)) S.branchGroupsCollapsed = new Set(m.branchGroupsCollapsed);
+      if (typeof m.notifyWidthSaved === 'number') S.notifyWidthSaved = m.notifyWidthSaved;
       if (typeof m.workFilesW === 'number') workview.applyFilesWidth(m.workFilesW);   // 工作副本列宽跨会话恢复
       restoreSha = m.selectedSha;
       applyThemeKind();
