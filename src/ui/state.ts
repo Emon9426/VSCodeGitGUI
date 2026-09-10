@@ -31,6 +31,8 @@ export interface App {
   checkoutRemoteAs(remoteBranch: string, suggest: string): void;
   /** 远程分支检出（检出选择器内联输入，Issue #24）：本地名 + 远程分支全名 */
   checkoutTrack(name: string, remoteBranch: string): void;
+  /** 新建分支并检出（检出选择器「新建分支」，Issue #24）：checkout -b，base 缺省当前 HEAD */
+  checkoutCreate(name: string, base?: string): void;
   checkoutDetached(sha: string): void;
   resetTo(sha: string): void;
   requestDiff(sha: string, path: string): void;

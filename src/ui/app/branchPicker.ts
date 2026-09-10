@@ -1,7 +1,8 @@
 /**
  * 分支选择器（Issue #24）：搜索 + 子序列模糊匹配高亮的模态列表。
  * - filter 模式：头部含三个范围项（全部/本地/当前分支），其余为 ref 精选（与侧栏单击过滤同语义，可再点取消）
- * - checkout 模式：本地分支直接检出；远程分支底部内联输入本地名（预填剥离 remote 前缀的建议名）回车检出
+ * - checkout 模式：本地分支直接检出；远程分支底部内联输入本地名（预填剥离 remote 前缀的建议名）回车检出；
+ *   底部恒有「新建分支」行（checkout -b，基于当前 HEAD），无匹配时成为唯一可选项（搜索词即新分支名）
  * 键盘：↑↓ 移动高亮、Enter 确认、Esc 关闭；无查询按分组呈现，查询时按匹配分排序平铺。
  */
 import type { BranchInfo, GraphScope } from '../../common/models';
@@ -14,7 +15,8 @@ import { openModal } from './overlays';
 type Row =
   | { kind: 'scope'; mode: GraphScope; label: string; active: boolean }
   | { kind: 'local'; b: BranchInfo; active: boolean }
-  | { kind: 'remote'; b: BranchInfo; remote: string; hasLocal: boolean };
+  | { kind: 'remote'; b: BranchInfo; remote: string; hasLocal: boolean }
+  | { kind: 'create' };   // 新建分支（checkout -b），仅 checkout 模式渲染
 
 interface Entry {
   row: Row;
@@ -65,7 +67,8 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
 
   let entries: Entry[] = [];        // 当前渲染条目（与 DOM 行序一致）
   let active = 0;
-  let pickedRemote: { row: Row; display: string } | null = null;   // 内联输入针对的远程分支
+  /** 内联输入态（Issue #24 三轮）：track=远程分支起本地名；create=新建分支（基于 HEAD） */
+  let inlineMode: { kind: 'track'; src: { row: Row; display: string } } | { kind: 'create' } | null = null;
 
   function sectionHead(text: string, count?: number): HTMLElement {
     const h = el('div', 'gg-bp-head', text);
@@ -124,64 +127,82 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
         if (hit) hits.push({ a, score: hit.score, positions: hit.positions, text: matchText });
       }
       hits.sort((x, y) => y.score - x.score);
-      if (!hits.length) {
+      if (hits.length) {
+        for (const h of hits) {
+          // 远程行 positions 基于全名，display 是剥前缀名——偏移映射（全名 = remote + '/' + display）
+          const off = h.a.row.kind === 'remote' ? h.a.row.b.name.length - h.a.display.length : 0;
+          const positions = off ? h.positions.map(p => p - off).filter(p => p >= 0) : h.positions;
+          addRow(h.a, positions);
+        }
+      } else {
         list.appendChild(el('div', 'gg-bp-empty', S.t('pickerNoMatch')));
-        entries = [];
-        return;
       }
-      for (const h of hits) {
-        // 远程行 positions 基于全名，display 是剥前缀名——偏移映射（全名 = remote + '/' + display）
-        const off = h.a.row.kind === 'remote' ? h.a.row.b.name.length - h.a.display.length : 0;
-        const positions = off ? h.positions.map(p => p - off).filter(p => p >= 0) : h.positions;
-        addRow(h.a, positions);
+    } else {
+      // 无查询：分组呈现（范围项 → 当前 → 本地（前缀分组）→ 各远程（剥前缀再分组））
+      if (mode === 'filter') {
+        const scopes = all.filter(a => a.row.kind === 'scope');
+        if (scopes.length) {
+          list.appendChild(sectionHead(S.t('pickerScope')));
+          for (const a of scopes) addRow(a);
+        }
       }
-      entries = ordered;
-      return;
-    }
-
-    // 无查询：分组呈现（范围项 → 当前 → 本地（前缀分组）→ 各远程（剥前缀再分组））
-    if (mode === 'filter') {
-      const scopes = all.filter(a => a.row.kind === 'scope');
-      if (scopes.length) {
-        list.appendChild(sectionHead(S.t('pickerScope')));
-        for (const a of scopes) addRow(a);
+      const locals = all.filter(a => a.row.kind === 'local');
+      const remotes = all.filter(a => a.row.kind === 'remote');
+      const headName = st?.head.branch;
+      const headEntry = locals.find(a => (a.row as { b: BranchInfo }).b.name === headName);
+      if (headEntry) {
+        list.appendChild(sectionHead(S.t('pickerCurrent')));
+        addRow(headEntry);
       }
-    }
-    const locals = all.filter(a => a.row.kind === 'local');
-    const remotes = all.filter(a => a.row.kind === 'remote');
-    const headName = st?.head.branch;
-    const headEntry = locals.find(a => (a.row as { b: BranchInfo }).b.name === headName);
-    if (headEntry) {
-      list.appendChild(sectionHead(S.t('pickerCurrent')));
-      addRow(headEntry);
-    }
-    const others = locals.filter(a => (a.row as { b: BranchInfo }).b.name !== headName);
-    list.appendChild(sectionHead(S.t('pickerLocals'), others.length));
-    const lg = groupByPrefix(others, a => a.display);
-    for (const a of lg.top) addRow(a);
-    for (const g of lg.groups) {
-      list.appendChild(sectionHead(`${g.prefix}/`, g.items.length));
-      for (const a of g.items) addRow(a);
-    }
-    if (remotes.length) {
-      const byOrigin = new Map<string, { row: Row; display: string; sub: string }[]>();
-      for (const a of remotes) {
-        const arr = byOrigin.get((a.row as { remote: string }).remote) ?? [];
-        arr.push(a);
-        byOrigin.set((a.row as { remote: string }).remote, arr);
+      const others = locals.filter(a => (a.row as { b: BranchInfo }).b.name !== headName);
+      list.appendChild(sectionHead(S.t('pickerLocals'), others.length));
+      const lg = groupByPrefix(others, a => a.display);
+      for (const a of lg.top) addRow(a);
+      for (const g of lg.groups) {
+        list.appendChild(sectionHead(`${g.prefix}/`, g.items.length));
+        for (const a of g.items) addRow(a);
       }
-      for (const [origin, arr] of byOrigin) {
-        list.appendChild(sectionHead(`${S.t('pickerRemotes')} · ${origin}`, arr.length));
-        const rg = groupByPrefix(arr, a => a.display);
-        for (const a of rg.top) addRow(a);
-        for (const g of rg.groups) {
-          list.appendChild(sectionHead(`${g.prefix}/`, g.items.length));
-          for (const a of g.items) addRow(a);
+      if (remotes.length) {
+        const byOrigin = new Map<string, { row: Row; display: string; sub: string }[]>();
+        for (const a of remotes) {
+          const arr = byOrigin.get((a.row as { remote: string }).remote) ?? [];
+          arr.push(a);
+          byOrigin.set((a.row as { remote: string }).remote, arr);
+        }
+        for (const [origin, arr] of byOrigin) {
+          list.appendChild(sectionHead(`${S.t('pickerRemotes')} · ${origin}`, arr.length));
+          const rg = groupByPrefix(arr, a => a.display);
+          for (const a of rg.top) addRow(a);
+          for (const g of rg.groups) {
+            list.appendChild(sectionHead(`${g.prefix}/`, g.items.length));
+            for (const a of g.items) addRow(a);
+          }
         }
       }
     }
+    // 检出模式：底部恒有「新建分支」行（无匹配时成为唯一可选项，Enter 直达新建；搜索词即预填名）
+    if (mode === 'checkout') {
+      const e: Entry = { row: { kind: 'create' }, text: '', score: 0, positions: [] };
+      ordered.push(e);
+      list.appendChild(createRowEl(e, q));
+    }
     entries = ordered;
+    if (active >= entries.length) active = Math.max(0, entries.length - 1);
     paintActive();
+  }
+
+  /** 「＋ 新建分支 “<q>”」特殊行：基于当前 HEAD 的 checkout -b */
+  function createRowEl(e: Entry, q: string): HTMLElement {
+    const row = el('div', 'gg-bp-row create');
+    row.appendChild(el('span', 'gg-bp-ic', '＋'));
+    const nm = el('span', 'gg-bp-name');
+    nm.appendChild(document.createTextNode(S.t('pickerCreateBranch') + (q ? ' ' : '')));
+    if (q) nm.appendChild(el('b', undefined, q));
+    row.appendChild(nm);
+    row.appendChild(el('span', 'gg-bp-sub', 'HEAD'));
+    row.title = S.t('pickerCreateHint');
+    row.addEventListener('click', () => { active = entries.indexOf(e); paintActive(); pick(e); });
+    return row;
   }
 
   function paintActive(): void {
@@ -190,11 +211,23 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
     rows[active]?.scrollIntoView({ block: 'nearest' });
   }
 
-  /** 确认条目：scope → setScope；local → 过滤/检出；remote → 过滤 / 内联输入本地名 */
+  /** 确认条目：scope → setScope；local → 过滤/检出；remote → 过滤 / 内联输入本地名；create → 内联输入新名 */
   function pick(e: Entry): void {
-    const src = all.find(a => a.row === e.row);
-    if (!src) return;
     const r = e.row;
+    if (r.kind === 'create') {
+      // 新建分支（checkout -b @ HEAD）：搜索词预填——搜索即命名
+      inlineMode = { kind: 'create' };
+      inlineLabel.textContent = S.t('pickerCreateBranch');
+      inlineGo.textContent = S.t('createBranchGo');
+      hint.textContent = S.t('pickerCreateHint');
+      inline.classList.remove('hidden');
+      inlineInput.value = search.value.trim();
+      inlineInput.focus();
+      inlineInput.select();
+      return;
+    }
+    const src = all.find(a => a.row === r);
+    if (!src) return;
     if (r.kind === 'scope') {
       app.setScope(r.mode);
       close();
@@ -204,7 +237,10 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
       close();
     } else if (mode === 'checkout') {
       // 远程分支：底部内联输入本地名（一步直达，不叠弹窗）
-      pickedRemote = src;
+      inlineMode = { kind: 'track', src };
+      inlineLabel.textContent = S.t('checkoutNameLabel');
+      inlineGo.textContent = S.t('checkoutAsGo');
+      hint.textContent = S.t('pickerCheckoutHint');
       inline.classList.remove('hidden');
       inlineInput.value = src.display;
       inlineInput.focus();
@@ -215,7 +251,13 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
     }
   }
 
-  search.addEventListener('input', () => { active = 0; pickedRemote = null; inline.classList.add('hidden'); render(); });
+  function resetInline(): void {
+    inlineMode = null;
+    inline.classList.add('hidden');
+    hint.textContent = mode === 'checkout' ? S.t('pickerCheckoutHint') : S.t('pickerFilterHint');
+  }
+
+  search.addEventListener('input', () => { active = 0; resetInline(); render(); });
   search.addEventListener('keydown', e => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
@@ -233,8 +275,7 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
       e.preventDefault();
       goInline();
     } else if (e.key === 'Escape') {
-      pickedRemote = null;
-      inline.classList.add('hidden');
+      resetInline();
       search.focus();
     }
   });
@@ -242,10 +283,14 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
 
   function goInline(): void {
     const name = inlineInput.value.trim();
-    const src = pickedRemote;
-    if (!src || src.row.kind !== 'remote' || !name) return;
-    app.checkoutTrack(name, src.row.b.name);
-    close();
+    if (!name) return;
+    if (inlineMode?.kind === 'track' && inlineMode.src.row.kind === 'remote') {
+      app.checkoutTrack(name, inlineMode.src.row.b.name);
+      close();
+    } else if (inlineMode?.kind === 'create') {
+      app.checkoutCreate(name);
+      close();
+    }
   }
 
   render();

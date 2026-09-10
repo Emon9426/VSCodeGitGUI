@@ -173,6 +173,9 @@ const app: App = {
   checkoutTrack(name, remoteBranch) {
     void rpc('op:checkout', { trackFrom: { name, remoteBranch } }).catch(showErr);
   },
+  checkoutCreate(name, base) {
+    void rpc('op:checkout', { newBranch: name, ref: base }).catch(showErr);
+  },
   checkoutDetached(sha) {
     void confirmDialog(S.t('checkoutDetached'), sha.slice(0, 12), S.t('yes')).then(ok => {
       if (ok) void rpc('op:checkout', { sha, detached: true }).catch(showErr);

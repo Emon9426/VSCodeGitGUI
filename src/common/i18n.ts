@@ -51,6 +51,11 @@ const zh: Record<string, string> = {
   pickerFilterHint: 'Enter 应用高亮项；再次点击已选分支可取消过滤',
   filterBranch: '分支…',
   checkoutBtn: '检出',
+  branchAddTip: '检出 / 新建分支…',
+  pickerCreateBranch: '新建分支',
+  createBranchGo: '新建并检出',
+  pickerCreateHint: '基于当前 HEAD 检出为新分支（git checkout -b）',
+  invalidBranchName: '分支名不合法：不能含空格或 ~ ^ : ? * [ \\ 等字符、不能以 - 开头或包含 ..',
   running: '{op} 进行中…',
 
   repos: '仓库',
@@ -523,6 +528,11 @@ const en: Record<string, string> = {
   pickerFilterHint: 'Enter applies the highlighted item; click an active branch again to clear the filter',
   filterBranch: 'Branch…',
   checkoutBtn: 'Check out',
+  branchAddTip: 'Check out / create branch…',
+  pickerCreateBranch: 'New branch',
+  createBranchGo: 'Create & check out',
+  pickerCreateHint: 'Creates and checks out a new branch at the current HEAD (git checkout -b)',
+  invalidBranchName: 'Invalid branch name: no spaces or ~ ^ : ? * [ \\ characters, no leading -, no ..',
   running: '{op} in progress…',
 
   repos: 'Repositories',

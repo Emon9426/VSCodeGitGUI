@@ -8,6 +8,7 @@ import type { BranchInfo } from '../../common/models';
 import { S, type App } from '../state';
 import { el, clearChildren } from '../util';
 import { groupByPrefix } from './branchGroup';
+import { openBranchPicker } from './branchPicker';
 import { showContextMenu, confirmDialog, promptDialog, tagDialog } from './overlays';
 
 export interface Sidebar {
@@ -88,6 +89,17 @@ export function createSidebar(app: App): Sidebar {
     const strip = (n: string) => (n.includes('/') ? n.slice(n.indexOf('/') + 1) : n);
     const remoteTotal = st?.remotes.reduce((n, g) => n + g.branches.length, 0) ?? 0;
     sectionTitle(branchSec, `${S.t('branches')} (${(st?.branches.length ?? 0) + remoteTotal})`);
+    // 分支区标题旁 ➕：检出/新建分支（Issue #24 三轮；sectionTitle 的 textContent 会清标题子元素，须每轮补挂）
+    let branchAdd = branchSec.box.querySelector('.gg-side-add') as HTMLElement | null;
+    if (!branchAdd) {
+      branchAdd = el('button', 'gg-side-add', '＋');
+      branchAdd.addEventListener('click', e => {
+        e.stopPropagation();
+        openBranchPicker(app, 'checkout');
+      });
+      branchSec.box.firstElementChild!.appendChild(branchAdd);
+    }
+    branchAdd.title = S.t('branchAddTip');
     clearChildren(branchSec.list);
     if (st) {
       // ---- 一级：本地（HEAD 分支恒置顶，buildRefTree 已排序）----

@@ -75,6 +75,8 @@ export function builtinGitPath(): string | undefined {
 /** 空筛选默认值（sanitize 兜底；per-repo 初始值走 defaultFilter() 取配置范围档） */
 const DEFAULT_FILTER: LogFilter = { ref: null, scopeMode: 'all', authors: [], since: '', until: '', noMerges: false };
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** git 分支名非法形态（check-ref-format 的常用子集：空白/控制符/元字符/../斜杠边界/@{） */
+const BAD_BRANCH_RE = /[\s\x00-\x1f~^:?*[\]\\]|\.\.|@\{|^-|\/$|\/\.\/|\/\/|^\//;
 
 function sanitizeLogFilter(src: any): LogFilter {
   const ref = typeof src?.ref === 'string' && src.ref ? src.ref : null;
@@ -326,9 +328,19 @@ export class GraphPanel {
       case 'op:reset':
         this.startOp({ kind: 'reset', sha: args.sha, mode: args.mode ?? 'mixed' });
         return null;
-      case 'op:checkout':
-        this.startOp({ kind: 'checkout', ref: args.ref, sha: args.sha, detached: !!args.detached, trackFrom: args.trackFrom });
+      case 'op:checkout': {
+        // 新建分支（Issue #24 检出选择器）：名称做 git ref 规则校验（空白/控制符/元字符/.. 等），
+        // 非法名直接报错不打 git；名称本身经 execFile 参数数组传递，无 shell 注入面
+        const newBranch = typeof args.newBranch === 'string' ? args.newBranch.trim().slice(0, 200) : undefined;
+        if (newBranch !== undefined && newBranch && BAD_BRANCH_RE.test(newBranch)) {
+          throw new Error(this.t('invalidBranchName'));
+        }
+        this.startOp({
+          kind: 'checkout', ref: args.ref, sha: args.sha, detached: !!args.detached,
+          trackFrom: args.trackFrom, newBranch: newBranch || undefined,
+        });
         return null;
+      }
       case 'op:cancel':
         this.runner?.cancel(Number(args.opId));
         return null;

@@ -85,8 +85,11 @@ export class OpVerifier {
         case 'reset':
           return judgeHeadEquals(await this.revSha(root, spec.sha ?? 'HEAD'), await this.headSha(root));
         case 'checkout': {
-          // trackFrom（新建跟踪分支）：HEAD=远端分支 tip；普通：HEAD=目标 ref/sha tip
-          const target = spec.trackFrom ? spec.trackFrom.remoteBranch : (spec.ref ?? spec.sha);
+          // trackFrom（新建跟踪分支）：HEAD=远端分支 tip；newBranch（新建分支）：HEAD=新分支 tip；
+          // 普通：HEAD=目标 ref/sha tip
+          const target = spec.trackFrom ? spec.trackFrom.remoteBranch
+            : spec.newBranch ? 'refs/heads/' + spec.newBranch
+              : (spec.ref ?? spec.sha);
           if (!target) return { verdict: 'skip' };
           return judgeHeadEquals(await this.revSha(root, target), await this.headSha(root));
         }

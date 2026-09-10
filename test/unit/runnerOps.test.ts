@@ -176,3 +176,24 @@ describe('排队取消（Issue #6 F4）', () => {
     expect(core.killed).toEqual([0]);
   });
 });
+
+describe('buildArgs checkout（Issue #24 检出选择器新建分支）', () => {
+  it('newBranch 基于 HEAD：checkout -b <name>', () => {
+    expect(buildArgs({ kind: 'checkout', newBranch: 'feature/x' })).toEqual([['checkout', '-b', 'feature/x']]);
+  });
+
+  it('newBranch + ref 指定起点：checkout -b <name> <ref>', () => {
+    expect(buildArgs({ kind: 'checkout', newBranch: 'hotfix', ref: 'refs/remotes/origin/main' }))
+      .toEqual([['checkout', '-b', 'hotfix', 'refs/remotes/origin/main']]);
+  });
+
+  it('trackFrom 优先级高于 newBranch（既有语义不回归）', () => {
+    expect(buildArgs({ kind: 'checkout', trackFrom: { name: 'dev', remoteBranch: 'origin/dev' }, newBranch: 'x' }))
+      .toEqual([['checkout', '-b', 'dev', '--track', 'origin/dev']]);
+  });
+
+  it('普通 ref/sha/detached 检出不受影响', () => {
+    expect(buildArgs({ kind: 'checkout', ref: 'main' })).toEqual([['checkout', 'main']]);
+    expect(buildArgs({ kind: 'checkout', sha: 'abc123', detached: true })).toEqual([['checkout', '--detach', 'abc123']]);
+  });
+});
