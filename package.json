@@ -2,7 +2,7 @@
   "name": "gitboard",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.24.2",
+  "version": "0.25.0",
   "publisher": "EmonZhang3438",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -366,6 +366,11 @@
           "type": "boolean",
           "default": true,
           "description": "%cfg.ai.useWorkspaceInstructions%"
+        },
+        "gitboard.ai.autoFix": {
+          "type": "boolean",
+          "default": true,
+          "description": "%cfg.ai.autoFix%"
         },
         "gitboard.commit.clearMessage": {
           "type": "boolean",

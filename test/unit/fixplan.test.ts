@@ -15,6 +15,28 @@ describe('parseFixBlock', () => {
     const r = parseFixBlock(ok);
     expect(r).toEqual([{ title: '拉取', cmd: 'git pull --rebase' }]);
   });
+  it('#37 三要素：action/consequence 解析、缺失 undefined、类型非法忽略、超长截断', () => {
+    const full = parseFixBlock('```gitboard-fix\n' + JSON.stringify({
+      steps: [{
+        title: '贮藏后重拉', cmd: 'git pull --autostash',
+        action: '先暂存未提交修改再拉取', consequence: '拉取完成后自动恢复修改；若冲突则贮藏保留',
+        risk: 'safe',
+      }],
+    }) + '\n```');
+    expect(full?.[0].action).toBe('先暂存未提交修改再拉取');
+    expect(full?.[0].consequence).toBe('拉取完成后自动恢复修改；若冲突则贮藏保留');
+    // 缺失 → undefined（UI 以 title 兜底）
+    expect(parseFixBlock(ok)?.[0].action).toBeUndefined();
+    expect(parseFixBlock(ok)?.[0].consequence).toBeUndefined();
+    // 类型非法（数字）与空串 → undefined；超长截断 ≤200
+    const bad = parseFixBlock('```gitboard-fix\n' + JSON.stringify({
+      steps: [{ title: 't', cmd: 'git status', action: 42, consequence: '', extra: 'x' },
+              { title: 't2', cmd: 'git fetch', action: 'a'.repeat(300) }],
+    }) + '\n```');
+    expect(bad?.[0].action).toBeUndefined();
+    expect(bad?.[0].consequence).toBeUndefined();
+    expect(bad?.[1].action?.length).toBe(200);
+  });
   it('无块 / JSON 非法 / steps 空 / 字段缺失 → null（前端降级纯诊断）', () => {
     expect(parseFixBlock('纯文本没有修复块')).toBeNull();
     expect(parseFixBlock('```gitboard-fix\n{oops}\n```')).toBeNull();

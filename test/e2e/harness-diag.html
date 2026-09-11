@@ -69,7 +69,7 @@
       commitPageSize: 500, maxAutoLoad: 20000, fetchOnOpen: false, fetchPrune: true,
       defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: true, aiLanguage: 'auto',
       aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
-      commitPushAfter: false, startView: 'graph',
+      commitPushAfter: false, startView: 'graph', aiAutoFix: true,
     },
     repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
     language: 'zh-CN', version: 'e2e',
@@ -150,15 +150,22 @@
   check('流式文本渲染', qs('.gg-diag-text')?.textContent.includes('远端凭证被拒绝'));
   if (shot === 'stream') { freeze('stream'); return; }
   window.__send({ t: 'diagDone', model: 'test-model', steps: [
-    { index: 1, title: '重新获取远端', cmd: 'git fetch origin', level: 'run' },
-    { index: 2, title: '重置暂存区', cmd: 'git reset --mixed HEAD', level: 'confirm' },
-    { index: 3, title: '强制推送', cmd: 'git push --force origin main', level: 'copy' },
+    { index: 1, title: '重新获取远端', cmd: 'git fetch origin', level: 'run',
+      action: '从 origin 拉取最新远端引用', consequence: '只更新远端跟踪分支，不动工作区，可随时重跑' },
+    { index: 2, title: '重置暂存区', cmd: 'git reset --mixed HEAD', level: 'confirm',
+      action: '清空暂存区但保留文件修改', consequence: '已暂存的改动退回未暂存状态；文件内容不变' },
+    { index: 3, title: '强制推送', cmd: 'git push --force origin main', level: 'copy',
+      action: '覆盖远端历史', consequence: '远端提交将被改写，协作者的仓库会冲突' },
   ] });
   await twoFrames(); await sleep(80);
   check('修复区渲染', !!qs('.gg-fix'));
   check('三步骤行', qsa('.gg-fix-step').length === 3);
   check('徽标三色分级', !!qs('.gg-fix-badge.run') && !!qs('.gg-fix-badge.confirm') && !!qs('.gg-fix-badge.copy'));
   check('需确认计数条', qs('.gg-fix-chip')?.textContent.includes('1'));
+  // #37 三要素：作用/后果行渲染 + 后果在 confirm/copy 级醒目 + AI 来源标注
+  check('三要素：作用行', qsa('.gg-fix-action').length === 3 && qsa('.gg-fix-action')[0].textContent.includes('拉取最新远端引用'));
+  check('三要素：后果行醒目', qsa('.gg-fix-cons.warn').length === 2 && qsa('.gg-fix-cons')[0].textContent.includes('可随时重跑'));
+  check('三要素：AI 来源标注', qs('.gg-fix-src')?.textContent.includes('AI 生成'));
   const runAll = [...qsa('.gg-diag-foot button')].find(b => b.textContent.includes('一键执行'));
   check('一键执行（2）', runAll?.textContent === '一键执行（2）');
   if (!runAll) {
@@ -183,6 +190,10 @@
   const overlays = qsa('.gg-modal-overlay');
   const confirmBox = overlays[overlays.length - 1];
   check('confirm 级弹确认框', !!confirmBox && confirmBox.textContent.includes('git reset --mixed HEAD'));
+  // #37：确认框附 AI 作用/后果说明（人审辅助）
+  check('确认框 AI 后果说明', !!confirmBox.querySelector('.gg-dc-ai')
+    && confirmBox.textContent.includes('退回未暂存状态')
+    && confirmBox.querySelector('.gg-dc-ai-src')?.textContent.includes('AI 生成'));
   const dangerBtn = [...confirmBox.querySelectorAll('button')].find(b => b.classList.contains('danger'));
   check('S6 danger 按钮', dangerBtn?.textContent === '执行此步骤');
   if (shot === 'confirm') { freeze('confirm'); return; }   // 定格确认弹窗，供截图
@@ -192,26 +203,33 @@
   check('全部完成条', qs('.gg-fix-allok')?.textContent === '全部步骤已执行');
   check('执行中按钮恢复', !runAll.disabled);
 
-  // ---- 5. 失败停止 + 重新诊断闭环（携带最新错误） ----
-  window.__send({ t: 'opResult', opId: 4, kind: 'fetch', ok: false, message: '获取失败',
-    outputTail: 'fatal: unable to access', command: 'git fetch origin', exitCode: 128 });
-  await twoFrames(); await sleep(80);
+  // ---- 5. 失败自动闭环（#37：自动重新诊断，不限轮）----
   handlers['err.aiFixStep'] = () => ({ ok: false });
   runAll.click();
   await twoFrames(); await sleep(150);
   check('失败步标红', qsa('.gg-fix-step')[0].classList.contains('did-fail'));
   check('停止条与原因', qs('.gg-fix-stopped')?.textContent.includes('已停止于第 1 步')
     && qs('.gg-fix-stopped')?.textContent.includes('执行失败'));
-  const reBtn = [...qsa('.gg-fix-stopped button')].find(b => b.textContent === '重新诊断');
-  check('重新诊断按钮', !!reBtn);
+  check('自动重新诊断提示', qs('.gg-fix-next')?.textContent.includes('自动重新诊断'));
   if (shot === 'stopped') { freeze('stopped'); return; }
-  reBtn.click();
-  await twoFrames(); await sleep(120);
+  await sleep(1400);   // 1200ms 延迟窗口后自动开新一轮
   const req1 = lastDiagReq();
-  check('闭环：新诊断携带最新失败', req1 !== req0 && req1?.args?.kind === 'fetch'
-    && req1?.args?.command === 'git fetch origin' && req1?.args?.exitCode === 128);
-  check('旧模态已换新（单实例）', qsa('.gg-diag').length === 1);
+  check('自动第二轮请求', req1 !== req0);
+  check('第二轮标题', qs('.gg-diag .gg-modal-title')?.textContent.includes('第 2 轮'));
+  check('单实例模态', qsa('.gg-diag').length === 1);
   check('新会话流式态', [...qsa('.gg-diag-foot button')].some(b => b.textContent === '停止'));
+
+  // ---- 5b. autoFix 自动发起诊断（#37：错误即诊断，无需点「AI 分析」）----
+  const stopBtn = [...qsa('.gg-diag-foot button')].find(b => b.textContent === '停止');
+  stopBtn?.click();
+  await twoFrames(); await sleep(80);
+  check('模态已关闭', !qs('.gg-diag'));
+  window.__send({ t: 'opResult', opId: 4, kind: 'fetch', ok: false, message: '获取失败',
+    outputTail: 'fatal: unable to access', command: 'git fetch origin', exitCode: 128 });
+  await twoFrames(); await sleep(120);
+  const req2 = lastDiagReq();
+  check('autoFix 自动诊断请求', req2 !== req1 && req2?.args?.kind === 'fetch' && req2?.args?.exitCode === 128);
+  check('autoFix 诊断模态自动打开', !!qs('.gg-diag'));
 
   // ---- 6. Esc 取消流式 ----
   window.__send({ t: 'diagChunk', text: '分析中' });
