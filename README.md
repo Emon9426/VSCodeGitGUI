@@ -72,14 +72,14 @@ code --install-extension EmonZhang3438.gitboard
 **方式一：命令行安装 vsix（推荐）**
 
 ```bash
-code --install-extension gitboard-0.24.1.vsix
+code --install-extension gitboard-0.24.2.vsix
 ```
 
 安装后执行 **Ctrl+Shift+P → “开发者：重新加载窗口”**（每次覆盖安装新版本后都需要；可对照工具栏右侧版本号确认当前构建已生效）。
 
 **方式二：VS Code 界面安装**
 
-扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.24.1.vsix` → 重新加载窗口。
+扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.24.2.vsix` → 重新加载窗口。
 
 **方式三：从源码构建**
 
@@ -300,6 +300,7 @@ npm run build && npm run package
 
 ### 更新日志
 
+- **v0.24.2**（2026-09-11）：实机测试缺陷修复（[#35](https://github.com/Emon9426/VSCodeGitGUI/issues/35)）——①**文件页静态文本语言残留**：`S.t` 初始为中文兜底、bootstrap 后才切实际语言，文件页历史区标题与比对按钮只在构造期设置一次——现已随 `update()` 刷新（英文界面不再显示中文）；②**摘要英文单复数**：翻译函数新增 `{n^单数|复数}` 占位语法，拉取摘要的标题/汇总/作者统计/缺失提示在数量为 1 时正确显示单数（"1 new commit · 1 author · 1 file"）；③实机复验澄清两项测试假阳性并回归验证「完成合并」真实链路完好。
 - **v0.24.1**（2026-09-11）：互斥收尾三项（[#33](https://github.com/Emon9426/VSCodeGitGUI/issues/33)，#31 遗留）——①**index.lock 撞锁退避窗口加大**：拉取合并/检出阶段与本地暂存/提交并行时的瞬时锁冲突，退避 400ms→1600ms，大变更集常规持锁不再误报失败；②**未完成合并时检出预禁用**：检出按钮与检出选择器在合并/变基未完成时禁用并说明原因（与 Pull/Push 同口径，git 的 `resolve your current index first` 拒绝前置）；③**分离 HEAD 拉取提示**：detached 状态点拉取提示「不在任何分支上，请先检出分支」，与「无上游分支」区分；顺带修复工具栏守卫原因被常规 title 覆盖的时序问题。
 - **v0.24.0**（2026-09-11）：网络操作互斥与摘要收窄（[#31](https://github.com/Emon9426/VSCodeGitGUI/issues/31)）——①**网络操作全互斥**：fetch / pull / push / 标签推送（含删除远端标签）任一进行中，工具栏其余网络按钮一律禁用并显示原因（命令面板等旁路入口由宿主拒绝+提示兜底；工作副本空态按钮点击时同样拦截），杜绝「Fetch 后 Pull 语义叠加与排队重复」；②**摘要仅在 Pull 合并完成时弹出**：fetch（含打开时自动获取）静默更新分支 ↓n 徽标与提交图，不再弹「获取摘要」——双弹窗重复与「未合并文件点击报错」的场景就此消失；③未完成合并时 Pull 按钮与 Push 一同预禁用并提示原因；④标签网络操作纳入互斥去重登记（慢网络连点不再堆积）。
 - **v0.23.3**（2026-09-11）：获取摘要未合并文件误报修复（[#29](https://github.com/Emon9426/VSCodeGitGUI/issues/29)）——①**行操作按工作区状态禁用**：摘要文件行探测到不在工作区（fetch 尚未合并 / 已被后续提交删除）时，「打开」「在文件管理器中显示」按钮置灰并提示原因，不再点击后报"工作区已不存在"；②**fetch 摘要语义澄清 + 拉取直达**：获取摘要弹窗标明"远端新提交，尚未合并到本地工作区"并提供「立即拉取」主按钮，一步完成合并（fetch 自动获取不弹摘要、行为不变）；③**pull 半完成态闭环**：pull 被本地未提交修改拒绝时，失败通知附「贮藏并重试」（--autostash）一步重拉；④网络看门狗喂狗源补 stdout（pull 的合并/检出阶段只写 stdout，超大变更集检出不再被误判停滞）。**注：v0.24.0 起摘要仅在 Pull 时弹出，②的 fetch 摘要弹窗已随之移除。**
@@ -403,7 +404,7 @@ code --install-extension EmonZhang3438.gitboard
 **Option 1 — CLI (recommended)**
 
 ```bash
-code --install-extension gitboard-0.24.1.vsix
+code --install-extension gitboard-0.24.2.vsix
 ```
 
 Then run **Ctrl+Shift+P → “Developer: Reload Window”** (required after every upgrade; check the version label on the toolbar).
@@ -518,6 +519,7 @@ Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angul
 
 ### Changelog
 
+- **v0.24.2** (2026-09-11): live-test defect fixes ([#35](https://github.com/Emon9426/VSCodeGitGUI/issues/35)) — ① **file-panel static text language leftover**: `S.t` starts as a Chinese fallback until bootstrap resolves the real language, and the file page's history header & compare button were set only once at construction — they now refresh in `update()` (no more Chinese labels on an English UI); ② **English singular/plural in the pull summary**: the translate function gains a `{n^one|other}` placeholder syntax; the summary title/counts/author stats/missing-file note now read "1 new commit · 1 author · 1 file" at count 1; ③ two live-test false positives clarified and the real "Finish merge" flow regression-verified end to end.
 - **v0.24.1** (2026-09-11): mutex follow-ups ([#33](https://github.com/Emon9426/VSCodeGitGUI/issues/33), leftovers of #31) — ① **wider index.lock backoff**: transient lock clashes between a pull's merge/checkout phase and local stage/commit now back off 400ms→1600ms, so ordinary large-checkout lock holds no longer surface as failures; ② **checkout pre-disabled during an unresolved merge**: the checkout button and branch picker are disabled with the reason (same treatment as Pull/Push — git's `resolve your current index first` rejection is now preempted); ③ **detached-HEAD pull message**: pulling while detached now says "not on any branch — check out a branch first", distinct from "no upstream"; also fixes a toolbar timing issue where the guard reason got overwritten by the regular tooltip.
 - **v0.24.0** (2026-09-11): network-op mutual exclusion & summary scoping ([#31](https://github.com/Emon9426/VSCodeGitGUI/issues/31)) — ① **network ops are mutually exclusive**: while any of fetch / pull / push / tag push (incl. remote tag delete) is running, the other network toolbar buttons are disabled with the reason (command-palette and other side entries are rejected by the host with a toast; the working-copy empty-state buttons get the same intercept on click) — no more "Fetch then Pull" semantic stacking and queued duplication; ② **the summary now pops only when a Pull completes**: fetch (including fetch-on-open) silently updates the behind badges and the commit graph — the duplicate double popup and the "file not in working tree" error path are gone; ③ Pull joins Push in being pre-disabled during an unresolved merge, with the reason in the tooltip; ④ tag network ops are included in the mutual-exclusion registry (slow-network double-clicks no longer pile up).
 - **v0.23.3** (2026-09-11): fetch-summary false-error fix ([#29](https://github.com/Emon9426/VSCodeGitGUI/issues/29)) — ① **row actions disabled when the file isn't in the working tree**: when a summary row is detected as absent (fetch not yet merged, or deleted by a later commit), its open/reveal buttons grey out with a tooltip instead of failing with "not in the working tree" after the click; ② **fetch summary semantics + pull shortcut**: the fetch summary now states that these are remote commits *not yet merged*, with a **Pull now** primary button to merge in one step (background auto-fetch stays silent); ③ **pull half-done recovery**: when pull is rejected by uncommitted local changes, the failure notification offers **Stash & retry** (--autostash); ④ the network watchdog now also feeds on stdout (pull's merge/checkout phase writes only to stdout — huge checkouts are no longer falsely stalled). **Note: as of v0.24.0 the summary pops on Pull only — the fetch summary popup of ② has been removed accordingly.**

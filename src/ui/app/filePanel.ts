@@ -60,7 +60,9 @@ export function createFilePanel(app: App) {
   const histCount = el('span', 'gg-fp-cnt');
   const histNote = el('span', 'gg-fp-note');
   const histOpsHint = el('span', 'gg-fp-opshint');
-  histHead.append(el('span', undefined, S.t('filesHist')), histCount, histNote, el('span', 'gg-fp-sp'), histOpsHint);
+  // 构造期 S.t 还是中文兜底（bootstrap 后才切实际语言）——静态标签须留引用、update 重设（#35）
+  const histLabel = el('span', undefined, S.t('filesHist'));
+  histHead.append(histLabel, histCount, histNote, el('span', 'gg-fp-sp'), histOpsHint);
   const histList = el('div', 'gg-fp-list');
   // 比对条（统一 .gg-banner.info，Issue #18 S3）
   const cmpBar = mkBanner('info');
@@ -100,6 +102,9 @@ export function createFilePanel(app: App) {
 
   function update(): void {
     backLabel.textContent = S.t('filesBack');
+    // #35：构造期文本随语言刷新（S.t 初始为中文兜底，bootstrap/语言切换后须重设）
+    histLabel.textContent = S.t('filesHist');
+    cmpBtn.textContent = S.t('filesCmpBtn');
     // 横幅
     const mb = S.files.moveBanner;
     banner.el.classList.toggle('hidden', !mb);
