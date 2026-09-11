@@ -3,7 +3,7 @@
  * 请求-响应：Webview 生成自增 id，扩展侧回 res 携带同 id。
  * 事件：扩展侧主动推送。
  */
-import type { GraphScope, ProjectInfo, PullSummaryEntry, PullFileStat, RepoMeta, RepoState, Commit, CommitDetail, DiffPayload, WorkState, MoveDetect } from './models';
+import type { GraphScope, ProjectInfo, PullSummaryEntry, PullFileStatMap, RepoMeta, RepoState, Commit, CommitDetail, DiffPayload, WorkState, MoveDetect } from './models';
 
 export interface ConfigDto {
   language: 'auto' | 'zh-CN' | 'en';
@@ -134,8 +134,9 @@ export type ExtEvent =
   | { t: 'workState'; state: WorkState }
   | { t: 'showWork' }
   // Pull/Fetch 摘要（v0.13）：拉到的纯净提交（排除 merge），面板内弹窗呈现；
-  // stat 为文件工作区现状（键=文件路径，重命名取新路径；仅含存在的文件）
-  | { t: 'pullSummary'; repoId: string; kind: 'pull' | 'fetch'; entries: PullSummaryEntry[]; truncated: boolean; stat: Record<string, PullFileStat> }
+  // stat 为文件工作区现状（键=文件路径，重命名取新路径；Issue #29 三态：
+  // 值=存在、null=已探测不存在（fetch 未合并/后续提交已删除）、键缺失=未采集超上限）
+  | { t: 'pullSummary'; repoId: string; kind: 'pull' | 'fetch'; entries: PullSummaryEntry[]; truncated: boolean; stat: PullFileStatMap }
   | { t: 'aiChunk'; text: string }
   | { t: 'aiDone'; model: string; instructions: number; fallback?: boolean }
   | { t: 'aiError'; code: 'noModel' | 'auth' | 'quota' | 'canceled' | 'error'; message?: string }

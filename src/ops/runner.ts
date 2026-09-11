@@ -168,7 +168,13 @@ export class OpRunner {
           timeoutMs: noTimeout ? 0 : undefined,
           maxBytes: 4 * 1024 * 1024,
           env,
-          registerChild: (c) => this.children.set(opId, c),
+          registerChild: (c) => {
+            this.children.set(opId, c);
+            // Issue #29 路径 B：看门狗喂狗源补 stdout——pull 的本地 merge/checkout 阶段
+            // （"Updating xxx..yyy" 与文件清单）只写 stdout，stderr 静默；不喂狗时超大
+            // 变更集检出超阈值会被误杀成「fetch 已完成、merge 未执行」的半完成态
+            if (stallMs > 0) c.stdout?.on('data', () => { lastTick = Date.now(); });
+          },
           onStderrLine: (line) => {
             lastTick = Date.now();   // F2：进度行到达即视为活跃（含与上行重复被下方去重的场景）
             const cleaned = line.replace(/[\r ]+$/, '');

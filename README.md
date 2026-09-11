@@ -52,7 +52,7 @@ GitBoard 是一个 VS Code 桌面插件，以**图形化提交历史**为核心�
 | AI 提交信息 | GitHub Copilot 生成：流式填充、可停止/重生成/选模型；学习近 10 条提交的风格与语言；自动遵循 `.copilot/`、`.github/copilot-instructions.md` 等工程指示文件；复用 VS Code 当前登录账号，零凭证。大批量提交加固：统计与差异封顶截断、60s 无响应自动停止；差异不可用时自动降级为文件名 + 目录结构推断，并如实标注 |
 | AI 错误诊断 | 操作失败弹常驻错误通知（重试 + 折叠 git 输出）；Copilot 可用时附「**AI 分析**」——三段式流式诊断（原因 / 解决步骤含可执行 git 命令 / 预防），URL 凭证自动脱敏后才发送；修复命令经本地白名单独立分级 run/confirm/copy，危险命令逐条红色确认，执行由宿主按索引重校验防篡改（v0.22.0） |
 | 合并与冲突解决 | IDEA / Beyond Compare 式**三栏合并器**：我的版本 – 合并版本（最终保存的就是它，可编辑）– 他人版本；块级按钮（用我的/用他人/两个都要/都不要）+ 左右栏 «» 一键采纳 + 行内编辑，全程不显示 git 冲突标记，右缘冲突分布导航条；pull/提交遇冲突自动引导横幅；push 被拒引导"拉取并推送"；二进制冲突二选一 + 系统程序预览；一方删除场景；超限文件（>16000 行/2MB）显式警告；随时中止还原现场；全部解决后弹确认完成合并（rebase 语义自动反转）；解决进度落盘，重开无损 |
-| Pull/Fetch 摘要 | 每次拉到新提交后弹窗展示**纯净变更摘要**（排除合并等操作提交）：**作者 → 目录 → 文件** 三层分组；文件行带工作区大小与修改时间、行尾按钮一键打开或定位；同作者同文件多提交合并 ×N；重命名显示 `旧名 → 新名`；中文路径无八进制转义；`gitboard.pullFetchSummary` 开关，默认开启 |
+| Pull/Fetch 摘要 | 每次拉到新提交后弹窗展示**纯净变更摘要**（排除合并等操作提交）：**作者 → 目录 → 文件** 三层分组；文件行带工作区大小与修改时间、行尾按钮一键打开或定位；不在工作区的文件（fetch 未合并/已删除）按钮自动禁用并提示；fetch 摘要标明"尚未合并到本地"并提供**立即拉取**按钮；同作者同文件多提交合并 ×N；重命名显示 `旧名 → 新名`；中文路径无八进制转义；`gitboard.pullFetchSummary` 开关，默认开启 |
 | 文件历史页 | 工具栏第四视图「🗂 文件」：左区资源管理器（文件夹视图/详细信息双视图、Win11 式地址栏、多选 + 删除/移动/重命名独立按钮）+ 右区**跨移动/重命名跟随的完整提交历史**（路径链与时期徽标、里程碑行、就地展开详情、只读打开历史版本、勾选任意两版比对）。详见[第 11 节](#11-文件历史页v0140) |
 | 筛选 | 分支/远程/标签过滤 + 作者多选下拉 + 时间段（可叠加，条件按仓库记忆） |
 | 工程切换 | 左侧栏「工程」区：保存常用工程文件夹（自定义名称），双击当前窗口切换、右键新窗口打开/重命名/移除 |
@@ -72,14 +72,14 @@ code --install-extension EmonZhang3438.gitboard
 **方式一：命令行安装 vsix（推荐）**
 
 ```bash
-code --install-extension gitboard-0.23.2.vsix
+code --install-extension gitboard-0.23.3.vsix
 ```
 
 安装后执行 **Ctrl+Shift+P → “开发者：重新加载窗口”**（每次覆盖安装新版本后都需要；可对照工具栏右侧版本号确认当前构建已生效）。
 
 **方式二：VS Code 界面安装**
 
-扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.23.2.vsix` → 重新加载窗口。
+扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.23.3.vsix` → 重新加载窗口。
 
 **方式三：从源码构建**
 
@@ -299,6 +299,7 @@ npm run build && npm run package
 
 ### 更新日志
 
+- **v0.23.3**（2026-09-11）：获取摘要未合并文件误报修复（[#29](https://github.com/Emon9426/VSCodeGitGUI/issues/29)）——①**行操作按工作区状态禁用**：摘要文件行探测到不在工作区（fetch 尚未合并 / 已被后续提交删除）时，「打开」「在文件管理器中显示」按钮置灰并提示原因，不再点击后报"工作区已不存在"；②**fetch 摘要语义澄清 + 拉取直达**：获取摘要弹窗标明"远端新提交，尚未合并到本地工作区"并提供「立即拉取」主按钮，一步完成合并（fetch 自动获取不弹摘要、行为不变）；③**pull 半完成态闭环**：pull 被本地未提交修改拒绝时，失败通知附「贮藏并重试」（--autostash）一步重拉；④网络看门狗喂狗源补 stdout（pull 的合并/检出阶段只写 stdout，超大变更集检出不再被误判停滞）。
 - **v0.23.2**（2026-09-10）：分支分组升级**递归多级前缀嵌套**——侧栏与检出/筛选选择器同步：多段前缀逐级分组（`release/1.0/x` → `release/` 组 > `1.0/` 子组），缩进逐级递增（组头 12/26/42/58px、分支行 28/44/60/76px，每级 +16px，任意深度）；组内行显示剥前缀短名（远程分支同时剥 remote 名），层级一目了然；折叠状态跨会话记忆且兼容旧键。
 - **v0.23.1**（2026-09-10）：侧栏支持拖拽调宽——右缘拖拽手柄（170–460px，悬停高亮），宽度跨会话记忆；折叠态手柄自动隐藏。
 - **v0.23.0**（2026-09-10）：UI 层级与可读性整备（[#22](https://github.com/Emon9426/VSCodeGitGUI/issues/22) 全界面几何审查落地）——①**层级缩进补齐**：检出/筛选选择器三级缩进（大区头/顶层行/前缀组头/组内行 12/28/26/44px，查询态平铺不缩进）、工作副本目录分组 12/28px、侧栏标签行对齐分支区、侧栏区头字重 600 修正层级倒挂；②**通知区可调**：新增 `gitboard.notifyWidth` 配置（320–560，默认 420），左缘拖拽实时调宽并跨会话记忆；③**对齐修复**：提交列表表头与数据列滚动条槽同源（修 2–5px 错位，附防回归断言）、检出选择器远程行信息间距；④**窄视口紧凑**：主区宽 <1080px 时视图切换自动收为纯图标；⑤**清理**：文件页提示文案去 emoji 残留、字号收敛为 5 档（10–14px）。
@@ -379,7 +380,7 @@ Large repos are handled with paged loading, virtualized scrolling and layered re
 | AI commit messages | One-click generation via GitHub Copilot: streamed inline, stop/regenerate/model picker; style learned from the last 10 commits; automatically follows `.copilot/` and `.github/` instruction files; uses your signed-in account — zero credentials. Hardened for huge changesets: capped summary & diff, 60s watchdog, UI always unlocks; falls back to file-name/folder-structure inference when the diff is unusable, honestly noted |
 | AI error diagnosis | Failed ops raise a persistent error notification (retry + collapsible git output); when Copilot is available an **AI Analyze** button streams a three-part diagnosis (cause / fix steps with runnable git commands / prevention), URL credentials masked before sending; fix commands pass a local whitelist with run/confirm/copy tiers, red confirmations for dangerous steps, and index-based host-side re-validation (v0.22.0) |
 | Merge & conflict resolution | IDEA / Beyond Compare style **3-way merge editor**: Mine – Merged (what gets saved, editable) – Theirs; per-chunk buttons (use mine / theirs / keep both / neither) + «» adopt arrows + inline editing, git conflict markers never shown, conflict minimap; pull/commit conflicts open a guidance banner; rejected pushes guide you to pull-and-push; binary = pick-one-side + system preview; deleted-side scenarios; oversized files get an explicit warning and reduce to whole-file choices; abort anytime; a confirmation finishes the merge (rebase semantics flipped automatically); progress is saved to the file itself — reopening is lossless |
-| Pull/Fetch summary | After every pull/fetch that brings new commits, a popup lists the **pure changes** (merge ops excluded) grouped **author → directory → file**: filename rows (never truncated) with working-tree size & mtime, inline open/reveal buttons, same-file commits merged into ×N rows, renames as `old → new`; toggle with `gitboard.pullFetchSummary`, on by default |
+| Pull/Fetch summary | After every pull/fetch that brings new commits, a popup lists the **pure changes** (merge ops excluded) grouped **author → directory → file**: filename rows (never truncated) with working-tree size & mtime, inline open/reveal buttons; rows detected as absent from the working tree (fetch not merged / deleted later) get their buttons disabled with a tooltip; the fetch summary states the commits are *not yet merged* and offers a **Pull now** button; same-file commits merged into ×N rows, renames as `old → new`; toggle with `gitboard.pullFetchSummary`, on by default |
 | File history page | Fourth view "🗂 Files": an explorer (tiles/details views, Win11-style address bar, multi-select with Delete / Move to… / Rename buttons) + a right panel with the **full history following moves/renames** (path chain, era badges, milestone rows, inline details, read-only revisions, any-two-version compare) |
 | Filtering | Branch/remote/tag filter + multi-select author dropdown + date range, stackable and remembered per repository |
 | Projects | "Projects" section in the sidebar: save favorite workspace folders with custom names; double-click to switch the current window, right-click for new window / rename / remove |
@@ -399,7 +400,7 @@ code --install-extension EmonZhang3438.gitboard
 **Option 1 — CLI (recommended)**
 
 ```bash
-code --install-extension gitboard-0.23.2.vsix
+code --install-extension gitboard-0.23.3.vsix
 ```
 
 Then run **Ctrl+Shift+P → “Developer: Reload Window”** (required after every upgrade; check the version label on the toolbar).
@@ -514,6 +515,7 @@ Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angul
 
 ### Changelog
 
+- **v0.23.3** (2026-09-11): fetch-summary false-error fix ([#29](https://github.com/Emon9426/VSCodeGitGUI/issues/29)) — ① **row actions disabled when the file isn't in the working tree**: when a summary row is detected as absent (fetch not yet merged, or deleted by a later commit), its open/reveal buttons grey out with a tooltip instead of failing with "not in the working tree" after the click; ② **fetch summary semantics + pull shortcut**: the fetch summary now states that these are remote commits *not yet merged*, with a **Pull now** primary button to merge in one step (background auto-fetch stays silent); ③ **pull half-done recovery**: when pull is rejected by uncommitted local changes, the failure notification offers **Stash & retry** (--autostash); ④ the network watchdog now also feeds on stdout (pull's merge/checkout phase writes only to stdout — huge checkouts are no longer falsely stalled).
 - **v0.23.2** (2026-09-10): branch grouping upgraded to **recursive multi-level prefix nesting** — sidebar and picker alike: multi-segment prefixes nest level by level (`release/1.0/x` → group `release/` > subgroup `1.0/`), with indentation stepping deeper each level (headers 12/26/42/58px, rows 28/44/60/76px, +16px per level, unlimited depth); grouped rows show prefix-stripped short names (remote rows also drop the remote name) so the hierarchy reads at a glance; collapse states stay remembered across sessions with backward-compatible keys.
 - **v0.23.1** (2026-09-10): the sidebar is now resizable — drag its right edge (170–460px, hover highlight), width remembered across sessions; the handle hides when the sidebar is collapsed.
 - **v0.23.0** (2026-09-10): hierarchy & readability pass ([#22](https://github.com/Emon9426/VSCodeGitGUI/issues/22) full-UI geometry audit) — ① **indentation everywhere**: the branch picker gains three indent levels (section / top-level / prefix-header / grouped rows at 12/28/26/44px; flat in search mode), the working-copy directory groups step 12/28px, sidebar tag rows align with branch rows, and sidebar section headers get weight 600 (fixing the inverted hierarchy); ② **resizable notifications**: new `gitboard.notifyWidth` setting (320–560, default 420) plus drag-to-resize on the notification area's left edge, remembered across sessions; ③ **alignment fixes**: the commit-list header and rows now share the same scrollbar-gutter source (fixing a 2–5px drift, with a regression assertion), and picker remote rows get proper spacing between name/flags; ④ **compact narrow layout**: below 1080px the view switcher collapses to icons; ⑤ **cleanup**: emoji removed from the file-page hint, font sizes converged to 5 steps (10–14px).

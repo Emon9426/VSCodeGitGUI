@@ -257,7 +257,12 @@ export interface PullSummaryEntry {
 /** name-status R/C 重命名/复制的展示分隔（"旧路径 → 新路径"；宿主/UI 共用） */
 export const RENAME_SEP = ' → ';
 
-/** 摘要文件的工作区现状（宿主 fs.stat 只读采集；不在工作区的文件不产生条目） */
+/** 摘要文件的工作区现状（宿主 fs.stat 只读采集；Issue #29 三态：
+ *  值=PullFileStat 存在；null=已探测不存在（未合并或已删除，UI 禁用行操作）；
+ *  键缺失=未采集（超 statPullFiles 上限），UI 保持可点走宿主兜底） */
+export type PullFileStatMap = Record<string, PullFileStat | null>;
+
+/** 摘要文件在工作区时的现状（大小/修改时间） */
 export interface PullFileStat {
   size: number;   // 字节
   mtime: string;  // ISO 时间戳

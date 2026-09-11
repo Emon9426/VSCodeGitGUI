@@ -525,6 +525,13 @@ function retryOp(kind: string): void {
   else if (kind === 'refresh') app.runRefresh();
 }
 
+/** pull 因本地未提交修改被 merge 拒绝（#29 路径 B）：--autostash 贮藏后重拉一步完成
+ *  （冲突未解时 git 会把贮藏留在栈里，由冲突解决流程接管） */
+const LOCAL_CHANGES_RE = /local changes.*would be overwritten/i;
+function retryPullWithStash(): void {
+  void rpc('op:pull', { strategy: S.config.defaultPullStrategy, autostash: true }).catch(showErr);
+}
+
 /** 移动目标选择对话框（webview 内实现——原生 showOpenDialog 在部分环境静默取消，已弃用）：
  *  仓库内目录浏览（files.ls 懒加载子目录）+「移动到此处」确认；返回目标相对路径或 null（取消）。 */
 function moveDialog(srcs: string[]): Promise<string | null> {
@@ -943,8 +950,13 @@ window.addEventListener('message', e => {
           // 不再弹阻塞式确认框平铺 stderr；可重试操作必带「重试」。
           // Issue #8：Copilot 可用且非取消/停滞时附「AI 分析」，一步直达诊断模态
           const actions: { label: string; run(): void; primary?: boolean }[] = [];
+          // Issue #29 路径 B：pull 被「本地未提交修改」拒绝 → 贮藏并重试一步完成（--autostash）
+          const pullStashable = m.kind === 'pull' && !!m.outputTail && LOCAL_CHANGES_RE.test(m.outputTail);
           if (RETRYABLE_KINDS.has(m.kind)) {
-            actions.push({ label: S.t('retry'), primary: true, run: () => retryOp(m.kind) });
+            actions.push({ label: S.t('retry'), primary: !pullStashable, run: () => retryOp(m.kind) });
+          }
+          if (pullStashable) {
+            actions.push({ label: S.t('retryWithStash'), primary: true, run: retryPullWithStash });
           }
           if (m.outputTail && !m.stalled && S.work.aiModels.length > 0) {
             actions.push({

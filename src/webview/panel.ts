@@ -8,7 +8,7 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import * as vscode from 'vscode';
 import { createT, resolveLang, type Lang, type Translate } from '../common/i18n';
-import type { Commit, FileEntry, LogFilter, MergeSessionAny, ProjectInfo, PullFileStat, RepoMeta, RepoState, WorkState } from '../common/models';
+import type { Commit, FileEntry, LogFilter, MergeSessionAny, ProjectInfo, PullFileStatMap, RepoMeta, RepoState, WorkState } from '../common/models';
 import { RENAME_SEP } from '../common/models';
 import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, FixStepDto, WVRequest } from '../common/protocol';
 import { GitError, GitExecutor, isGitError } from '../git/executor';
@@ -1141,9 +1141,10 @@ export class GraphPanel {
 
   /**
    * 摘要文件的工作区现状（大小/修改时间）：rename 取新路径，唯一去重后并发 stat。
-   * 只读尽力而为——不存在（历史删除/移动）、越界、超上限的文件不产生条目，UI 端按缺失显示 "—"。
+   * 只读尽力而为——Issue #29 三态：存在=值；**已探测不存在=null**（fetch 未合并 /
+   * 后续提交已删除，UI 据此禁用行操作）；超 MAX_STAT 上限未采集=键缺失（不禁用）。
    */
-  private async statPullFiles(root: string, entries: { files: string[] }[]): Promise<Record<string, PullFileStat>> {
+  private async statPullFiles(root: string, entries: { files: string[] }[]): Promise<PullFileStatMap> {
     const paths = new Set<string>();
     const MAX_STAT = 1000;   // 防御上限：500 提交 × 500 文件的理论极值不逐个 stat
     for (const e of entries) {
@@ -1153,12 +1154,15 @@ export class GraphPanel {
       }
       if (paths.size >= MAX_STAT) break;
     }
-    const out: Record<string, PullFileStat> = {};
+    const out: PullFileStatMap = {};
     await Promise.all([...paths].map(async p => {
       try {
         const st = await fs.promises.stat(this.safeJoin(root, p));
         if (st.isFile()) out[p] = { size: st.size, mtime: st.mtime.toISOString() };
-      } catch { /* 不在工作区 / 路径异常：跳过 */ }
+        else out[p] = null;   // 非常规条目（目录等）：按不存在处理防误点
+      } catch {
+        out[p] = null;        // 不在工作区（未合并/已删除）：显式记录供 UI 禁用
+      }
     }));
     return out;
   }
