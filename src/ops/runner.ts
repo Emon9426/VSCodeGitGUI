@@ -43,7 +43,6 @@ export interface OpSpec {
   srcs?: string[];             // moveFolder：多选源路径（批量 git mv）
   dst?: string;                // moveFolder：目标目录
   path?: string;               // renamePath：原路径
-  background?: boolean;        // fetch：autoFetch 静默轮询（加低速中断防挂队列）
 }
 
 export interface OpOutcome {
@@ -88,7 +87,7 @@ export class OpRunner {
     this.children.get(opId)?.kill();
   }
 
-  /** 该道是否有执行中/排队中的 op（autoFetch 让路判定用） */
+  /** 该道是否有执行中/排队中的 op（对外查询队列状态；#41 起网络操作仅用户显式触发） */
   laneBusy(root: string, lane: 'net' | 'local'): boolean {
     const q = lane === 'net' ? this.netQueues : this.localQueues;
     return q.has(root);
@@ -226,17 +225,15 @@ export class OpRunner {
   }
 }
 /** 网络命令的 git 层低速中断（F2/Issue #6）：持续低于 1KB/s 即中断——用户显式操作 60s
- *  （后台 autoFetch 用 45s，见 fetch 分支）；HTTP(S) 生效，SSH 等协议由 runner 无输出看门狗兜底 */
+ *  （HTTP(S) 生效，SSH 等协议由 runner 无输出看门狗兜底）；#41 起网络操作仅用户显式触发 */
 const LOW_SPEED_USER = ['-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=60'];
 
 export function buildArgs(spec: OpSpec): string[][] {
   switch (spec.kind) {
     case 'fetch': {
+      // 用户显式获取（#41 起无后台 autoFetch）：git 层低速中断（持续 60s <1KB/s 视为挂起）
       const args = ['fetch', '--progress'];
-      // 后台自动获取：git 层低速中断（连续 45s <1KB/s 视为挂起）——防网络故障时
-      // fetch 无限占用串行队列，堵住用户显式操作（runner 的 exec 超时对网络类不适用）
-      if (spec.background) args.unshift('-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=45');
-      else args.unshift(...LOW_SPEED_USER);
+      args.unshift(...LOW_SPEED_USER);
       if (spec.all) args.push('--all');
       if (spec.prune) args.push('--prune');
       if (!spec.all && spec.remote) args.push(spec.remote);

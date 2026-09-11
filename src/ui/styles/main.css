@@ -1552,3 +1552,67 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-dc-ai-row { word-break: break-word; }
 .gg-dc-ai-row.warn { color: var(--gg-warn); }
 .gg-dc-ai-src { margin-top: 3px; font-size: 10px; color: var(--gg-t3); opacity: .8; }
+
+/* ---------- 网络操作阻塞弹窗（#41，SourceTree 式：Fetch/Pull/Push 期间挡住主页面） ---------- */
+.gg-net-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gg-net-box {
+  min-width: 380px;
+  max-width: 520px;
+  background: var(--vscode-editorWidget-background, #222);
+  border: 1px solid var(--vscode-widget-border, #444);
+  border-radius: 8px;
+  padding: 14px 16px 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+.gg-net-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.gg-net-ic { display: inline-flex; color: var(--vscode-charts-blue, #4aa); flex: none; }
+.gg-net-ic svg { width: 16px; height: 16px; }
+.gg-net-title { font-size: 14px; font-weight: 600; }
+.gg-net-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--vscode-charts-blue) 22%, transparent);
+  overflow: hidden;
+}
+.gg-net-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: var(--vscode-charts-blue);
+  transition: width 0.25s ease;
+}
+/* 无百分比阶段：不定态流动动画（与状态条同语言） */
+.gg-net-bar.indet .gg-net-fill {
+  width: 34%;
+  animation: gg-netslide 1.2s ease-in-out infinite;
+  transition: none;
+}
+@keyframes gg-netslide {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(400%); }
+}
+.gg-net-text {
+  margin-top: 9px;
+  min-height: 14px;
+  font-family: var(--vscode-editor-font-family, Consolas, monospace);
+  font-size: 11px;
+  color: var(--gg-t2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gg-net-text.empty { color: transparent; }
+.gg-net-foot { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+.gg-net-gap { flex: 1; }
+.gg-net-time, .gg-net-pct { font-size: 11px; color: var(--gg-t2); font-variant-numeric: tabular-nums; }
+/* 成功完成态：绿色图标与满条，短显后自动关闭 */
+.gg-net-box.done .gg-net-ic { color: var(--gg-ok); }
+.gg-net-box.done .gg-net-fill { background: var(--gg-ok); transition: none; }

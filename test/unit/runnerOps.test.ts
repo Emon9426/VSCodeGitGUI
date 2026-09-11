@@ -23,10 +23,7 @@ describe('buildArgs（Issue #6 F1/F2）', () => {
     expect(buildArgs({ kind: 'pull', autostash: true })).toEqual([[...LOW_SPEED, 'pull', '--progress', '--autostash']]);
   });
 
-  it('fetch：后台低速中断 45s、用户显式 60s；-c 全局选项位于子命令之前', () => {
-    const bg = buildArgs({ kind: 'fetch', all: true, prune: true, background: true });
-    expect(bg).toEqual([['-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=45',
-      'fetch', '--progress', '--all', '--prune']]);
+  it('fetch：显式低速中断 60s；-c 全局选项位于子命令之前（#41 起无后台 fetch）', () => {
     const user = buildArgs({ kind: 'fetch', all: true, prune: true });
     expect(user).toEqual([[...LOW_SPEED, 'fetch', '--progress', '--all', '--prune']]);
   });
