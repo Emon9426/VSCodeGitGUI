@@ -186,6 +186,10 @@ export function createToolbar(app: App): Toolbar {
   const fetchBtn = mkBtn('', () => app.runFetch());
   const pullBtn = mkBtn('', () => app.runPull());
   const pushBtn = mkBtn('', () => app.runPush());
+  // 网络互斥（#31）测试锚点：title 会随禁用原因变化，data-kind 恒定
+  fetchBtn.dataset.kind = 'fetch';
+  pullBtn.dataset.kind = 'pull';
+  pushBtn.dataset.kind = 'push';
   setIcon(fetchBtn, 'syncFetch');
   setIcon(pullBtn, 'pullDown');
   setIcon(pushBtn, 'pushUp');
@@ -268,11 +272,8 @@ export function createToolbar(app: App): Toolbar {
     const lang = S.config.language;
     langBtn.textContent = lang === 'zh-CN' ? '中' : lang === 'en' ? 'EN' : 'A';
     langBtn.title = `${S.t('langSwitchTitle')} — ${lang === 'auto' ? S.t('langAuto') : lang === 'zh-CN' ? '简体中文' : 'English'}`;
-    // 网络操作按钮 title 统一由 updateProgress 管理（B3：在途/排队状态优先）
-    // B2（Issue #18）：存在未完成合并 → Push 预禁用并给原因（决策类引导仍走横幅/模态）
-    const mergeBlocked = !!S.work.state?.mergeActive;
-    pushBtn.disabled = mergeBlocked;
-    if (mergeBlocked) pushBtn.title = S.t('blockedByMerge');
+    // 网络操作按钮 title/disable 统一由 updateProgress 管理（B2/B1 的 mergeActive
+    // 预禁用与 #31 网络互斥都在那里，此处收尾刷新一次）
     updateProgress();
     // 仓库下拉
     const multi = S.repos.length > 1;
@@ -341,8 +342,22 @@ export function createToolbar(app: App): Toolbar {
     pullBtn.classList.toggle('busy', kinds.has('pull'));
     pushBtn.classList.toggle('busy', kinds.has('push'));
     refreshBtn.classList.toggle('busy', kinds.has('refresh'));
-    // B3（Issue #18）：在途/排队状态写入 title——按钮可点击（同 kind 宿主去重、异 kind 入队可见），
-    // 不再以 pointer-events:none 静默吞点击（R4：排队要透明）
+    // #31 网络操作全互斥：任一网络操作在途/排队时，网络按钮 disable
+    //（pull ⊇ fetch 语义叠加与排队重复由禁点杜绝；自身 busy 态直观可见）。
+    //  B2/B1（#18/#31）：未完成合并 → Push 与 Pull 均预禁用并给原因。
+    //  disabled 的唯一写点集中在此（update 的 mergeBlocked 已并入），避免多来源互相覆盖
+    const netBusy = kinds.has('fetch') || kinds.has('pull') || kinds.has('push')
+      || kinds.has('tagPush') || kinds.has('tagDeleteRemote');
+    const mergeBlocked = !!S.work.state?.mergeActive;
+    fetchBtn.disabled = netBusy;
+    pullBtn.disabled = netBusy || mergeBlocked;
+    pushBtn.disabled = netBusy || mergeBlocked;
+    if (netBusy) {
+      for (const b of [fetchBtn, pullBtn, pushBtn]) b.title = S.t('netOpBusy');
+    } else if (mergeBlocked) {
+      pullBtn.title = pushBtn.title = S.t('blockedByMerge');
+    }
+    // B3（Issue #18）：在途/排队状态写入 title——disable 原因优先（上方已设）
     opTitle(fetchBtn, 'fetch', S.t('fetch'));
     opTitle(pullBtn, 'pull', S.t('pull'));
     opTitle(pushBtn, 'push', S.t('push'));

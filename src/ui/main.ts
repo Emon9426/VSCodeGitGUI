@@ -90,9 +90,11 @@ const app: App = {
       .catch(e => { showErr(e); list.refresh(); });
   },
   runFetch(remote) {
+    if (netBusy()) { toast('warn', S.t('netOpBusy')); return; }
     void rpc('op:fetch', remote ? { all: false, remote } : { all: true, prune: S.config.fetchPrune }).catch(showErr);
   },
   runPull() {
+    if (netBusy()) { toast('warn', S.t('netOpBusy')); return; }
     const head = S.state?.branches.find(b => b.isHead);
     if (!head?.upstream) {
       toast('warn', S.t('pullNoUpstream'));
@@ -103,6 +105,7 @@ const app: App = {
     void rpc('op:pull', { strategy: S.config.defaultPullStrategy }).catch(showErr);
   },
   runPush() {
+    if (netBusy()) { toast('warn', S.t('netOpBusy')); return; }
     const head = S.state?.branches.find(b => b.isHead);
     const branch = S.state?.head.branch;
     if (!head?.upstream) {
@@ -523,6 +526,15 @@ function retryOp(kind: string): void {
   else if (kind === 'pull') app.runPull();
   else if (kind === 'push') app.runPush();
   else if (kind === 'refresh') app.runRefresh();
+}
+
+/** 网络操作集合（与宿主 runner NET_KINDS 同源；#31 全互斥） */
+const NET_OP_KINDS = new Set(['fetch', 'pull', 'push', 'tagPush', 'tagDeleteRemote']);
+/** 当前仓库有任一网络操作在途/排队（#31）：工具栏按钮已 disable，此处为
+ *  工作副本空态按钮等非实时刷新入口提供点击时的统一拦截反馈 */
+function netBusy(): boolean {
+  for (const op of S.activeOps.values()) if (NET_OP_KINDS.has(op.kind)) return true;
+  return false;
 }
 
 /** pull 因本地未提交修改被 merge 拒绝（#29 路径 B）：--autostash 贮藏后重拉一步完成
@@ -1072,7 +1084,7 @@ window.addEventListener('message', e => {
       openBranchPicker(app, 'checkout');
       break;
     case 'pullSummary':
-      showPullSummary(m.kind, m.entries, m.truncated, m.stat, app);
+      showPullSummary(m.entries, m.truncated, m.stat, app);
       break;
     case 'aiChunk':
       commitBar.onAiChunk(m.text);

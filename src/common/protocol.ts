@@ -133,10 +133,10 @@ export type ExtEvent =
   // 工作副本（Commit 功能）
   | { t: 'workState'; state: WorkState }
   | { t: 'showWork' }
-  // Pull/Fetch 摘要（v0.13）：拉到的纯净提交（排除 merge），面板内弹窗呈现；
+  // Pull 摘要（v0.13；#31 起仅 Pull 合并完成触发——fetch 静默更新徽标/提交图不弹摘要）；
   // stat 为文件工作区现状（键=文件路径，重命名取新路径；Issue #29 三态：
-  // 值=存在、null=已探测不存在（fetch 未合并/后续提交已删除）、键缺失=未采集超上限）
-  | { t: 'pullSummary'; repoId: string; kind: 'pull' | 'fetch'; entries: PullSummaryEntry[]; truncated: boolean; stat: PullFileStatMap }
+  // 值=存在、null=已探测不存在（已被后续提交删除）、键缺失=未采集超上限）
+  | { t: 'pullSummary'; repoId: string; kind: 'pull'; entries: PullSummaryEntry[]; truncated: boolean; stat: PullFileStatMap }
   | { t: 'aiChunk'; text: string }
   | { t: 'aiDone'; model: string; instructions: number; fallback?: boolean }
   | { t: 'aiError'; code: 'noModel' | 'auth' | 'quota' | 'canceled' | 'error'; message?: string }

@@ -273,33 +273,24 @@
     }
   }
 
-  // ---- ⑤b fetch 摘要弹窗（Issue #29：未合并说明行 + 立即拉取/关闭双按钮）----
-  window.__send({
-    t: 'pullSummary', repoId: 'r1', kind: 'fetch',
-    entries: [
-      { sha: 'd'.repeat(40), shortSha: 'ddd4444', author: '王五', date: '2026-08-27T09:00:00+08:00', subject: 'feat: 远端新提交', files: ['docs/n.md'], filesTruncated: false },
-    ],
-    truncated: false,
-    stat: { 'docs/n.md': null },
-  });
-  await twoFrames(); await sleep(120);
+  // ---- ⑤b 网络操作互斥 disable（Issue #31：fetch 在途 → 网络按钮全 disable）----
   {
-    const modal = document.querySelector('.gg-modal');
-    ok(modal, '⑤b fetch 摘要弹窗未出现');
-    if (modal) {
-      const txt = modal.textContent;
-      ok(txt.includes('获取摘要'), '⑤b 标题异常');
-      ok(!!modal.querySelector('.gg-psum-note') && txt.includes('尚未合并到本地工作区'), '⑤b fetch 未合并说明行缺失（Issue #29 P1）');
-      const goneActs = [...modal.querySelectorAll('.gg-psum-act')];
-      ok(goneActs.length === 2 && goneActs.every(b => b.disabled), '⑤b fetch 未合并文件行按钮应禁用');
-      const btns = [...modal.querySelectorAll('.gg-modal-btns .gg-btn')];
-      ok(btns.length === 2 && btns[0].classList.contains('primary') && (btns[0].textContent || '').includes('立即拉取'), '⑤b 立即拉取主按钮缺失（Issue #29 P1）');
-      const close = btns[1];
-      if (close) {
-        close.click();
-        await twoFrames();
-        ok(!document.querySelector('.gg-modal'), '⑤b 关闭后弹窗仍在');
-      }
+    // 模拟 opProgress（fetch 在途）→ 工具栏网络按钮应全部 disable、title 给原因
+    window.__send({ t: 'opProgress', opId: 9001, kind: 'fetch', text: 'Receiving objects: 50%' });
+    await twoFrames(); await sleep(120);
+    const fetchB = document.querySelector('.gg-tb-btn[data-kind="fetch"]');
+    const pullB = document.querySelector('.gg-tb-btn[data-kind="pull"]');
+    const pushB = document.querySelector('.gg-tb-btn[data-kind="push"]');
+    ok(fetchB && pullB && pushB, '⑤b 工具栏网络按钮定位失败（data-kind 锚点）');
+    if (fetchB && pullB && pushB) {
+      ok(fetchB.disabled && pullB.disabled && pushB.disabled, '⑤b fetch 在途时三个网络按钮应全部 disable（Issue #31）');
+      ok(pullB.title.includes('网络操作进行中') || pullB.title.includes('network operation is in progress'), '⑤b 互斥原因 title 缺失: ' + pullB.title);
+      ok(fetchB.classList.contains('busy'), '⑤b fetch 自身 busy 态缺失');
+    }
+    window.__send({ t: 'opResult', opId: 9001, kind: 'fetch', ok: true, message: 'ok' });
+    await twoFrames(); await sleep(120);
+    if (fetchB && pullB && pushB) {
+      ok(!fetchB.disabled && !pullB.disabled && !pushB.disabled, '⑤b fetch 完成后网络按钮应恢复可用（Issue #31）');
     }
   }
 

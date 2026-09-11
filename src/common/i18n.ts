@@ -452,9 +452,6 @@ const zh: Record<string, string> = {
 
   // ---------- Pull/Fetch 摘要 / 临时文件清理（v0.13） ----------
   pullSummaryTitle: '拉取摘要 — {n} 个新提交',
-  fetchSummaryTitle: '获取摘要 — {n} 个新提交',
-  fetchSummaryPending: '以上为远端新提交，尚未合并到本地工作区——文件操作需在拉取（Pull）后可用',
-  pullNow: '立即拉取',
   pullSummaryGone: '{n} 个文件不在当前工作区（已被后续提交删除或移动），对应行操作已禁用',
   pullSummaryCounts: '{c} 个提交 · {a} 位作者 · {f} 个文件',
   pullSummaryMoreFiles: '…（文件过多已截断）',
@@ -462,6 +459,7 @@ const zh: Record<string, string> = {
   pullSummaryAuthorCounts: '{c} 个提交 · {f} 个文件',
   pullSummaryFileGone: '文件不在当前工作区（未合并或已删除/移动）',
   retryWithStash: '贮藏并重试',
+  netOpBusy: '网络操作进行中，请等待完成后再执行其他网络操作',
   cleanTempTip: '移除 Office 临时文件（~$ 开头，共 {n} 个）',
 
   // ---------- 文件历史页（v0.14） ----------
@@ -981,9 +979,6 @@ const en: Record<string, string> = {
 
   // ---------- Pull/Fetch summary / temp file cleanup (v0.13) ----------
   pullSummaryTitle: 'Pull summary — {n} new commits',
-  fetchSummaryTitle: 'Fetch summary — {n} new commits',
-  fetchSummaryPending: 'These are new remote commits, not yet merged into the working tree — file actions become available after Pull',
-  pullNow: 'Pull now',
   pullSummaryGone: '{n} files are not in the working tree (deleted or moved by later commits); their row actions are disabled',
   pullSummaryCounts: '{c} commits · {a} authors · {f} files',
   pullSummaryMoreFiles: '…(file list truncated)',
@@ -991,6 +986,7 @@ const en: Record<string, string> = {
   pullSummaryAuthorCounts: '{c} commits · {f} files',
   pullSummaryFileGone: 'Not in the working tree (not merged, or deleted/moved)',
   retryWithStash: 'Stash & retry',
+  netOpBusy: 'A network operation is in progress — wait for it to finish before starting another',
   cleanTempTip: 'Remove Office temp files (~$ prefix, {n} found)',
 
   // ---------- Files page (v0.14) ----------

@@ -1100,49 +1100,39 @@ export class GraphPanel {
   }
 
   /**
-   * Pull/Fetch 摘要（v0.13）：对比前后 refs 圈出拉到的新提交（排除 merge），推 webview 弹窗。
-   * fetch：变化的远端跟踪 ref 新 sha 为起点；pull：新 HEAD 为起点——可达于新起点、
-   * 不可达于任何旧引用即为"拉到的提交"。尽力而为：失败不影响操作结果。
+   * Pull 摘要（v0.13；#31 收窄为仅 pull 触发）：新 HEAD 为起点，可达于新 HEAD、
+   * 不可达于旧本地引用即为"本次合并的提交"。fetch 不再弹摘要——远端新提交由
+   * 分支 ↓n 徽标与提交图（refs 变化自动刷新）承载，摘要只在合并完成后呈现。
+   * 尽力而为：失败不影响操作结果。
    */
   private async collectPullSummary(
     root: string,
-    kind: 'fetch' | 'pull',
     before: Map<string, string>,
     headBefore?: string,
   ): Promise<void> {
     if (!this.service || !this.pullSummary || !this.config.pullFetchSummary || !this.currentRepoId) return;
-    const after = await this.service.refsOf(root);
     const include: string[] = [];
-    if (kind === 'fetch') {
-      for (const r of after) {
-        if (r.prefix !== 'refs/remotes/') continue;
-        if (before.get(r.fullName) !== r.sha) include.push(r.sha);   // 新分支（旧值缺失）与前进均计
-      }
-    } else {
-      const head = await this.service.headShaOf(root);
-      if (head && head !== headBefore) include.push(head);
-    }
+    const head = await this.service.headShaOf(root);
+    if (head && head !== headBefore) include.push(head);
     if (!include.length) return;
-    // pull 的排除集只取本地侧（本地分支 + 旧 HEAD）：远端跟踪引用天然包含"新到本地"的上游提交
+    // 排除集只取本地侧（本地分支 + 旧 HEAD）：远端跟踪引用天然包含"新到本地"的上游提交
     // （fetch/后台自动获取先行更新 refs 时尤甚），全量排除会使摘要漏弹（v0.13 修复）
-    const exclude = kind === 'pull'
-      ? [...new Set([
-        ...[...before.entries()].filter(([k]) => k.startsWith('refs/heads/')).map(([, v]) => v),
-        ...(headBefore ? [headBefore] : []),
-      ])]
-      : [...new Set([...before.values(), ...(headBefore ? [headBefore] : [])])];
+    const exclude = [...new Set([
+      ...[...before.entries()].filter(([k]) => k.startsWith('refs/heads/')).map(([, v]) => v),
+      ...(headBefore ? [headBefore] : []),
+    ])];
     const { entries, truncated } = await this.pullSummary.of(root, include, exclude);
     if (entries.length) {
       const stat = await this.statPullFiles(root, entries);
-      this.post({ t: 'pullSummary', repoId: this.currentRepoId, kind, entries, truncated, stat });
+      this.post({ t: 'pullSummary', repoId: this.currentRepoId, kind: 'pull', entries, truncated, stat });
     }
-    this.channel.appendLine(`[summary] kind=${kind} new=${entries.length} include=${include.length} exclude=${exclude.length}`);
+    this.channel.appendLine(`[summary] pull new=${entries.length} include=${include.length} exclude=${exclude.length}`);
   }
 
   /**
    * 摘要文件的工作区现状（大小/修改时间）：rename 取新路径，唯一去重后并发 stat。
-   * 只读尽力而为——Issue #29 三态：存在=值；**已探测不存在=null**（fetch 未合并 /
-   * 后续提交已删除，UI 据此禁用行操作）；超 MAX_STAT 上限未采集=键缺失（不禁用）。
+   * 只读尽力而为——Issue #29 三态：存在=值；**null=已探测不存在**（已被同批后续
+   * 提交删除/移动，UI 据此禁用行操作）；超 MAX_STAT 上限未采集=键缺失（不禁用）。
    */
   private async statPullFiles(root: string, entries: { files: string[] }[]): Promise<PullFileStatMap> {
     const paths = new Set<string>();
@@ -1256,17 +1246,20 @@ export class GraphPanel {
     }
   }
 
-  /** 同仓库同 kind 网络操作去重登记（F4/Issue #6）：进行中/排队中时忽略重复点击 */
+  /** 同仓库网络操作在途登记（F4/Issue #6 起；#31 收紧为全互斥） */
   private netInFlight = new Map<string, Set<string>>();
 
-  /** 网络操作统一登记入口（Issue #7 方案 C，修复 #16 绕过缺陷）：
-   *  startOp 与 autoFetchTick 共用——同 kind 在途时返回 false 不再入队 */
+  /** 网络操作统一登记入口（Issue #7 方案 C 修复 #16；#31 语义收紧）：
+   *  fetch/pull/push/tagPush/tagDeleteRemote 全互斥——该仓库**任一**网络操作
+   *  在途/排队中时拒绝新网络 op（pull ⊇ fetch 语义叠加与排队重复由此杜绝；
+   *  按钮层 disable 之外，命令面板等旁路入口的兜底）。autoFetchTick 让路
+   *  检查（laneBusy）先于此调用，不受影响 */
   private enqueueNet(root: string, spec: OpSpec): boolean {
-    if (spec.kind !== 'fetch' && spec.kind !== 'pull' && spec.kind !== 'push') return true;
+    if (spec.kind !== 'fetch' && spec.kind !== 'pull' && spec.kind !== 'push'
+      && spec.kind !== 'tagPush' && spec.kind !== 'tagDeleteRemote') return true;
     const inflight = this.netInFlight.get(root);
-    if (inflight?.has(spec.kind)) return false;
-    if (inflight) inflight.add(spec.kind);
-    else this.netInFlight.set(root, new Set([spec.kind]));
+    if (inflight?.size) return false;
+    this.netInFlight.set(root, new Set([spec.kind]));
     return true;
   }
 
@@ -1295,9 +1288,12 @@ export class GraphPanel {
   private startOp(spec: OpSpec): Promise<OpOutcome | undefined> {
     if (!this.runner || !this.currentRepoId) return Promise.resolve(undefined);
     const root = this.roots.get(this.currentRepoId)!;
-    // F4（Issue #6）：网络操作同类去重——慢网络下连点 Fetch/Pull/Push 只跑一个，
-    // 不再向串行队列堆积重复 op（旧版每次点击都排一个，队列被同一操作刷满）
-    if (!this.enqueueNet(root, spec)) return Promise.resolve(undefined);   // 同类网络 op 已在队：视为未执行
+    // #31：网络操作全互斥——在途时拒绝入队并提示（按钮层已 disable，此处兜底
+    // 命令面板/续推链等旁路入口；替代 #6 F4 的同 kind 静默去重语义）
+    if (!this.enqueueNet(root, spec)) {
+      this.post({ t: 'notify', level: 'warn', message: this.t('netOpBusy') });
+      return Promise.resolve(undefined);
+    }
     const releaseKind = (): void => this.releaseNetKind(root, spec);
     const opId = ++this.opSeq;
     const kind = spec.kind;
@@ -1362,8 +1358,9 @@ export class GraphPanel {
           this.files?.invalidateTree(root);   // commit/checkout/reset 等改变 index/HEAD → 文件页目录缓存失效
           void this.refresh(true);   // 操作成功：强制重推（fetch/pull/push/checkout/reset 后表格必刷新）
           void this.workStateNow().catch(() => undefined);
-          if (refsBefore && (kind === 'fetch' || kind === 'pull')) {
-            void this.collectPullSummary(root, kind, refsBefore, headBefore).catch(() => undefined);
+          if (kind === 'pull' && refsBefore) {
+            // #31：摘要仅在 Pull 合并完成后触发；fetch 的远端更新由 ↓n 徽标与提交图承载
+            void this.collectPullSummary(root, refsBefore, headBefore).catch(() => undefined);
           }
         } else if (kind === 'pull') {
           // pull 失败（含冲突：git 以非零退出）也刷工作副本——前端据此弹冲突横幅引导（R3）
