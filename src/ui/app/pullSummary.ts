@@ -4,7 +4,7 @@
  * 组内只列文件名 + 工作区大小/修改时间，行尾按钮一键打开文件或在资源管理器中定位。
  * 同作者同文件多提交合并取最新（×N 标记，悬停列出全部提交）。
  */
-import { RENAME_SEP, type PullFileStat, type PullSummaryEntry } from '../../common/models';
+import { RENAME_SEP, type PullFileStatMap, type PullSummaryEntry } from '../../common/models';
 import { setIcon, type IconName } from '../icons';
 import { S, type App } from '../state';
 import { el, formatTime } from '../util';
@@ -24,7 +24,7 @@ export function showPullSummary(
   kind: 'pull' | 'fetch',
   entries: PullSummaryEntry[],
   truncated: boolean,
-  stat: Record<string, PullFileStat>,
+  stat: PullFileStatMap,
   app: App,
 ): void {
   const title = S.t(kind === 'pull' ? 'pullSummaryTitle' : 'fetchSummaryTitle', { n: String(entries.length) });
@@ -51,6 +51,14 @@ export function showPullSummary(
   body.appendChild(el('div', 'gg-psum-sum', S.t('pullSummaryCounts', {
     c: String(entries.length), a: String(byAuthor.size), f: String(uniqFiles.size),
   })));
+
+  // Issue #29：fetch 摘要的文件尚未合并到工作区；pull 摘要中个别文件可能被同批后续提交删除
+  const goneCount = [...uniqFiles].filter(p => stat?.[p] === null).length;
+  if (kind === 'fetch') {
+    body.appendChild(el('div', 'gg-psum-note', S.t('fetchSummaryPending')));
+  } else if (goneCount > 0) {
+    body.appendChild(el('div', 'gg-psum-note', S.t('pullSummaryGone', { n: String(goneCount) })));
+  }
 
   const repoRoot = S.repos.find(r => r.id === S.repoId)?.root;
   const listBox = el('div', 'gg-psum-list');
@@ -88,26 +96,41 @@ export function showPullSummary(
   body.appendChild(listBox);
 
   const btns = el('div', 'gg-modal-btns');
-  const ok = el('button', 'gg-btn primary', S.t('close'));
-  ok.addEventListener('click', close);
-  btns.appendChild(ok);
+  if (kind === 'fetch') {
+    // Issue #29：fetch 只更新远端引用未合并工作区——「立即拉取」一步完成合并，关弹窗
+    const pull = el('button', 'gg-btn primary', S.t('pullNow'));
+    pull.addEventListener('click', () => { close(); app.runPull(); });
+    btns.appendChild(pull);
+    const later = el('button', 'gg-btn', S.t('close'));
+    later.addEventListener('click', close);
+    btns.appendChild(later);
+    later.focus();
+  } else {
+    const ok = el('button', 'gg-btn primary', S.t('close'));
+    ok.addEventListener('click', close);
+    btns.appendChild(ok);
+    ok.focus();
+  }
   box.appendChild(btns);
-  ok.focus();
 }
 
 /** 单个文件行：文件名 | 大小 | 修改时间 | ×N | 打开/定位按钮（作用于工作区新路径） */
 function sumRow(
   f: string,
   info: { latest: PullSummaryEntry; all: PullSummaryEntry[] },
-  stat: Record<string, PullFileStat>,
+  stat: PullFileStatMap,
   fmt: (iso: string) => string,
   app: App,
 ): HTMLElement {
   const [oldP, newP] = f.includes(RENAME_SEP) ? f.split(RENAME_SEP) : [undefined, f];
   const nameText = oldP !== undefined ? `${base(oldP)} → ${base(newP)}` : base(newP);
-  const st = stat?.[newP];   // 无条目 = 文件不在工作区（大小/时间显示 —，按钮仍可用：宿主侧有回退）
+  const st = stat?.[newP];
+  // Issue #29 三态：值=在工作区；null=已探测不在（fetch 未合并/已删除）→ 禁用行操作；
+  // undefined=未采集（超宿主 stat 上限）→ 保持可点，点击后由宿主存在性探测兜底
+  const gone = st === null;
 
   const row = el('div', 'gg-psum-row');
+  if (gone) row.classList.add('gg-psum-gone');
   // 悬停：完整路径 + 涉及该文件的全部提交（时间 / 修改人 / 提交说明 / 短 SHA）+ 缺失提示
   const tip = [`${oldP !== undefined ? `${oldP} → ${newP}` : newP}`];
   if (!st) tip.push(S.t('pullSummaryFileGone'));
@@ -122,17 +145,22 @@ function sumRow(
   row.appendChild(meta);
 
   const acts = el('span', 'gg-psum-acts');
-  const mkAct = (icon: IconName, title: string, run: () => void): HTMLElement => {
+  const mkAct = (icon: IconName, title: string, run: () => void): HTMLButtonElement => {
     const b = el('button', 'gg-psum-act');
     setIcon(b, icon);
     b.title = title;
     b.addEventListener('click', ev => { ev.stopPropagation(); run(); });
     return b;
   };
-  acts.append(
-    mkAct('goToFile', S.t('openFile'), () => app.openFile(newP)),
-    mkAct('folder', S.t('revealInFM'), () => app.revealInFM(newP)),
-  );
+  const openBtn = mkAct('goToFile', S.t('openFile'), () => app.openFile(newP));
+  const revealBtn = mkAct('folder', S.t('revealInFM'), () => app.revealInFM(newP));
+  if (gone) {
+    for (const b of [openBtn, revealBtn]) {
+      b.disabled = true;
+      b.title = S.t('pullSummaryFileGone');
+    }
+  }
+  acts.append(openBtn, revealBtn);
   row.appendChild(acts);
   return row;
 }

@@ -199,7 +199,7 @@
   window.__send({
     t: 'pullSummary', repoId: 'r1', kind: 'pull',
     entries: [
-      { sha: 'a'.repeat(40), shortSha: 'aaa1111', author: '张三', date: '2026-08-26T10:00:00+08:00', subject: 'feat: 新功能 A', files: ['src/a.ts', 'old/x.ts → new/x.ts', 'package.json'], filesTruncated: false },
+      { sha: 'a'.repeat(40), shortSha: 'aaa1111', author: '张三', date: '2026-08-26T10:00:00+08:00', subject: 'feat: 新功能 A', files: ['src/a.ts', 'old/x.ts → new/x.ts', 'package.json', 'c.log'], filesTruncated: false },
       { sha: 'c'.repeat(40), shortSha: 'ccc3333', author: '张三', date: '2026-08-26T09:30:00+08:00', subject: 'chore: 再改 a', files: ['src/a.ts'], filesTruncated: false },
       { sha: 'b'.repeat(40), shortSha: 'bbb2222', author: 'Li Si', date: '2026-08-25T09:00:00+08:00', subject: 'fix: 修复 B', files: ['docs/b.md', 'src/a.ts'], filesTruncated: true },
     ],
@@ -208,7 +208,8 @@
       'src/a.ts': { size: 1234, mtime: '2026-08-26T10:05:00+08:00' },
       'package.json': { size: 2048, mtime: '2026-08-26T10:06:00+08:00' },
       'docs/b.md': { size: 512, mtime: '2026-08-25T09:10:00+08:00' },
-      // new/x.ts 无条目：不在工作区 → 大小/时间显示 —、悬停提示
+      'new/x.ts': null,   // Issue #29 三态：null=已探测不在工作区 → 行操作禁用
+      // c.log 键缺失：未采集（超 stat 上限）→ 按钮保持可点走宿主兜底
     },
   });
   await twoFrames(); await sleep(120);
@@ -218,18 +219,19 @@
     if (modal) {
       const txt = modal.textContent;
       ok(txt.includes('拉取摘要'), '⑤ 标题异常');
-      ok(txt.includes('3 个提交 · 2 位作者 · 4 个文件'), '⑤ 汇总行异常: ' + (modal.querySelector('.gg-psum-sum')?.textContent || ''));
+      ok(txt.includes('3 个提交 · 2 位作者 · 5 个文件'), '⑤ 汇总行异常: ' + (modal.querySelector('.gg-psum-sum')?.textContent || ''));
+      ok(!!modal.querySelector('.gg-psum-note') && txt.includes('1 个文件不在当前工作区'), '⑤ 不在工作区计数提示行缺失（Issue #29 P2）');
       const authors = [...modal.querySelectorAll('.gg-psum-author-name')].map(e => e.textContent);
       ok(authors.length === 2 && authors[0] === '张三' && authors[1] === 'Li Si', '⑤ 作者组数量/顺序（最新在前）异常: ' + authors.join('|'));
       const subs = [...modal.querySelectorAll('.gg-psum-author-sub')].map(e => e.textContent);
-      ok(subs[0] === '2 个提交 · 3 个文件' && subs[1] === '1 个提交 · 2 个文件', '⑤ 作者统计异常: ' + subs.join('|'));
+      ok(subs[0] === '2 个提交 · 4 个文件' && subs[1] === '1 个提交 · 2 个文件', '⑤ 作者统计异常: ' + subs.join('|'));
       const dirs = [...modal.querySelectorAll('.gg-psum-dir')].map(e => e.textContent);
       ok(dirs.length === 5, '⑤ 目录组数量异常（张三 3 + Li Si 2）: ' + dirs.length);
       ok(dirs[0] === 'D:/09_GitGraph', '⑤ 张三根目录组头应为仓库绝对路径: ' + dirs[0]);
       ok(dirs[1] === 'new/' && dirs[2] === 'src/', '⑤ 张三目录字母序异常: ' + dirs.join('|'));
       ok(dirs[3] === 'docs/' && dirs[4] === 'src/', '⑤ Li Si 目录字母序异常: ' + dirs.join('|'));
       const rows = [...modal.querySelectorAll('.gg-psum-row')];
-      ok(rows.length === 5, '⑤ 文件行数异常（张三 3 + Li Si 2）: ' + rows.length);
+      ok(rows.length === 6, '⑤ 文件行数异常（张三 4 + Li Si 2）: ' + rows.length);
       const aRows = rows.filter(r => r.querySelector('.gg-psum-name')?.textContent === 'a.ts');
       ok(aRows.length === 2, '⑤ a.ts 应在两位作者组各出现一次: ' + aRows.length);
       const zsA = aRows.find(r => r.textContent.includes('×2'));
@@ -240,13 +242,22 @@
         ok(zsA.title.includes('src/a.ts') && zsA.title.includes('feat: 新功能 A') && zsA.title.includes('chore: 再改 a'), '⑤ 悬停未列出该作者全部提交');
         ok(getComputedStyle(zsA.querySelector('.gg-psum-name')).wordBreak === 'break-all', '⑤ 文件名未启用换行（可能被截断）');
         const acts = zsA.querySelectorAll('.gg-psum-act');
-        ok(acts.length === 2, '⑤ 打开/定位按钮缺失: ' + acts.length);
+        ok(acts.length === 2 && ![...acts].some(b => b.disabled), '⑤ 打开/定位按钮缺失或被误禁用');
       }
       const goneRow = rows.find(r => r.querySelector('.gg-psum-name')?.textContent === 'x.ts → x.ts');
       ok(goneRow, '⑤ 重命名未显示 旧→新');
       if (goneRow) {
         ok(goneRow.querySelector('.gg-psum-size')?.textContent === '—' && goneRow.querySelector('.gg-psum-time')?.textContent === '—', '⑤ 工作区缺失文件应显示 —');
         ok(goneRow.title.includes('不在当前工作区'), '⑤ 缺失文件悬停应提示不在工作区');
+        ok(goneRow.classList.contains('gg-psum-gone'), '⑤ 缺失行未加 gg-psum-gone 类（Issue #29 P0）');
+        const gActs = [...goneRow.querySelectorAll('.gg-psum-act')];
+        ok(gActs.length === 2 && gActs.every(b => b.disabled), '⑤ 已探测不在工作区的行按钮应禁用（Issue #29 P0）');
+      }
+      const unprobedRow = rows.find(r => r.querySelector('.gg-psum-name')?.textContent === 'c.log');
+      ok(unprobedRow, '⑤ 未采集文件行缺失');
+      if (unprobedRow) {
+        const uActs = [...unprobedRow.querySelectorAll('.gg-psum-act')];
+        ok(uActs.length === 2 && !uActs.some(b => b.disabled), '⑤ 未采集（键缺失）的行按钮应保持可用（Issue #29 P0 三态）');
       }
       const bRow = rows.find(r => r.querySelector('.gg-psum-name')?.textContent === 'b.md' && !r.textContent.includes('×'));
       ok(bRow && bRow.querySelector('.gg-psum-size')?.textContent === '512 B', '⑤ Li Si 组 b.md 大小异常');
@@ -258,6 +269,36 @@
         closeBtn.click();
         await twoFrames();
         ok(!document.querySelector('.gg-modal'), '⑤ 关闭后弹窗仍在');
+      }
+    }
+  }
+
+  // ---- ⑤b fetch 摘要弹窗（Issue #29：未合并说明行 + 立即拉取/关闭双按钮）----
+  window.__send({
+    t: 'pullSummary', repoId: 'r1', kind: 'fetch',
+    entries: [
+      { sha: 'd'.repeat(40), shortSha: 'ddd4444', author: '王五', date: '2026-08-27T09:00:00+08:00', subject: 'feat: 远端新提交', files: ['docs/n.md'], filesTruncated: false },
+    ],
+    truncated: false,
+    stat: { 'docs/n.md': null },
+  });
+  await twoFrames(); await sleep(120);
+  {
+    const modal = document.querySelector('.gg-modal');
+    ok(modal, '⑤b fetch 摘要弹窗未出现');
+    if (modal) {
+      const txt = modal.textContent;
+      ok(txt.includes('获取摘要'), '⑤b 标题异常');
+      ok(!!modal.querySelector('.gg-psum-note') && txt.includes('尚未合并到本地工作区'), '⑤b fetch 未合并说明行缺失（Issue #29 P1）');
+      const goneActs = [...modal.querySelectorAll('.gg-psum-act')];
+      ok(goneActs.length === 2 && goneActs.every(b => b.disabled), '⑤b fetch 未合并文件行按钮应禁用');
+      const btns = [...modal.querySelectorAll('.gg-modal-btns .gg-btn')];
+      ok(btns.length === 2 && btns[0].classList.contains('primary') && (btns[0].textContent || '').includes('立即拉取'), '⑤b 立即拉取主按钮缺失（Issue #29 P1）');
+      const close = btns[1];
+      if (close) {
+        close.click();
+        await twoFrames();
+        ok(!document.querySelector('.gg-modal'), '⑤b 关闭后弹窗仍在');
       }
     }
   }
