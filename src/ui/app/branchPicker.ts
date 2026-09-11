@@ -1,9 +1,12 @@
 /**
  * 分支选择器（Issue #24）：搜索 + 子序列模糊匹配高亮的模态列表。
  * - filter 模式：头部含三个范围项（全部/本地/当前分支），其余为 ref 精选（与侧栏单击过滤同语义，可再点取消）
- * - checkout 模式：本地分支直接检出；远程分支底部内联输入本地名（预填剥离 remote 前缀的建议名）回车检出；
- *   底部恒有「新建分支」行（checkout -b，基于当前 HEAD），无匹配时成为唯一可选项（搜索词即新分支名）
- * 键盘：↑↓ 移动高亮、Enter 确认、Esc 关闭；无查询按分组呈现，查询时按匹配分排序平铺。
+ * - checkout 模式（#40 收紧）：只列「能够被检出」的分支——本地没有同名分支的远程分支
+ *   （选中即内联输入本地名检出为本地跟踪分支）；本地分支与已有本地对应的远程分支不再出现
+ *   （本地分支检出走侧栏）；底部恒有「新建分支」行（checkout -b，基于当前 HEAD），无匹配时成为唯一可选项
+ * - 搜索结果（#40）：checkout 模式按分组与排序规则渲染——远程分组 → 递归前缀组，
+ *   组间按远程序、组内（同叶组）按匹配分降序；filter 模式仍按匹配分平铺
+ * 键盘：↑↓ 移动高亮、Enter 确认、Esc 关闭；无查询按分组呈现。
  */
 import type { BranchInfo, GraphScope } from '../../common/models';
 import { S, type App } from '../state';
@@ -58,7 +61,8 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   const localNames = new Set(st.branches.map(b => b.name));
   const strip = (n: string) => (n.includes('/') ? n.slice(n.indexOf('/') + 1) : n);
 
-  /** 全量条目（显示名/匹配名分离：远程行显示剥前缀名，匹配用全名） */
+  /** 全量条目（显示名/匹配名分离：远程行显示剥前缀名，匹配用全名）。
+   *  #40：checkout 模式只收「可检出」条目——本地分支不进列表，远程分支剔除已有本地同名者 */
   const all: { row: Row; display: string; sub: string }[] = [];
   if (mode === 'filter') {
     const scope: GraphScope = st.scopeMode ?? S.config.graphBranchScope;
@@ -66,11 +70,12 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
       const label = S.t(`scope${m[0].toUpperCase()}${m.slice(1)}`);
       all.push({ row: { kind: 'scope', mode: m, label, active: !st.filterRef && scope === m }, display: label, sub: '' });
     }
+    for (const b of st.branches) all.push({ row: { kind: 'local', b, active: st.filterRef === b.fullName }, display: b.name, sub: '' });
   }
-  for (const b of st.branches) all.push({ row: { kind: 'local', b, active: st.filterRef === b.fullName }, display: b.name, sub: '' });
   for (const g of st.remotes) {
     for (const b of g.branches) {
       const stripped = strip(b.name);
+      if (mode === 'checkout' && localNames.has(stripped)) continue;
       all.push({ row: { kind: 'remote', b, remote: g.name, hasLocal: localNames.has(stripped) }, display: stripped, sub: g.name });
     }
   }
@@ -139,18 +144,54 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
         renderTree(ch, depth + 1);
       }
     };
-
-    if (q) {
+    /** 子序列模糊命中收集（远程行用全名匹配） */
+    const collectHits = () => {
       const hits: { a: { row: Row; display: string; sub: string }; score: number; positions: number[]; text: string }[] = [];
       for (const a of all) {
         const matchText = a.row.kind === 'remote' ? a.row.b.name : a.display;
         const hit = fuzzyMatch(q, matchText);
         if (hit) hits.push({ a, score: hit.score, positions: hit.positions, text: matchText });
       }
-      hits.sort((x, y) => y.score - x.score);
-      if (hits.length) {
+      return hits;
+    };
+
+    if (q) {
+      const hits = collectHits().sort((x, y) => y.score - x.score);
+      if (mode === 'checkout') {
+        // #40：checkout 搜索结果套用分组与排序规则——一级按远程（st.remotes 顺序），
+        // 二级起递归前缀组（字母序），同叶组内保持匹配分降序
+        const byRemote = new Map<string, typeof hits>();
         for (const h of hits) {
-          // 远程行 positions 基于全名，display 是剥前缀名——偏移映射（全名 = remote + '/' + display）
+          const arr = byRemote.get((h.a.row as { remote: string }).remote) ?? [];
+          arr.push(h);
+          byRemote.set((h.a.row as { remote: string }).remote, arr);
+        }
+        // 远程行 positions 基于全名，display 是剥前缀名——偏移映射（全名 = remote + '/' + display）
+        const posOf = new Map<Row, number[]>();
+        for (const h of hits) {
+          const off = h.a.row.kind === 'remote' ? h.a.row.b.name.length - h.a.display.length : 0;
+          posOf.set(h.a.row, off ? h.positions.map(p => p - off).filter(p => p >= 0) : [...h.positions]);
+        }
+        const renderHitTree = (node: PrefixNode<{ row: Row; display: string; sub: string }>, depth: number): void => {
+          for (const a of node.items) addRow(a, posOf.get(a.row) ?? [], depth, stripTo(node.path, a.display));
+          for (const ch of node.children) {
+            list.appendChild(sectionHead(`${ch.seg}/`, countNode(ch), depth + 2));
+            renderHitTree(ch, depth + 1);
+          }
+        };
+        let any = false;
+        for (const g of st?.remotes ?? []) {
+          const groupHits = byRemote.get(g.name);
+          if (!groupHits?.length) continue;
+          any = true;
+          list.appendChild(sectionHead(`${S.t('pickerRemotes')} · ${g.name}`, groupHits.length));
+          const rg = buildPrefixTree(groupHits.map(h => h.a), a => a.display);
+          for (const a of rg.top) addRow(a, posOf.get(a.row) ?? [], 0);
+          renderHitTree(rg.root, 0);
+        }
+        if (!any) list.appendChild(el('div', 'gg-bp-empty', S.t('pickerNoMatch')));
+      } else if (hits.length) {
+        for (const h of hits) {
           const off = h.a.row.kind === 'remote' ? h.a.row.b.name.length - h.a.display.length : 0;
           const positions = off ? h.positions.map(p => p - off).filter(p => p >= 0) : h.positions;
           addRow(h.a, positions);
@@ -159,7 +200,8 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
         list.appendChild(el('div', 'gg-bp-empty', S.t('pickerNoMatch')));
       }
     } else {
-      // 无查询：分组呈现（范围项 → 当前 → 本地（前缀分组）→ 各远程（剥前缀再分组））
+      // 无查询：分组呈现（范围项 → 当前 → 本地（前缀分组）→ 各远程（剥前缀再分组））；
+      // #40：checkout 模式本地分支不进列表，只剩远程组，空态给出指引
       if (mode === 'filter') {
         const scopes = all.filter(a => a.row.kind === 'scope');
         if (scopes.length) {
@@ -169,17 +211,19 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
       }
       const locals = all.filter(a => a.row.kind === 'local');
       const remotes = all.filter(a => a.row.kind === 'remote');
-      const headName = st?.head.branch;
-      const headEntry = locals.find(a => (a.row as { b: BranchInfo }).b.name === headName);
-      if (headEntry) {
-        list.appendChild(sectionHead(S.t('pickerCurrent')));
-        addRow(headEntry, [], 0);
+      if (locals.length) {
+        const headName = st?.head.branch;
+        const headEntry = locals.find(a => (a.row as { b: BranchInfo }).b.name === headName);
+        if (headEntry) {
+          list.appendChild(sectionHead(S.t('pickerCurrent')));
+          addRow(headEntry, [], 0);
+        }
+        const others = locals.filter(a => (a.row as { b: BranchInfo }).b.name !== headName);
+        list.appendChild(sectionHead(S.t('pickerLocals'), others.length));
+        const lg = buildPrefixTree(others, a => a.display);
+        for (const a of lg.top) addRow(a, [], 0);
+        renderTree(lg.root, 0);
       }
-      const others = locals.filter(a => (a.row as { b: BranchInfo }).b.name !== headName);
-      list.appendChild(sectionHead(S.t('pickerLocals'), others.length));
-      const lg = buildPrefixTree(others, a => a.display);
-      for (const a of lg.top) addRow(a, [], 0);
-      renderTree(lg.root, 0);
       if (remotes.length) {
         const byOrigin = new Map<string, { row: Row; display: string; sub: string }[]>();
         for (const a of remotes) {
@@ -193,6 +237,9 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
           for (const a of rg.top) addRow(a, [], 0);
           renderTree(rg.root, 0);
         }
+      } else if (mode === 'checkout' && (st?.remotes.length ?? 0) > 0) {
+        // 全部远程分支都已有本地对应：列表只剩「新建分支」，说明去向
+        list.appendChild(el('div', 'gg-bp-empty', S.t('pickerAllTracked')));
       }
     }
     // 检出模式：底部恒有「新建分支」行（无匹配时成为唯一可选项，Enter 直达新建；搜索词即预填名）
