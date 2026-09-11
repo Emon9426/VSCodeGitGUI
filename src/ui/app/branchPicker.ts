@@ -10,7 +10,7 @@ import { S, type App } from '../state';
 import { el } from '../util';
 import { fuzzyMatch } from '../fuzzy';
 import { buildPrefixTree, countNode, stripTo, type PrefixNode } from './branchGroup';
-import { openModal } from './overlays';
+import { openModal, toast } from './overlays';
 
 type Row =
   | { kind: 'scope'; mode: GraphScope; label: string; active: boolean }
@@ -33,6 +33,12 @@ interface Entry {
 export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   const st = S.state;
   if (!st) return;
+  // #33 B2：未完成合并（MERGE_HEAD/rebase 中）禁止检出——git 会拒绝
+  // （you need to resolve your current index first），此处预拦截并说明原因
+  if (mode === 'checkout' && S.work.state?.mergeActive) {
+    toast('warn', S.t('blockedByMerge'));
+    return;
+  }
   const { box, body, close } = openModal(mode === 'checkout' ? S.t('checkoutPickerTitle') : S.t('filterPickerTitle'));
   box.classList.add('gg-bp');
 

@@ -208,14 +208,15 @@ export class OpRunner {
     }
   }
 
-  /** 单命令执行 + index.lock 撞锁重试（Issue #7 双队列）：本地道与网络道 pull 的本地阶段并行时，
-   *  git 的 index 锁可能瞬时冲突——退避 400ms 后对同一条命令重试一次（命令序列粒度：前序命令不重跑），仍失败原样抛出 */
+  /** 单命令执行 + index.lock 撞锁重试（Issue #7 双队列；#33 C1 窗口加大）：
+   *  本地道与网络道 pull 的本地阶段并行时 git 的 index 锁可能瞬时冲突——大变更集
+   *  merge/checkout 持锁可达数秒，退避 1600ms 覆盖常规持锁（命令序列粒度：前序命令不重跑），仍失败原样抛出 */
   private async execWithLockRetry(root: string, args: string[], opts: ExecOpts): Promise<ExecResult> {
     try {
       return await this.exec.exec(root, args, opts);
     } catch (e) {
       if (e instanceof GitError && e.code === 'E_GIT_EXIT' && (e.stderrTail ?? '').includes('index.lock')) {
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 1600));
         return await this.exec.exec(root, args, opts);
       }
       throw e;
