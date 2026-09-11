@@ -980,12 +980,12 @@ const en: Record<string, string> = {
   noProjects: 'No projects yet — click + to add',
 
   // ---------- Pull/Fetch summary / temp file cleanup (v0.13) ----------
-  pullSummaryTitle: 'Pull summary — {n} new commits',
-  pullSummaryGone: '{n} files are not in the working tree (deleted or moved by later commits); their row actions are disabled',
-  pullSummaryCounts: '{c} commits · {a} authors · {f} files',
+  pullSummaryTitle: 'Pull summary — {n^new commit|new commits}',
+  pullSummaryGone: '{n^file is|files are} not in the working tree (deleted or moved by later commits); their row actions are disabled',
+  pullSummaryCounts: '{c^commit|commits} · {a^author|authors} · {f^file|files}',
   pullSummaryMoreFiles: '…(file list truncated)',
-  pullSummaryTruncated: 'Showing the latest {n} commits only',
-  pullSummaryAuthorCounts: '{c} commits · {f} files',
+  pullSummaryTruncated: 'Showing the latest {n^commit|commits} only',
+  pullSummaryAuthorCounts: '{c^commit|commits} · {f^file|files}',
   pullSummaryFileGone: 'Not in the working tree (not merged, or deleted/moved)',
   retryWithStash: 'Stash & retry',
   netOpBusy: 'A network operation is in progress — wait for it to finish before starting another',
@@ -1071,6 +1071,12 @@ export function createT(lang: Lang): Translate {
   return (key, params) => {
     let s = dict[key] ?? dicts.en[key] ?? key;
     if (params) {
+      // #35 英文单复数：{k^单数|复数} 占位——数值=1 输出「1 单数」，否则「N 复数」；
+      // 中文键不含该语法不受影响；普通 {k} 替换在其后照常执行
+      s = s.replace(/\{(\w+)\^([^|{}]*)\|([^{}]*)\}/g, (_m, k, one, other) => {
+        const v = params[k];
+        return v === undefined ? `{${k}}` : `${v} ${Number(v) === 1 ? one : other}`;
+      });
       for (const [k, v] of Object.entries(params)) s = s.replaceAll(`{${k}}`, String(v));
     }
     return s;
