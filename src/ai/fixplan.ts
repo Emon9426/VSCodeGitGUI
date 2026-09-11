@@ -16,6 +16,9 @@ export type FixLevel = 'run' | 'confirm' | 'copy';
 export interface FixStepRaw {
   title: string;
   cmd: string;
+  /** #37 三要素（AI 生成、仅展示不参与分级）：该命令做什么 / 执行后的影响 */
+  action?: string;
+  consequence?: string;
 }
 
 export interface ValidatedStep {
@@ -56,7 +59,8 @@ export function splitArgv(cmd: string): string[] | null {
 
 /**
  * 从诊断全文提取 ```gitboard-fix JSON 块（首个）；无块/解析失败/结构非法 → null
- * （前端降级为纯诊断）。约束：steps ≤5、title ≤80、cmd ≤300，超限截断。
+ * （前端降级为纯诊断）。约束：steps ≤5、title ≤80、cmd ≤300、action/consequence
+ * ≤200（#37 三要素，可选——缺失时 UI 以 title 兜底），超限截断。
  */
 export function parseFixBlock(text: string): FixStepRaw[] | null {
   const m = text.match(/```gitboard-fix\s*\n([\s\S]*?)```/);
@@ -74,7 +78,9 @@ export function parseFixBlock(text: string): FixStepRaw[] | null {
     const title = typeof s?.title === 'string' ? s.title.trim().slice(0, 80) : '';
     const cmd = typeof s?.cmd === 'string' ? s.cmd.trim().slice(0, 300) : '';
     if (!title || !cmd) return null;   // 结构非法整体作废（宁缺毋滥）
-    out.push({ title, cmd });
+    const action = typeof s?.action === 'string' && s.action.trim() ? s.action.trim().slice(0, 200) : undefined;
+    const consequence = typeof s?.consequence === 'string' && s.consequence.trim() ? s.consequence.trim().slice(0, 200) : undefined;
+    out.push({ title, cmd, action, consequence });
   }
   return out;
 }

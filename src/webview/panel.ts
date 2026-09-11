@@ -55,6 +55,7 @@ function readConfig(): ConfigDto {
     aiLanguage: cfg.get('ai.language', 'auto'),
     aiLearnFromHistory: cfg.get('ai.learnFromHistory', true),
     aiUseWorkspaceInstructions: cfg.get('ai.useWorkspaceInstructions', true),
+    aiAutoFix: cfg.get('ai.autoFix', true),   // #37：默认开（设置可关）；自动诊断，执行仍全人审
     commitClearMessage: cfg.get('commit.clearMessage', true),
     commitPushAfter: cfg.get('commit.pushAfter', false),
     startView: cfg.get('startView', 'graph'),
@@ -1998,7 +1999,8 @@ export class GraphPanel {
         raw.forEach((s, i) => {
           const v = validateStep(s.cmd);
           this.fixSteps.set(i + 1, { cmd: s.cmd, level: v.level });
-          steps.push({ index: i + 1, title: s.title, cmd: s.cmd, level: v.level });
+          // #37：三要素（action/consequence）仅透传展示，不参与分级判定
+          steps.push({ index: i + 1, title: s.title, cmd: s.cmd, level: v.level, action: s.action, consequence: s.consequence });
         });
       }
       this.channel.appendLine(`[ai-diag] done chars=${full.length} fixSteps=${steps.length} run=${steps.filter(s => s.level === 'run').length} confirm=${steps.filter(s => s.level === 'confirm').length}`);

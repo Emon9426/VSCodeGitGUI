@@ -72,14 +72,14 @@ code --install-extension EmonZhang3438.gitboard
 **方式一：命令行安装 vsix（推荐）**
 
 ```bash
-code --install-extension gitboard-0.24.2.vsix
+code --install-extension gitboard-0.25.0.vsix
 ```
 
 安装后执行 **Ctrl+Shift+P → “开发者：重新加载窗口”**（每次覆盖安装新版本后都需要；可对照工具栏右侧版本号确认当前构建已生效）。
 
 **方式二：VS Code 界面安装**
 
-扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.24.2.vsix` → 重新加载窗口。
+扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.25.0.vsix` → 重新加载窗口。
 
 **方式三：从源码构建**
 
@@ -271,6 +271,7 @@ pull 或提交产生冲突时，自动切到工作副本视图并弹出引导横
 | `gitboard.ai.language` | auto | 生成语言（auto = 跟随近期提交） |
 | `gitboard.ai.learnFromHistory` | true | 学习近 10 条提交的风格与语言 |
 | `gitboard.ai.useWorkspaceInstructions` | true | 遵循工程指示文件（`.copilot/`、`.github/`） |
+| `gitboard.ai.autoFix` | true | 操作失败自动打开 AI 诊断；修复步骤带「命令+作用+后果」三要素、一键人审执行，失败自动重新诊断（不限轮，关闭窗口即停） |
 | `gitboard.commit.clearMessage` | true | 提交成功后清空信息框 |
 | `gitboard.commit.pushAfter` | false | 「提交后推送」复选框默认值 |
 
@@ -300,6 +301,7 @@ npm run build && npm run package
 
 ### 更新日志
 
+- **v0.25.0**（2026-09-11）：AI 直接解决错误（[#37](https://github.com/Emon9426/VSCodeGitGUI/issues/37)）——①**自动诊断**：新增 `gitboard.ai.autoFix`（**默认开启**，可关），操作失败且 Copilot 可用时自动打开 AI 诊断，无需手动点「AI 分析」；②**修复步骤三要素**：每步呈现「**命令 + 作用 + 后果**」（AI 生成、仅展示——执行与否仍由本地白名单校验决定），危险确认框同样附带作用/后果说明，看一眼即可放心点击；③**失败自动重新诊断（不限轮）**：一键执行中任一步失败，自动携带新错误进入下一轮诊断（标题显示「第 N 轮」），循环直至解决；关闭诊断窗口（Esc/×/停止）随时终止；执行始终全人审（一键 + 危险级逐条确认），`--force` 家族与 `reset --hard` 仍永不执行。
 - **v0.24.2**（2026-09-11）：实机测试缺陷修复（[#35](https://github.com/Emon9426/VSCodeGitGUI/issues/35)）——①**文件页静态文本语言残留**：`S.t` 初始为中文兜底、bootstrap 后才切实际语言，文件页历史区标题与比对按钮只在构造期设置一次——现已随 `update()` 刷新（英文界面不再显示中文）；②**摘要英文单复数**：翻译函数新增 `{n^单数|复数}` 占位语法，拉取摘要的标题/汇总/作者统计/缺失提示在数量为 1 时正确显示单数（"1 new commit · 1 author · 1 file"）；③实机复验澄清两项测试假阳性并回归验证「完成合并」真实链路完好。
 - **v0.24.1**（2026-09-11）：互斥收尾三项（[#33](https://github.com/Emon9426/VSCodeGitGUI/issues/33)，#31 遗留）——①**index.lock 撞锁退避窗口加大**：拉取合并/检出阶段与本地暂存/提交并行时的瞬时锁冲突，退避 400ms→1600ms，大变更集常规持锁不再误报失败；②**未完成合并时检出预禁用**：检出按钮与检出选择器在合并/变基未完成时禁用并说明原因（与 Pull/Push 同口径，git 的 `resolve your current index first` 拒绝前置）；③**分离 HEAD 拉取提示**：detached 状态点拉取提示「不在任何分支上，请先检出分支」，与「无上游分支」区分；顺带修复工具栏守卫原因被常规 title 覆盖的时序问题。
 - **v0.24.0**（2026-09-11）：网络操作互斥与摘要收窄（[#31](https://github.com/Emon9426/VSCodeGitGUI/issues/31)）——①**网络操作全互斥**：fetch / pull / push / 标签推送（含删除远端标签）任一进行中，工具栏其余网络按钮一律禁用并显示原因（命令面板等旁路入口由宿主拒绝+提示兜底；工作副本空态按钮点击时同样拦截），杜绝「Fetch 后 Pull 语义叠加与排队重复」；②**摘要仅在 Pull 合并完成时弹出**：fetch（含打开时自动获取）静默更新分支 ↓n 徽标与提交图，不再弹「获取摘要」——双弹窗重复与「未合并文件点击报错」的场景就此消失；③未完成合并时 Pull 按钮与 Push 一同预禁用并提示原因；④标签网络操作纳入互斥去重登记（慢网络连点不再堆积）。
@@ -404,7 +406,7 @@ code --install-extension EmonZhang3438.gitboard
 **Option 1 — CLI (recommended)**
 
 ```bash
-code --install-extension gitboard-0.24.2.vsix
+code --install-extension gitboard-0.25.0.vsix
 ```
 
 Then run **Ctrl+Shift+P → “Developer: Reload Window”** (required after every upgrade; check the version label on the toolbar).
@@ -501,7 +503,7 @@ Failed operations raise a **persistent bottom-right notification** (plain-langua
 
 ### Settings
 
-Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angular), `graphBranchScope` (**local** default / all / current — default commit-graph scope), `branchGroupByPrefix` (sidebar & picker recursive prefix grouping), `commitPageSize`, `logOrder`, `maxAutoLoad`, `defaultPullStrategy`, `dateFormat`, `rowHeight`, `detailPanelPosition`, `language`, `fetchOnOpen`, `autoFetchInterval`, `netStallTimeout`, `opVerify`, `pullFetchSummary`, `notifyWidth`, `revealSelectStyle` (**classic** default — switch to separate/quoted if "Reveal in file manager" misbehaves on your Windows build), `startView`, `ai.enabled` (Copilot features — commit messages & error diagnosis; entries hide when unavailable) / `ai.modelFamily` / `ai.language` / `ai.learnFromHistory` / `ai.useWorkspaceInstructions`, `commit.clearMessage` / `commit.pushAfter`, plus `gitPath` for a custom git binary.
+Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angular), `graphBranchScope` (**local** default / all / current — default commit-graph scope), `branchGroupByPrefix` (sidebar & picker recursive prefix grouping), `commitPageSize`, `logOrder`, `maxAutoLoad`, `defaultPullStrategy`, `dateFormat`, `rowHeight`, `detailPanelPosition`, `language`, `fetchOnOpen`, `autoFetchInterval`, `netStallTimeout`, `opVerify`, `pullFetchSummary`, `notifyWidth`, `revealSelectStyle` (**classic** default — switch to separate/quoted if "Reveal in file manager" misbehaves on your Windows build), `startView`, `ai.enabled` (Copilot features — commit messages & error diagnosis; entries hide when unavailable) / `ai.modelFamily` / `ai.language` / `ai.learnFromHistory` / `ai.useWorkspaceInstructions` / `ai.autoFix` (**on** by default — auto-open AI diagnosis on failures; fix steps show command+action+consequence, one-click human-reviewed execution, unlimited auto re-diagnosis rounds until you close the window), `commit.clearMessage` / `commit.pushAfter`, plus `gitPath` for a custom git binary.
 
 ### FAQ
 
@@ -519,6 +521,7 @@ Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angul
 
 ### Changelog
 
+- **v0.25.0** (2026-09-11): AI fixes errors directly ([#37](https://github.com/Emon9426/VSCodeGitGUI/issues/37)) — ① **auto diagnosis**: new `gitboard.ai.autoFix` (**on by default**, toggleable) auto-opens the AI diagnosis whenever an operation fails and Copilot is available — no more clicking "AI analyze"; ② **fix steps in three parts**: every step shows **command + what it does + consequence** (AI-generated, display-only — what runs is still decided by local whitelist validation), and the danger confirmation shows the same info so one glance is enough before clicking; ③ **unlimited auto re-diagnosis**: if any step of "Run all" fails, the next diagnosis round starts automatically with the new error (title shows "round N") and loops until resolved; close the window (Esc/×/Stop) anytime to stop. Execution stays fully human-reviewed (one click + per-step confirmation for dangerous levels); `--force` family and `reset --hard` remain never-executable.
 - **v0.24.2** (2026-09-11): live-test defect fixes ([#35](https://github.com/Emon9426/VSCodeGitGUI/issues/35)) — ① **file-panel static text language leftover**: `S.t` starts as a Chinese fallback until bootstrap resolves the real language, and the file page's history header & compare button were set only once at construction — they now refresh in `update()` (no more Chinese labels on an English UI); ② **English singular/plural in the pull summary**: the translate function gains a `{n^one|other}` placeholder syntax; the summary title/counts/author stats/missing-file note now read "1 new commit · 1 author · 1 file" at count 1; ③ two live-test false positives clarified and the real "Finish merge" flow regression-verified end to end.
 - **v0.24.1** (2026-09-11): mutex follow-ups ([#33](https://github.com/Emon9426/VSCodeGitGUI/issues/33), leftovers of #31) — ① **wider index.lock backoff**: transient lock clashes between a pull's merge/checkout phase and local stage/commit now back off 400ms→1600ms, so ordinary large-checkout lock holds no longer surface as failures; ② **checkout pre-disabled during an unresolved merge**: the checkout button and branch picker are disabled with the reason (same treatment as Pull/Push — git's `resolve your current index first` rejection is now preempted); ③ **detached-HEAD pull message**: pulling while detached now says "not on any branch — check out a branch first", distinct from "no upstream"; also fixes a toolbar timing issue where the guard reason got overwritten by the regular tooltip.
 - **v0.24.0** (2026-09-11): network-op mutual exclusion & summary scoping ([#31](https://github.com/Emon9426/VSCodeGitGUI/issues/31)) — ① **network ops are mutually exclusive**: while any of fetch / pull / push / tag push (incl. remote tag delete) is running, the other network toolbar buttons are disabled with the reason (command-palette and other side entries are rejected by the host with a toast; the working-copy empty-state buttons get the same intercept on click) — no more "Fetch then Pull" semantic stacking and queued duplication; ② **the summary now pops only when a Pull completes**: fetch (including fetch-on-open) silently updates the behind badges and the commit graph — the duplicate double popup and the "file not in working tree" error path are gone; ③ Pull joins Push in being pre-disabled during an unresolved merge, with the reason in the tooltip; ④ tag network ops are included in the mutual-exclusion registry (slow-network double-clicks no longer pile up).

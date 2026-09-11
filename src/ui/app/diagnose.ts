@@ -1,8 +1,9 @@
 /**
- * AI 错误诊断模态与一键修复（Issue #8）：
+ * AI 错误诊断模态与一键修复（Issue #8；#37 增强）：
  * P1 诊断——流式渲染三段式分析（diagChunk/diagDone/diagError 驱动）；
- * P2 修复——宿主已校验的步骤渲染为可执行行，run 级直跑、confirm 级逐条
- * S6 危险确认、copy 级仅复制；任一步失败即停并支持以新错误重新诊断（闭环）。
+ * P2 修复——宿主已校验的步骤渲染为可执行行（#37 三要素：命令+作用+后果），
+ * run 级直跑、confirm 级逐条 S6 危险确认（含 AI 后果说明）、copy 级仅复制；
+ * 任一步失败自动以新错误重新诊断（#37：不限轮，模态关闭即终止）。
  */
 import type { FixStepDto, OpResult } from '../../common/protocol';
 import { rpc } from '../rpc';
@@ -46,9 +47,10 @@ let session: DiagnoseSession | undefined;
 /**
  * S6 危险确认（图标 + 命令行 + 不可撤销红副行，同 reset hard 警示配方）：
  * confirm 级修复步骤执行前逐条弹 出；「一键执行」不豁免确认。
+ * #37：附该步骤的 AI 作用/后果说明（标注 AI 生成，仅辅助人审）。
  * B4 首点即禁用防双击重复触发。
  */
-function dangerConfirm(title: string, cmd: string): Promise<boolean> {
+function dangerConfirm(title: string, cmd: string, info?: { action?: string; consequence?: string }): Promise<boolean> {
   return new Promise(resolve => {
     const { box, body, close } = openModal(S.t('fixConfirmTitle', { title }));
     const overlay = box.parentElement as HTMLElement;
@@ -65,6 +67,13 @@ function dangerConfirm(title: string, cmd: string): Promise<boolean> {
     irrev.appendChild(iconSvg('errorX'));
     irrev.appendChild(el('span', undefined, S.t('fixConfirmText')));
     body.append(head, irrev);
+    if (info?.action || info?.consequence) {
+      const ai = el('div', 'gg-dc-ai');
+      if (info.action) ai.appendChild(el('div', 'gg-dc-ai-row', `${S.t('fixActionLabel')}：${info.action}`));
+      if (info.consequence) ai.appendChild(el('div', 'gg-dc-ai-row warn', `${S.t('fixConsequenceLabel')}：${info.consequence}`));
+      ai.appendChild(el('div', 'gg-dc-ai-src', S.t('fixFromAi')));
+      body.appendChild(ai);
+    }
     const btns = el('div', 'gg-modal-btns');
     const cancel = el('button', 'gg-btn', S.t('cancel'));
     const ok = el('button', 'gg-btn danger', S.t('fixRunStep'));
@@ -79,10 +88,11 @@ function dangerConfirm(title: string, cmd: string): Promise<boolean> {
   });
 }
 
-/** 打开诊断模态并发起请求；已有会话则先取消关闭（单会话） */
-export function startDiagnosis(payload: DiagnosePayload, opts?: { retry?: () => void }): void {
+/** 打开诊断模态并发起请求；已有会话则先取消关闭（单会话）。
+ *  round（#37）：自动闭环的轮次（>1 时标题旁显示「第 N 轮」） */
+export function startDiagnosis(payload: DiagnosePayload, opts?: { retry?: () => void; round?: number }): void {
   session?.destroy();
-  session = new DiagnoseSession(payload, opts?.retry);
+  session = new DiagnoseSession(payload, opts?.retry, opts?.round ?? 1);
 }
 
 export function diagOnChunk(text: string): void { session?.onChunk(text); }
@@ -113,9 +123,12 @@ class DiagnoseSession {
   /** 「重新诊断」上下文：修复步骤失败时由 opResult 登记的更新错误；缺省回退原始错误 */
   private lastErr: DiagnosePayload;
 
-  constructor(private readonly payload: DiagnosePayload, private readonly retry?: () => void) {
+  constructor(private readonly payload: DiagnosePayload, private readonly retry?: () => void, private readonly round = 1) {
     this.lastErr = payload;
-    const { box, body, close } = openModal(S.t('diagTitle', { op: S.t(payload.kind) || payload.kind }));
+    const title = round > 1
+      ? `${S.t('diagTitle', { op: S.t(payload.kind) || payload.kind })} · ${S.t('diagRound', { n: String(round) })}`
+      : S.t('diagTitle', { op: S.t(payload.kind) || payload.kind });
+    const { box, body, close } = openModal(title);
     this.box = box;
     box.classList.add('gg-diag');
     this.overlay = box.parentElement as HTMLElement;
@@ -260,6 +273,18 @@ class DiagnoseSession {
         act.addEventListener('click', () => void this.runSequence([st]));
       }
       row.append(num, title, cmd, badge, state, act);
+      // #37 三要素：作用（灰）与后果（confirm/copy 级醒目）——AI 生成仅展示
+      if (st.action || st.consequence) {
+        const info = el('div', 'gg-fix-info');
+        if (st.action) info.appendChild(el('div', 'gg-fix-action', `${S.t('fixActionLabel')}：${st.action}`));
+        if (st.consequence) {
+          const c = el('div', 'gg-fix-cons', `${S.t('fixConsequenceLabel')}：${st.consequence}`);
+          if (st.level !== 'run') c.classList.add('warn');
+          info.appendChild(c);
+        }
+        info.appendChild(el('div', 'gg-fix-src', S.t('fixFromAi')));
+        row.appendChild(info);
+      }
       this.rows.set(st.index, { row, state });
       fix.appendChild(row);
     }
@@ -268,17 +293,19 @@ class DiagnoseSession {
 
   // ---------- 执行序列 ----------
 
-  /** 顺序驱动：confirm 级先 S6 确认；任一步失败/取消即停；B4 首点禁用防重入 */
+  /** 顺序驱动：confirm 级先 S6 确认；任一步失败/取消即停；B4 首点禁用防重入。
+   *  #37 自动闭环：失败（非用户取消）时自动以最新错误发起下一轮重新诊断——
+   *  轮数不设上限；短暂延迟后销毁当前会话开新轮（模态关闭即终止循环）。 */
   private async runSequence(steps: FixStepDto[]): Promise<void> {
     if (this.running || this.destroyed) return;
     this.running = true;
     for (const b of [...this.foot.querySelectorAll('button')]) (b as HTMLButtonElement).disabled = true;
-    let stopped: { n: number; reason: string } | undefined;
+    let stopped: { n: number; reason: string; failed: boolean } | undefined;
     for (const st of steps) {
-      if (this.destroyed) { stopped = { n: st.index, reason: S.t('fixStopReasonCancel') }; break; }
+      if (this.destroyed) { stopped = { n: st.index, reason: S.t('fixStopReasonCancel'), failed: false }; break; }
       const r = await this.execStep(st);
-      if (r === 'cancel') { stopped = { n: st.index, reason: S.t('fixStopReasonCancel') }; break; }
-      if (r === 'fail') { stopped = { n: st.index, reason: S.t('fixStopReasonFail') }; break; }
+      if (r === 'cancel') { stopped = { n: st.index, reason: S.t('fixStopReasonCancel'), failed: false }; break; }
+      if (r === 'fail') { stopped = { n: st.index, reason: S.t('fixStopReasonFail'), failed: true }; break; }
     }
     this.running = false;
     if (this.destroyed) return;
@@ -290,19 +317,32 @@ class DiagnoseSession {
         iconSvg('errorX'),
         el('span', undefined, S.t('fixStopped', { n: String(stopped.n), reason: stopped.reason })),
       );
-      const re = el('button', 'gg-btn small', S.t('fixReDiag'));
-      re.addEventListener('click', () => { const e = this.lastErr; const r = this.retry; this.destroy(); startDiagnosis(e, { retry: r }); });
-      bar.appendChild(re);
+      if (stopped.failed) {
+        // #37：失败自动进入下一轮（lastErr 已由 noteFailure 登记为最新错误）
+        bar.appendChild(el('span', 'gg-fix-next', S.t('fixAutoNext')));
+        setTimeout(() => {
+          if (this.destroyed) return;   // 用户在延迟窗口内关闭：循环终止
+          const e = this.lastErr;
+          const r = this.retry;
+          const next = this.round + 1;
+          this.destroy();
+          startDiagnosis(e, { retry: r, round: next });
+        }, 1200);
+      } else {
+        const re = el('button', 'gg-btn small', S.t('fixReDiag'));
+        re.addEventListener('click', () => { const e = this.lastErr; const r = this.retry; this.destroy(); startDiagnosis(e, { retry: r }); });
+        bar.appendChild(re);
+      }
       fixEl.appendChild(bar);
     } else if (!stopped && fixEl) {
       fixEl.appendChild(el('div', 'gg-fix-allok', S.t('fixAllDone')));
     }
   }
 
-  /** 单步执行：confirm → S6 危险确认（图标+命令+不可撤销副行）；rpc 宿主重校验并走 op 队列 */
+  /** 单步执行：confirm → S6 危险确认（图标+命令+不可撤销副行+#37 AI 作用/后果）；rpc 宿主重校验并走 op 队列 */
   private async execStep(st: FixStepDto): Promise<'ok' | 'fail' | 'cancel'> {
     if (st.level === 'confirm') {
-      const ok = await dangerConfirm(st.title, st.cmd);
+      const ok = await dangerConfirm(st.title, st.cmd, { action: st.action, consequence: st.consequence });
       if (!ok) return 'cancel';
     }
     const entry = this.rows.get(st.index);

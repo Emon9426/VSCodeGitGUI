@@ -35,6 +35,8 @@ export interface ConfigDto {
   aiLanguage: 'auto' | 'en' | 'zh-cn';
   aiLearnFromHistory: boolean;
   aiUseWorkspaceInstructions: boolean;
+  /** #37：错误后自动发起 AI 诊断（gitboard.ai.autoFix，默认开；执行仍全人审） */
+  aiAutoFix: boolean;
   commitClearMessage: boolean;
   commitPushAfter: boolean;
   startView: 'graph' | 'work' | 'last';
@@ -89,6 +91,10 @@ export interface FixStepDto {
   index: number;                       // 1 起，aiFixStep 的引用键
   title: string;
   cmd: string;
+  /** #37 三要素（AI 生成、仅展示不参与分级）：该命令做什么 */
+  action?: string;
+  /** #37：执行后的影响/可逆性说明（confirm 级确认框醒目展示） */
+  consequence?: string;
   level: 'run' | 'confirm' | 'copy';   // 可直接执行 / 需 S6 确认 / 仅复制（永不执行）
 }
 

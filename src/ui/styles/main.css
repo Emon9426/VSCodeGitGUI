@@ -1490,6 +1490,14 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fix-step { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 4px 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border, #333) 55%, transparent); }
 .gg-fix-step:last-child { border-bottom: none; }
+/* #37 三要素：步骤行升级为两行结构（主行 flex + 信息块换行铺满） */
+.gg-fix-step:has(.gg-fix-info) { flex-wrap: wrap; }
+.gg-fix-info { flex-basis: 100%; padding: 0 0 2px 24px; display: flex; flex-direction: column; gap: 1px; }
+.gg-fix-action { font-size: var(--gg-fs-xs); color: var(--gg-t3); }
+.gg-fix-cons { font-size: var(--gg-fs-xs); color: var(--gg-t3); }
+.gg-fix-cons.warn { color: var(--gg-warn); }
+.gg-fix-src { font-size: 10px; color: var(--gg-t3); opacity: .8; }
+.gg-fix-next { margin-left: auto; font-size: var(--gg-fs-xs); color: var(--gg-warn); flex: none; }
 .gg-fix-num { width: 16px; height: 16px; border-radius: 50%; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--vscode-panel-border, #444); font-size: var(--gg-fs-xs);
@@ -1537,3 +1545,10 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   border-radius: var(--gg-r-m); font-size: var(--gg-fs-s); line-height: 1.5;
   color: var(--gg-err); background: var(--gg-err-bg); border: 1px solid var(--gg-err-bd); }
 .gg-dc-irrev .gg-ic { width: 13px; height: 13px; margin-top: 1px; flex: none; }
+/* #37：confirm 确认框的 AI 作用/后果说明（人审辅助，标注来源） */
+.gg-dc-ai { margin-top: 8px; padding: 7px 10px; border-radius: var(--gg-r-m); font-size: var(--gg-fs-s);
+  line-height: 1.5; color: var(--gg-t2); background: color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border, #333) 60%, transparent); }
+.gg-dc-ai-row { word-break: break-word; }
+.gg-dc-ai-row.warn { color: var(--gg-warn); }
+.gg-dc-ai-src { margin-top: 3px; font-size: 10px; color: var(--gg-t3); opacity: .8; }

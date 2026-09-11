@@ -989,6 +989,14 @@ window.addEventListener('message', e => {
             detail: m.outputTail || undefined,
             actions: actions.length ? actions : undefined,
           });
+          // #37 autoFix（默认开）：错误后自动发起诊断（Copilot 可用且非取消/停滞），
+          // 省去手动点「AI 分析」；修复执行仍全人审（点一键/确认）。不重入：
+          // 已有诊断会话（自动闭环中）时交由 noteFailure 更新上下文
+          if (S.config.aiAutoFix && m.outputTail && !m.stalled && S.work.aiModels.length > 0 && !diagActive()) {
+            startDiagnosis(buildDiagPayload(m), {
+              retry: RETRYABLE_KINDS.has(m.kind) ? () => retryOp(m.kind) : undefined,
+            });
+          }
         }
         // Issue #8：诊断会话存活期间登记最新失败（修复步骤失败后「重新诊断」的上下文）
         if (diagActive()) diagNoteFailure(m);
