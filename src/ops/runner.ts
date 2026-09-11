@@ -14,6 +14,7 @@ export interface OpSpec {
   | 'resolveConflict' | 'commitNoEdit'
   | 'mergeAbort' | 'mergeContinue' | 'resolveDelete'
   | 'tagCreate' | 'tagDelete' | 'tagDeleteRemote' | 'tagPush'
+  | 'branchDelete'
   | 'moveFolder' | 'renamePath' | 'deletePaths';   // 文件页操作（v0.14）
   /** 依 kind 不同 */
   all?: boolean;               // fetch
@@ -36,7 +37,8 @@ export interface OpSpec {
   amend?: boolean;             // commit：修订上次提交
   ours?: boolean;              // resolveConflict：true=保留本地版本
   rebase?: boolean;            // mergeAbort/mergeContinue：rebase 变体（否则按 merge）
-  name?: string;               // tag*：标签名 / renamePath：新文件名
+  name?: string;               // tag*：标签名 / renamePath：新文件名 / branchDelete：分支名
+  force?: boolean;             // branchDelete：true=-D 强删（-d 被拒后经二次确认）
   message?: string;            // tagCreate：附注信息（非空=附注标签）
   srcs?: string[];             // moveFolder：多选源路径（批量 git mv）
   dst?: string;                // moveFolder：目标目录
@@ -320,6 +322,10 @@ export function buildArgs(spec: OpSpec): string[][] {
     }
     case 'tagDelete':
       return [['tag', '-d', spec.name ?? '']];
+    case 'branchDelete':
+      // 仅删本地分支（#39）：-d 安全删除；force=-D 强删（未合并提交将随分支丢弃）。
+      // 永不带远端 refspec——远端分支不受任何影响
+      return [['branch', spec.force ? '-D' : '-d', spec.name ?? '']];
     case 'tagDeleteRemote':
       return [[...LOW_SPEED_USER, 'push', '--progress', spec.remote ?? 'origin', `:refs/tags/${spec.name ?? ''}`]];
     case 'tagPush':

@@ -361,6 +361,33 @@ const app: App = {
   tagPush(name, remote) {
     void rpc('tag.push', { name, remote }).catch(showErr);
   },
+  // 删除本地分支（#39）：安全优先——-d 被拒（未完全合并）时二次确认后 -D 强删；
+  // 成功的分支名反馈由宿主 opResult message 承载，这里只收尾图表筛选与失败分诊
+  branchDelete(name, force) {
+    void rpc('branch.delete', { name, force: !!force })
+      .then((r: { ok?: boolean; unmerged?: boolean; cancelled?: boolean; error?: string } | null) => {
+        if (!r || r.ok) {
+          if (r?.ok && S.state?.filterRef) {
+            // 被删分支正是提交图筛选 ref（本地 fullName=refs/heads/<name>）→ 退出筛选
+            const cur = S.state.filterRef;
+            if (cur === name || cur === `refs/heads/${name}`) app.setFilter(null);
+          }
+          return;
+        }
+        if (r.cancelled) return;
+        if (r.unmerged && !force) {
+          void confirmDialog(
+            S.t('branchDeleteForceTitle'),
+            S.t('branchDeleteForceText', { name }),
+            S.t('branchDeleteForceBtn'),
+            true,
+          ).then(ok => { if (ok) app.branchDelete(name, true); });
+          return;
+        }
+        notify('error', { title: S.t('opFailedTitle', { op: S.t('branchDelete') }), detail: r.error });
+      })
+      .catch(showErr);
+  },
   // 工程切换（v0.11）
   projectAdd(path, name) {
     void rpc('projects.add', { path, name }).catch(showErr);
@@ -950,6 +977,9 @@ window.addEventListener('message', e => {
       }
       toolbar.updateProgress();
       if (!m.ok) {
+        // 删除本地分支（#39）：失败分诊由 branch.delete 返回值驱动（未合并→二次确认强删），
+        // 不走通用错误通知与 AI 自动诊断（删除被拒不是需要 AI 诊断的故障）
+        if (m.kind === 'branchDelete') break;
         // R3 事后兜底：push 被拒（non-fast-forward / fetch first / rejected）→ 引导先拉取（决策对话保留模态）
         if (m.kind === 'push' && m.outputTail && /non-fast-forward|fetch first|rejected|failed to push/i.test(m.outputTail)) {
           void confirmDialog(

@@ -616,6 +616,20 @@ export class GraphPanel {
       case 'tag.push':
         this.startOp({ kind: 'tagPush', name: String(args.name ?? ''), remote: args.remote ? String(args.remote) : undefined });
         return null;
+      case 'branch.delete': {
+        // 删除本地分支（#39）：名称来自仓库分支列表而非自由输入，只做非空校验；
+        // 仅删 refs/heads/<name>，永不带远端 refspec。-d 因「未完全合并」被拒时把
+        // unmerged 报回前端，由前端二次确认后再带 force=true 走 -D
+        const name = String(args.name ?? '').trim();
+        if (!name) throw new Error('branch name required');
+        const outcome = await this.startOp({ kind: 'branchDelete', name, force: !!args.force });
+        return {
+          ok: !!outcome?.ok,
+          unmerged: !outcome?.ok && /not fully merged|git branch -D/i.test(outcome?.outputTail ?? ''),
+          cancelled: outcome?.message === 'cancelled',
+          error: outcome?.outputTail,
+        };
+      }
       case 'work.stageAll':
         this.startWorkOp({ kind: 'stage', all: true });
         return null;
@@ -1334,6 +1348,8 @@ export class GraphPanel {
             message = upstreamBefore ? this.t('pullUpToDateWith', { ref: upstreamBefore }) : this.t('pullUpToDate');
           } else if (kind === 'push') {
             message = `${this.t('pushDone')}：${spec.branch ?? 'HEAD'} → ${spec.remote ?? 'origin'}`;
+          } else if (kind === 'branchDelete') {
+            message = this.t('branchDeleteDone', { name: spec.name ?? '' });
           }
           // 操作后快速校验（Issue #6 后续）：退出码 0 后按意图核对仓库状态，
           // 假成功（拉错分支/推错分支/未合并/HEAD 未按预期变化）显式警示；探针 fail-open

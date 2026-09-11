@@ -68,6 +68,8 @@ export interface App {
   tagCreate(name: string, sha?: string, message?: string): void;
   tagDelete(name: string, remote?: string): void;
   tagPush(name: string, remote?: string): void;
+  /** 删除本地分支（#39）：仅删本地；force=true 走 -D（-d 被拒经二次确认后调用） */
+  branchDelete(name: string, force?: boolean): void;
   // 工程切换（v0.11）
   projectAdd(path: string, name: string): void;
   projectRename(id: string, name: string): void;
