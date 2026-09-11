@@ -31,6 +31,7 @@ export function createToolbar(app: App): Toolbar {
   // 检出分支（Issue #24）：模糊搜索选择器（本地直接检出 / 远程内联输入本地名）
   const checkoutBtn = el('button', 'gg-tb-btn gg-checkout-btn') as HTMLButtonElement;
   checkoutBtn.addEventListener('click', () => openBranchPicker(app, 'checkout'));
+  checkoutBtn.dataset.kind = 'checkout';   // #33 B2 守卫态测试锚点
   // 图形范围分段（Issue #24）：全部 / 本地 / 当前——一键直达，与单 ref 精选互斥
   const scopeSeg = el('div', 'gg-scope-seg');
   const scopeBtns: Record<'all' | 'local' | 'current', HTMLButtonElement> = {
@@ -272,9 +273,6 @@ export function createToolbar(app: App): Toolbar {
     const lang = S.config.language;
     langBtn.textContent = lang === 'zh-CN' ? '中' : lang === 'en' ? 'EN' : 'A';
     langBtn.title = `${S.t('langSwitchTitle')} — ${lang === 'auto' ? S.t('langAuto') : lang === 'zh-CN' ? '简体中文' : 'English'}`;
-    // 网络操作按钮 title/disable 统一由 updateProgress 管理（B2/B1 的 mergeActive
-    // 预禁用与 #31 网络互斥都在那里，此处收尾刷新一次）
-    updateProgress();
     // 仓库下拉
     const multi = S.repos.length > 1;
     repoSel.classList.toggle('hidden', !multi);
@@ -320,6 +318,9 @@ export function createToolbar(app: App): Toolbar {
     filterLabel.textContent = refShort ?? S.t('filterBranch');
     filterBtn.classList.toggle('active', !!refShort);
     filterBtn.title = refShort ?? S.t('filterPickerTitle');
+    // 收尾统一刷新网络按钮状态（#31 互斥 / mergeActive 守卫的 disabled 与 title 写点
+    // 集中在 updateProgress）——必须在上述常规 title 设置之后，守卫原因才不被覆盖
+    updateProgress();
   }
 
   /** 当前 ref 精选的短显示名（本地⑂/远程⇅/标签），无精选返回 undefined */
@@ -344,7 +345,7 @@ export function createToolbar(app: App): Toolbar {
     refreshBtn.classList.toggle('busy', kinds.has('refresh'));
     // #31 网络操作全互斥：任一网络操作在途/排队时，网络按钮 disable
     //（pull ⊇ fetch 语义叠加与排队重复由禁点杜绝；自身 busy 态直观可见）。
-    //  B2/B1（#18/#31）：未完成合并 → Push 与 Pull 均预禁用并给原因。
+    //  B2/B1（#18/#31）：未完成合并 → Push/Pull/检出 预禁用并给原因（#33 B2 检出加入）。
     //  disabled 的唯一写点集中在此（update 的 mergeBlocked 已并入），避免多来源互相覆盖
     const netBusy = kinds.has('fetch') || kinds.has('pull') || kinds.has('push')
       || kinds.has('tagPush') || kinds.has('tagDeleteRemote');
@@ -352,10 +353,11 @@ export function createToolbar(app: App): Toolbar {
     fetchBtn.disabled = netBusy;
     pullBtn.disabled = netBusy || mergeBlocked;
     pushBtn.disabled = netBusy || mergeBlocked;
+    checkoutBtn.disabled = mergeBlocked;   // 检出走本地道不参与网络互斥，仅合并态守卫
     if (netBusy) {
       for (const b of [fetchBtn, pullBtn, pushBtn]) b.title = S.t('netOpBusy');
     } else if (mergeBlocked) {
-      pullBtn.title = pushBtn.title = S.t('blockedByMerge');
+      pullBtn.title = pushBtn.title = checkoutBtn.title = S.t('blockedByMerge');
     }
     // B3（Issue #18）：在途/排队状态写入 title——disable 原因优先（上方已设）
     opTitle(fetchBtn, 'fetch', S.t('fetch'));

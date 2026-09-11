@@ -19,8 +19,8 @@ function lockError(): GitError {
     "fatal: Unable to create 'R:/repo/.git/index.lock': File exists.");
 }
 
-/** fake timers 下等待 op（含 400ms 撞锁退避）：推进足够时间再收结果 */
-function settle<T>(p: Promise<T>, ms = 1000): Promise<T> {
+/** fake timers 下等待 op（含 1600ms 撞锁退避，#33 C1 起）：推进足够时间再收结果 */
+function settle<T>(p: Promise<T>, ms = 2000): Promise<T> {
   return vi.advanceTimersByTimeAsync(ms).then(() => p);
 }
 
@@ -75,7 +75,7 @@ describe('OpRunner 双队列（Issue #7）', () => {
     expect(started).toEqual([1, 2, 3]);
   });
 
-  it('index.lock 撞锁：单命令退避 400ms 重试一次成功，op 成功', async () => {
+  it('index.lock 撞锁：单命令退避 1600ms（#33 C1）重试一次成功，op 成功', async () => {
     const exec = new GitExecutor('git');
     let n = 0;
     const spy = vi.spyOn(exec, 'exec').mockImplementation(() => {
@@ -87,7 +87,7 @@ describe('OpRunner 双队列（Issue #7）', () => {
     const out = await settle(runner.run(ROOT, { kind: 'stage', paths: ['a'] }, 1, () => undefined, () => 'S'));
     expect(out.ok).toBe(true);
     expect(spy).toHaveBeenCalledTimes(2);   // 同一条 add 恰好两次
-    expect(Date.now() - t0).toBeGreaterThanOrEqual(390);   // 含 400ms 退避
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(1590);   // 含 1600ms 退避
   });
 
   it('index.lock 重试耗尽仍失败 → op 失败且只试两次；非撞锁错误不重试', async () => {

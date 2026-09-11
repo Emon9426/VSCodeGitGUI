@@ -294,6 +294,35 @@
     }
   }
 
+  // ---- ⑤c 检出/Pull/Push 的 mergeActive 预禁用（Issue #33 B2 / #31 B1）----
+  {
+    const st = window.__send({ t: 'workState', state: {
+      repoId: 'r1', staged: [], unstaged: [], conflicts: [], dirtyCount: 0, merging: true,
+      mergeKind: 'merge', mergeActive: true,
+      headShortSha: 'ee6f99a', headSubject: 'v0.13', headDate: '2026-08-23T21:00:00+08:00',
+    } });
+    await twoFrames(); await sleep(120);
+    const ckB = document.querySelector('.gg-tb-btn[data-kind="checkout"]');
+    const pullB = document.querySelector('.gg-tb-btn[data-kind="pull"]');
+    const pushB = document.querySelector('.gg-tb-btn[data-kind="push"]');
+    ok(ckB && pullB && pushB, '⑤c 工具栏按钮定位失败');
+    if (ckB && pullB && pushB) {
+      ok(ckB.disabled, '⑤c mergeActive 时检出按钮应禁用（Issue #33 B2）');
+      ok(pullB.disabled && pushB.disabled, '⑤c mergeActive 时 Pull/Push 应禁用（#31 B1）');
+      ok((ckB.title || '').includes('未完成合并') || (ckB.title || '').includes('Merge in progress'), '⑤c 检出按钮禁用原因缺失: ' + ckB.title);
+    }
+    // 恢复非合并态
+    window.__send({ t: 'workState', state: {
+      repoId: 'r1', staged: [], unstaged: [], conflicts: [], dirtyCount: 0, merging: false,
+      mergeKind: 'other', mergeActive: false,
+      headShortSha: 'ee6f99a', headSubject: 'v0.13', headDate: '2026-08-23T21:00:00+08:00',
+    } });
+    await twoFrames(); await sleep(120);
+    if (ckB && pullB && pushB) {
+      ok(!ckB.disabled && !pullB.disabled && !pushB.disabled, '⑤c 合并结束后按钮应恢复可用');
+    }
+  }
+
   // ---- ⑥ 纯提交视图时间线（窄图形列：竖线 + 每提交圆点 + HEAD 红环）----
   {
     const pureBtn = [...document.querySelectorAll('button')].find(b => b.textContent.includes('纯提交'));

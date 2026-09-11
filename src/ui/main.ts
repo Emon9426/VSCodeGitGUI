@@ -95,6 +95,11 @@ const app: App = {
   },
   runPull() {
     if (netBusy()) { toast('warn', S.t('netOpBusy')); return; }
+    // #33 B3：分离 HEAD（不在任何分支上）与「无上游」是不同情形，分开提示便于定位
+    if (S.state?.head.detached) {
+      toast('warn', S.t('pullDetached'));
+      return;
+    }
     const head = S.state?.branches.find(b => b.isHead);
     if (!head?.upstream) {
       toast('warn', S.t('pullNoUpstream'));

@@ -148,6 +148,7 @@ const zh: Record<string, string> = {
 
   pushNoUpstream: '当前分支没有上游分支。是否推送并在远程创建同名分支？',
   pullNoUpstream: '当前分支没有上游分支，无法拉取。',
+  pullDetached: '当前处于分离 HEAD 状态（不在任何分支上），无法拉取——请先检出分支。',
 
   noCommits: '该仓库尚无提交',
   noCommitsHint: '在终端提交第一个提交后，此处将显示提交图。',
@@ -675,6 +676,7 @@ const en: Record<string, string> = {
 
   pushNoUpstream: 'The current branch has no upstream. Push and create the branch on the remote?',
   pullNoUpstream: 'The current branch has no upstream; cannot pull.',
+  pullDetached: 'You are in detached HEAD state (not on any branch) — check out a branch before pulling.',
 
   noCommits: 'This repository has no commits yet',
   noCommitsHint: 'The graph will appear here after the first commit.',

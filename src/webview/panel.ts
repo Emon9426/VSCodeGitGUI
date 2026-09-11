@@ -1383,6 +1383,8 @@ export class GraphPanel {
     const remote = upstream?.split('/')[0] ?? 'origin';
     if (kind === 'fetch') this.startOp({ kind: 'fetch', all: true, prune: this.config.fetchPrune });
     if (kind === 'pull') {
+      // #33 B3：分离 HEAD 与无上游分开提示（detached 时不存在"当前分支的上游"概念）
+      if (head?.detached) { void vscode.window.showWarningMessage(this.t('pullDetached')); return; }
       if (!upstream) { void vscode.window.showWarningMessage(this.t('pullNoUpstream')); return; }
       // F1（Issue #6）：不传 remote/branch，按分支级配置拉取（与原生 git pull 语义一致）
       this.startOp({ kind: 'pull', strategy: this.config.defaultPullStrategy });
