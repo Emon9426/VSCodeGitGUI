@@ -16,6 +16,7 @@ import { createWorkView } from './app/workView';
 import { createCommitBar } from './app/commitBar';
 import { createMergeView } from './app/mergeView';
 import { createOpStatus } from './app/opStatus';
+import { createNetModal } from './app/netModal';
 import { createFilesView } from './app/filesView';
 import { createFilePanel } from './app/filePanel';
 import { showPullSummary } from './app/pullSummary';
@@ -655,6 +656,8 @@ function moveDialog(srcs: string[]): Promise<string | null> {
 
 const toolbar = createToolbar(app);
 const opstatus = createOpStatus(app);
+// 网络操作阻塞弹窗（#41）：fetch/pull/push 进度以模态窗呈现并挡住主页面
+const netmodal = createNetModal(app);
 const sidebar = createSidebar(app);
 const list = createCommitList(app);
 const detail = createDetailPanel(app);
@@ -967,10 +970,12 @@ window.addEventListener('message', e => {
       S.activeOps.set(m.opId, { kind: m.kind, text: m.text, pct: m.pct, queued: m.queued, position: m.position });
       opstatus.update();
       toolbar.updateProgress();
+      netmodal.onProgress(m);
       break;
     case 'opResult':
       S.activeOps.delete(m.opId);
       opstatus.update();          // 先按剩余队列收起/切换
+      netmodal.onResult(m);       // 阻塞弹窗收口（成功闪绿/失败即关；非网络类操作自忽略）
       if (m.ok) {
         opstatus.finish(m.kind, m.verify === 'warn');  // 成功：绿色闪现；校验警示=琥珀（Issue #6 后续）
         toolbar.flash(m.kind);    // 按钮短暂闪绿，明确"点击已生效"

@@ -44,8 +44,6 @@ function readConfig(): ConfigDto {
     detailPanelPosition: cfg.get('detailPanelPosition', 'bottom'),
     commitPageSize: cfg.get('commitPageSize', 500),
     maxAutoLoad: cfg.get('maxAutoLoad', 20000),
-    fetchOnOpen: cfg.get('fetchOnOpen', true),
-    autoFetchInterval: cfg.get('autoFetchInterval', 10),
     fetchPrune: cfg.get('fetchPrune', true),
     netStallTimeout: cfg.get('netStallTimeout', 180),
     opVerify: cfg.get('opVerify', 'quick'),
@@ -115,8 +113,6 @@ export class GraphPanel {
   private files?: FilesService;
   /** explorer 右键「查看文件历史」待定位路径（webview 未就绪时排队） */
   private pendingFilesReveal: string[] = [];
-  /** SourceTree 式后台自动获取定时器（面板存活期间；设置变更时重臂） */
-  private fetchTimer?: NodeJS.Timeout;
   private repos: RepoMeta[] = [];
   private currentRepoId?: string;
   private filters = new Map<string, LogFilter>();
@@ -130,7 +126,6 @@ export class GraphPanel {
   private scanCursors = new Map<string, { filterKey: string; scanned: number }>();
   private lastState?: RepoState;
   private opSeq = 0;
-  private autoFetchDone = false;
   private config: ConfigDto = readConfig();
   private lang: Lang = resolveLang(this.config.language, vscode.env.language);
   private t: Translate = createT(this.lang);
@@ -205,7 +200,6 @@ export class GraphPanel {
       vscode.workspace.onDidChangeConfiguration(e => {
         if (!e.affectsConfiguration('gitboard')) return;
         this.config = readConfig();
-        this.armAutoFetch();   // 间隔调整 / 开关：重建定时器
         this.lang = resolveLang(this.config.language, vscode.env.language);
         this.t = createT(this.lang);
         this.panel.title = this.t('app');
@@ -220,7 +214,6 @@ export class GraphPanel {
 
   private dispose(): void {
     this.disposed = true;
-    if (this.fetchTimer) clearInterval(this.fetchTimer);
     this.aiCts?.cancel();
     this.aiCts?.dispose();
     this.diagCts?.cancel();
@@ -797,7 +790,6 @@ export class GraphPanel {
       this.verifier = new OpVerifier(this.executor);
       this.pullSummary = new PullSummaryService(this.executor);
       this.files = new FilesService(this.executor);
-      this.armAutoFetch();
     }
     this.repos = await discoverRepos(this.executor, vscode.workspace.workspaceFolders ?? []);
     for (const r of this.repos) this.roots.set(r.id, r.root);
@@ -830,11 +822,6 @@ export class GraphPanel {
     this.watchers.set(repoId, watcher);
 
     await this.refresh();
-
-    if (!this.autoFetchDone && this.config.fetchOnOpen && this.lastState?.remotes.length) {
-      this.autoFetchDone = true;
-      this.startOp({ kind: 'fetch', all: true, prune: this.config.fetchPrune });
-    }
   }
 
   /**
@@ -1172,48 +1159,6 @@ export class GraphPanel {
     return out;
   }
 
-  // ---------- SourceTree 式后台自动获取（v0.13） ----------
-
-  /** 按配置臂定时器：间隔分钟（1–1440 钳制），0/无效=关闭；每次调用先清旧定时器（设置变更即重臂） */
-  private armAutoFetch(): void {
-    if (this.fetchTimer) { clearInterval(this.fetchTimer); this.fetchTimer = undefined; }
-    const mins = this.config.autoFetchInterval;
-    if (typeof mins !== 'number' || !Number.isFinite(mins) || mins <= 0) return;
-    const ms = Math.min(1440, Math.max(1, Math.round(mins))) * 60_000;
-    this.fetchTimer = setInterval(() => this.autoFetchTick(), ms);
-  }
-
-  /**
-   * 静默获取当前仓库全部远程：不打扰进度条/toast（与用户显式 Fetch 区分），失败仅记输出通道。
-   * 拉到新提交后 refs 变化经指纹去重自然推送，分支 ↓n 徽标与提交图随之自动更新。
-   */
-  private autoFetchTick(): void {
-    if (this.disposed || !this.runner || !this.currentRepoId) return;
-    if (!this.lastState?.remotes.length) return;   // 无远程：本轮跳过
-    const root = this.roots.get(this.currentRepoId)!;
-    // Issue #7 方案 C（修复 #16 绕过缺陷）：后台获取是低优先级任务——
-    // 网络道忙（用户显式 fetch/pull/push 进行中或排队）或 fetch 已在途时整轮让路，
-    // 不再向队列堆积后台任务堵住本地操作
-    const spec: OpSpec = { kind: 'fetch', all: true, prune: this.config.fetchPrune, background: true };
-    if (this.runner.laneBusy(root, 'net')) {
-      this.channel.appendLine('[autofetch] net lane busy, skipped');
-      return;
-    }
-    if (!this.enqueueNet(root, spec)) return;
-    const opId = ++this.opSeq;
-    void this.runner.run(
-      root, spec, opId,
-      () => undefined,   // 不转发进度：后台行为保持安静
-      () => '',
-    ).then(outcome => {
-      if (outcome.ok) {
-        void this.refresh();   // 非强制：refs 有变指纹必变必推送，无新提交则去重免扰
-      } else if (outcome.message !== 'cancelled') {
-        this.channel.appendLine(`[autofetch] failed: ${(outcome.outputTail ?? outcome.message ?? '').slice(0, 200)}`);
-      }
-    }).finally(() => this.releaseNetKind(root, spec));   // 登记释放必须兜底（Issue #7 审查 P2：reject 不残留）
-  }
-
   /** 文件页操作（v0.14）：移动/重命名/删除——同 startOp 的进度与结果转发，但等待完成并返回 outcome */
   private async runFileOp(spec: OpSpec): Promise<{ ok: boolean; outputTail?: string }> {
     if (!this.runner || !this.currentRepoId) return { ok: false };
@@ -1267,8 +1212,7 @@ export class GraphPanel {
   /** 网络操作统一登记入口（Issue #7 方案 C 修复 #16；#31 语义收紧）：
    *  fetch/pull/push/tagPush/tagDeleteRemote 全互斥——该仓库**任一**网络操作
    *  在途/排队中时拒绝新网络 op（pull ⊇ fetch 语义叠加与排队重复由此杜绝；
-   *  按钮层 disable 之外，命令面板等旁路入口的兜底）。autoFetchTick 让路
-   *  检查（laneBusy）先于此调用，不受影响 */
+   *  按钮层 disable 之外，命令面板等旁路入口的兜底） */
   private enqueueNet(root: string, spec: OpSpec): boolean {
     if (spec.kind !== 'fetch' && spec.kind !== 'pull' && spec.kind !== 'push'
       && spec.kind !== 'tagPush' && spec.kind !== 'tagDeleteRemote') return true;

@@ -20,9 +20,6 @@ export interface ConfigDto {
   detailPanelPosition: 'bottom' | 'right';
   commitPageSize: number;
   maxAutoLoad: number;
-  fetchOnOpen: boolean;
-  /** 后台自动获取间隔（分钟，SourceTree 式；0=关闭）——仅面板存活期间执行 */
-  autoFetchInterval: number;
   fetchPrune: boolean;
   /** 网络操作无输出空闲超时（秒；0=关闭）——F2/Issue #6 看门狗，防连接停滞无限挂起 */
   netStallTimeout: number;
