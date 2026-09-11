@@ -52,7 +52,7 @@ GitBoard 是一个 VS Code 桌面插件，以**图形化提交历史**为核心�
 | AI 提交信息 | GitHub Copilot 生成：流式填充、可停止/重生成/选模型；学习近 10 条提交的风格与语言；自动遵循 `.copilot/`、`.github/copilot-instructions.md` 等工程指示文件；复用 VS Code 当前登录账号，零凭证。大批量提交加固：统计与差异封顶截断、60s 无响应自动停止；差异不可用时自动降级为文件名 + 目录结构推断，并如实标注 |
 | AI 错误诊断 | 操作失败弹常驻错误通知（重试 + 折叠 git 输出）；Copilot 可用时附「**AI 分析**」——三段式流式诊断（原因 / 解决步骤含可执行 git 命令 / 预防），URL 凭证自动脱敏后才发送；修复命令经本地白名单独立分级 run/confirm/copy，危险命令逐条红色确认，执行由宿主按索引重校验防篡改（v0.22.0） |
 | 合并与冲突解决 | IDEA / Beyond Compare 式**三栏合并器**：我的版本 – 合并版本（最终保存的就是它，可编辑）– 他人版本；块级按钮（用我的/用他人/两个都要/都不要）+ 左右栏 «» 一键采纳 + 行内编辑，全程不显示 git 冲突标记，右缘冲突分布导航条；pull/提交遇冲突自动引导横幅；push 被拒引导"拉取并推送"；二进制冲突二选一 + 系统程序预览；一方删除场景；超限文件（>16000 行/2MB）显式警告；随时中止还原现场；全部解决后弹确认完成合并（rebase 语义自动反转）；解决进度落盘，重开无损 |
-| Pull/Fetch 摘要 | 每次拉到新提交后弹窗展示**纯净变更摘要**（排除合并等操作提交）：**作者 → 目录 → 文件** 三层分组；文件行带工作区大小与修改时间、行尾按钮一键打开或定位；不在工作区的文件（fetch 未合并/已删除）按钮自动禁用并提示；fetch 摘要标明"尚未合并到本地"并提供**立即拉取**按钮；同作者同文件多提交合并 ×N；重命名显示 `旧名 → 新名`；中文路径无八进制转义；`gitboard.pullFetchSummary` 开关，默认开启 |
+| Pull/Fetch 摘要 | **Pull 合并完成**后弹窗展示**纯净变更摘要**（排除合并等操作提交；fetch 静默更新分支 ↓n 徽标与提交图，不弹摘要）：**作者 → 目录 → 文件** 三层分组；文件行带工作区大小与修改时间、行尾按钮一键打开或定位；不在工作区的文件（已被后续提交删除）按钮自动禁用并提示；同作者同文件多提交合并 ×N；重命名显示 `旧名 → 新名`；中文路径无八进制转义；`gitboard.pullFetchSummary` 开关，默认开启 |
 | 文件历史页 | 工具栏第四视图「🗂 文件」：左区资源管理器（文件夹视图/详细信息双视图、Win11 式地址栏、多选 + 删除/移动/重命名独立按钮）+ 右区**跨移动/重命名跟随的完整提交历史**（路径链与时期徽标、里程碑行、就地展开详情、只读打开历史版本、勾选任意两版比对）。详见[第 11 节](#11-文件历史页v0140) |
 | 筛选 | 分支/远程/标签过滤 + 作者多选下拉 + 时间段（可叠加，条件按仓库记忆） |
 | 工程切换 | 左侧栏「工程」区：保存常用工程文件夹（自定义名称），双击当前窗口切换、右键新窗口打开/重命名/移除 |
@@ -72,14 +72,14 @@ code --install-extension EmonZhang3438.gitboard
 **方式一：命令行安装 vsix（推荐）**
 
 ```bash
-code --install-extension gitboard-0.23.3.vsix
+code --install-extension gitboard-0.24.0.vsix
 ```
 
 安装后执行 **Ctrl+Shift+P → “开发者：重新加载窗口”**（每次覆盖安装新版本后都需要；可对照工具栏右侧版本号确认当前构建已生效）。
 
 **方式二：VS Code 界面安装**
 
-扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.23.3.vsix` → 重新加载窗口。
+扩展面板（Ctrl+Shift+X）→ 右上角 `···` → **“从 VSIX 安装…”** → 选择 `gitboard-0.24.0.vsix` → 重新加载窗口。
 
 **方式三：从源码构建**
 
@@ -188,16 +188,17 @@ pull 或提交产生冲突时，自动切到工作副本视图并弹出引导横
 - **完成与回退**：全部解决后弹确认条完成合并（merge→创建合并提交 / rebase→继续变基，`--ours/--theirs` 语义自动反转）；随时「中止合并」还原现场；
 - **进度落盘**：解决结果防抖写回文件本身，中途关闭/崩溃重开无损。
 
-#### 10. Pull / Fetch 变更摘要
+#### 10. Pull 变更摘要
 
 ![拉取摘要 / Pull summary](res/screenshots/pull-summary.png)
 
-每次 Pull/Fetch 拉到新提交后弹窗展示**纯净变更摘要**（排除 Branch/Merge 等操作提交）——回答"哪些人有哪些提交改了哪些文件"：
+**Pull 合并完成**后弹窗展示**纯净变更摘要**（排除 Branch/Merge 等操作提交）——回答"哪些人有哪些提交改了哪些文件"：
 
 - **作者 → 目录 → 文件** 三层分组：作者头（最新提交在前）汇总其提交数/文件数；目录头显示相对路径一次（根目录显示仓库绝对路径）；组内只列文件名（完整不截断，过长换行）；
-- 每行带工作区**大小与修改时间**，行尾两个按钮：**打开文件**、**在资源管理器中定位**；
+- 每行带工作区**大小与修改时间**，行尾两个按钮：**打开文件**、**在资源管理器中定位**（已被同批后续提交删除的文件按钮自动禁用并提示）；
 - 同作者同文件多提交合并为一行（×N，悬停列出全部提交与说明）；重命名显示 `旧名 → 新名`；不在工作区的文件显示 `—`；
-- 顶部汇总“N 个提交 · M 位作者 · K 个文件”；`gitboard.pullFetchSummary` 设置开关，默认开启；后台自动获取不弹此窗（静默语义）。
+- 顶部汇总“N 个提交 · M 位作者 · K 个文件”；`gitboard.pullFetchSummary` 设置开关，默认开启；
+- **Fetch 不弹摘要**：静默更新分支 ↓n 徽标与提交图（后台自动获取同此语义）；**网络操作互斥**——fetch/pull/push/标签推送任一进行中时，其余网络按钮禁用（未完成合并时 Pull/Push 亦预禁用）。
 
 #### 11. 文件历史页（v0.14.0）
 
@@ -299,7 +300,8 @@ npm run build && npm run package
 
 ### 更新日志
 
-- **v0.23.3**（2026-09-11）：获取摘要未合并文件误报修复（[#29](https://github.com/Emon9426/VSCodeGitGUI/issues/29)）——①**行操作按工作区状态禁用**：摘要文件行探测到不在工作区（fetch 尚未合并 / 已被后续提交删除）时，「打开」「在文件管理器中显示」按钮置灰并提示原因，不再点击后报"工作区已不存在"；②**fetch 摘要语义澄清 + 拉取直达**：获取摘要弹窗标明"远端新提交，尚未合并到本地工作区"并提供「立即拉取」主按钮，一步完成合并（fetch 自动获取不弹摘要、行为不变）；③**pull 半完成态闭环**：pull 被本地未提交修改拒绝时，失败通知附「贮藏并重试」（--autostash）一步重拉；④网络看门狗喂狗源补 stdout（pull 的合并/检出阶段只写 stdout，超大变更集检出不再被误判停滞）。
+- **v0.24.0**（2026-09-11）：网络操作互斥与摘要收窄（[#31](https://github.com/Emon9426/VSCodeGitGUI/issues/31)）——①**网络操作全互斥**：fetch / pull / push / 标签推送（含删除远端标签）任一进行中，工具栏其余网络按钮一律禁用并显示原因（命令面板等旁路入口由宿主拒绝+提示兜底；工作副本空态按钮点击时同样拦截），杜绝「Fetch 后 Pull 语义叠加与排队重复」；②**摘要仅在 Pull 合并完成时弹出**：fetch（含打开时自动获取）静默更新分支 ↓n 徽标与提交图，不再弹「获取摘要」——双弹窗重复与「未合并文件点击报错」的场景就此消失；③未完成合并时 Pull 按钮与 Push 一同预禁用并提示原因；④标签网络操作纳入互斥去重登记（慢网络连点不再堆积）。
+- **v0.23.3**（2026-09-11）：获取摘要未合并文件误报修复（[#29](https://github.com/Emon9426/VSCodeGitGUI/issues/29)）——①**行操作按工作区状态禁用**：摘要文件行探测到不在工作区（fetch 尚未合并 / 已被后续提交删除）时，「打开」「在文件管理器中显示」按钮置灰并提示原因，不再点击后报"工作区已不存在"；②**fetch 摘要语义澄清 + 拉取直达**：获取摘要弹窗标明"远端新提交，尚未合并到本地工作区"并提供「立即拉取」主按钮，一步完成合并（fetch 自动获取不弹摘要、行为不变）；③**pull 半完成态闭环**：pull 被本地未提交修改拒绝时，失败通知附「贮藏并重试」（--autostash）一步重拉；④网络看门狗喂狗源补 stdout（pull 的合并/检出阶段只写 stdout，超大变更集检出不再被误判停滞）。**注：v0.24.0 起摘要仅在 Pull 时弹出，②的 fetch 摘要弹窗已随之移除。**
 - **v0.23.2**（2026-09-10）：分支分组升级**递归多级前缀嵌套**——侧栏与检出/筛选选择器同步：多段前缀逐级分组（`release/1.0/x` → `release/` 组 > `1.0/` 子组），缩进逐级递增（组头 12/26/42/58px、分支行 28/44/60/76px，每级 +16px，任意深度）；组内行显示剥前缀短名（远程分支同时剥 remote 名），层级一目了然；折叠状态跨会话记忆且兼容旧键。
 - **v0.23.1**（2026-09-10）：侧栏支持拖拽调宽——右缘拖拽手柄（170–460px，悬停高亮），宽度跨会话记忆；折叠态手柄自动隐藏。
 - **v0.23.0**（2026-09-10）：UI 层级与可读性整备（[#22](https://github.com/Emon9426/VSCodeGitGUI/issues/22) 全界面几何审查落地）——①**层级缩进补齐**：检出/筛选选择器三级缩进（大区头/顶层行/前缀组头/组内行 12/28/26/44px，查询态平铺不缩进）、工作副本目录分组 12/28px、侧栏标签行对齐分支区、侧栏区头字重 600 修正层级倒挂；②**通知区可调**：新增 `gitboard.notifyWidth` 配置（320–560，默认 420），左缘拖拽实时调宽并跨会话记忆；③**对齐修复**：提交列表表头与数据列滚动条槽同源（修 2–5px 错位，附防回归断言）、检出选择器远程行信息间距；④**窄视口紧凑**：主区宽 <1080px 时视图切换自动收为纯图标；⑤**清理**：文件页提示文案去 emoji 残留、字号收敛为 5 档（10–14px）。
@@ -380,7 +382,7 @@ Large repos are handled with paged loading, virtualized scrolling and layered re
 | AI commit messages | One-click generation via GitHub Copilot: streamed inline, stop/regenerate/model picker; style learned from the last 10 commits; automatically follows `.copilot/` and `.github/` instruction files; uses your signed-in account — zero credentials. Hardened for huge changesets: capped summary & diff, 60s watchdog, UI always unlocks; falls back to file-name/folder-structure inference when the diff is unusable, honestly noted |
 | AI error diagnosis | Failed ops raise a persistent error notification (retry + collapsible git output); when Copilot is available an **AI Analyze** button streams a three-part diagnosis (cause / fix steps with runnable git commands / prevention), URL credentials masked before sending; fix commands pass a local whitelist with run/confirm/copy tiers, red confirmations for dangerous steps, and index-based host-side re-validation (v0.22.0) |
 | Merge & conflict resolution | IDEA / Beyond Compare style **3-way merge editor**: Mine – Merged (what gets saved, editable) – Theirs; per-chunk buttons (use mine / theirs / keep both / neither) + «» adopt arrows + inline editing, git conflict markers never shown, conflict minimap; pull/commit conflicts open a guidance banner; rejected pushes guide you to pull-and-push; binary = pick-one-side + system preview; deleted-side scenarios; oversized files get an explicit warning and reduce to whole-file choices; abort anytime; a confirmation finishes the merge (rebase semantics flipped automatically); progress is saved to the file itself — reopening is lossless |
-| Pull/Fetch summary | After every pull/fetch that brings new commits, a popup lists the **pure changes** (merge ops excluded) grouped **author → directory → file**: filename rows (never truncated) with working-tree size & mtime, inline open/reveal buttons; rows detected as absent from the working tree (fetch not merged / deleted later) get their buttons disabled with a tooltip; the fetch summary states the commits are *not yet merged* and offers a **Pull now** button; same-file commits merged into ×N rows, renames as `old → new`; toggle with `gitboard.pullFetchSummary`, on by default |
+| Pull/Fetch summary | After a **Pull merges** new commits, a popup lists the **pure changes** (merge ops excluded; fetch silently updates the ↓n badges and the commit graph — no popup): grouped **author → directory → file**: filename rows (never truncated) with working-tree size & mtime, inline open/reveal buttons; rows detected as absent from the working tree (deleted by later commits) get their buttons disabled with a tooltip; same-file commits merged into ×N rows, renames as `old → new`; toggle with `gitboard.pullFetchSummary`, on by default |
 | File history page | Fourth view "🗂 Files": an explorer (tiles/details views, Win11-style address bar, multi-select with Delete / Move to… / Rename buttons) + a right panel with the **full history following moves/renames** (path chain, era badges, milestone rows, inline details, read-only revisions, any-two-version compare) |
 | Filtering | Branch/remote/tag filter + multi-select author dropdown + date range, stackable and remembered per repository |
 | Projects | "Projects" section in the sidebar: save favorite workspace folders with custom names; double-click to switch the current window, right-click for new window / rename / remove |
@@ -400,7 +402,7 @@ code --install-extension EmonZhang3438.gitboard
 **Option 1 — CLI (recommended)**
 
 ```bash
-code --install-extension gitboard-0.23.3.vsix
+code --install-extension gitboard-0.24.0.vsix
 ```
 
 Then run **Ctrl+Shift+P → “Developer: Reload Window”** (required after every upgrade; check the version label on the toolbar).
@@ -460,11 +462,11 @@ Switch via the "▣ Working Copy" tab (dirty-file badge) or `Ctrl+Alt+C`. The le
 
 Pull/commit conflicts auto-switch to the working-copy view with a guidance banner (*resolve one by one / all mine / all theirs / abort*). Click "Merge…" on a conflict row to open the 3-way editor: **Mine | Merged (what gets saved — editable) | Theirs**, with plain-language column badges and a fixed color legend. Per-chunk buttons (**⬅ use mine / keep both / use theirs ➡ / keep neither**), «» adopt arrows on side panes, inline editing in the middle column, and a conflict-distribution minimap on the right edge. Git conflict markers are never shown — blocks carry source-colored bars instead (blue = mine, green = theirs, gray = manual). Binary conflicts reduce to pick-one-side with a system-preview button; deleted-side scenarios offer keep / accept-deletion; oversized files (>16000 lines / 2MB) warn and reduce to whole-file choices. Abort restores the pre-merge state at any time; once everything is resolved, a confirmation bar finishes the merge (merge commit, or continue the rebase with flipped ours/theirs semantics). Resolution progress is flushed to the file itself — reopen anytime, nothing is lost.
 
-**10. Pull/Fetch summary**
+**10. Pull summary**
 
 ![Pull summary](res/screenshots/pull-summary.png)
 
-Every pull/fetch that brings new commits pops a **pure-change summary** (branch/merge ops excluded) answering "who landed which commits touching which files": grouped **author → directory → file**; filename-only rows (never truncated) with working-tree size & mtime and inline **open / reveal** buttons; the same file touched several times merges into one ×N row (hover lists every commit); renames show `old → new`. Toggle with `gitboard.pullFetchSummary` (on by default); background auto-fetch stays silent.
+After a pull merges new commits, a **pure-change summary** (branch/merge ops excluded) pops up answering "who landed which commits touching which files": grouped **author → directory → file**; filename-only rows (never truncated) with working-tree size & mtime and inline **open / reveal** buttons (auto-disabled with a tooltip when the file was deleted by a later commit in the same batch); the same file touched several times merges into one ×N row (hover lists every commit); renames show `old → new`. Toggle with `gitboard.pullFetchSummary` (on by default). Fetch never pops a summary — it silently updates the behind badges and the commit graph. Network operations (fetch/pull/push/tag push) are mutually exclusive: while one is running, the other network buttons are disabled.
 
 **11. File history page (v0.14.0)**
 
@@ -515,7 +517,8 @@ Search "gitboard" in Settings: `graphStyle` (**github** default / curved / angul
 
 ### Changelog
 
-- **v0.23.3** (2026-09-11): fetch-summary false-error fix ([#29](https://github.com/Emon9426/VSCodeGitGUI/issues/29)) — ① **row actions disabled when the file isn't in the working tree**: when a summary row is detected as absent (fetch not yet merged, or deleted by a later commit), its open/reveal buttons grey out with a tooltip instead of failing with "not in the working tree" after the click; ② **fetch summary semantics + pull shortcut**: the fetch summary now states that these are remote commits *not yet merged*, with a **Pull now** primary button to merge in one step (background auto-fetch stays silent); ③ **pull half-done recovery**: when pull is rejected by uncommitted local changes, the failure notification offers **Stash & retry** (--autostash); ④ the network watchdog now also feeds on stdout (pull's merge/checkout phase writes only to stdout — huge checkouts are no longer falsely stalled).
+- **v0.24.0** (2026-09-11): network-op mutual exclusion & summary scoping ([#31](https://github.com/Emon9426/VSCodeGitGUI/issues/31)) — ① **network ops are mutually exclusive**: while any of fetch / pull / push / tag push (incl. remote tag delete) is running, the other network toolbar buttons are disabled with the reason (command-palette and other side entries are rejected by the host with a toast; the working-copy empty-state buttons get the same intercept on click) — no more "Fetch then Pull" semantic stacking and queued duplication; ② **the summary now pops only when a Pull completes**: fetch (including fetch-on-open) silently updates the behind badges and the commit graph — the duplicate double popup and the "file not in working tree" error path are gone; ③ Pull joins Push in being pre-disabled during an unresolved merge, with the reason in the tooltip; ④ tag network ops are included in the mutual-exclusion registry (slow-network double-clicks no longer pile up).
+- **v0.23.3** (2026-09-11): fetch-summary false-error fix ([#29](https://github.com/Emon9426/VSCodeGitGUI/issues/29)) — ① **row actions disabled when the file isn't in the working tree**: when a summary row is detected as absent (fetch not yet merged, or deleted by a later commit), its open/reveal buttons grey out with a tooltip instead of failing with "not in the working tree" after the click; ② **fetch summary semantics + pull shortcut**: the fetch summary now states that these are remote commits *not yet merged*, with a **Pull now** primary button to merge in one step (background auto-fetch stays silent); ③ **pull half-done recovery**: when pull is rejected by uncommitted local changes, the failure notification offers **Stash & retry** (--autostash); ④ the network watchdog now also feeds on stdout (pull's merge/checkout phase writes only to stdout — huge checkouts are no longer falsely stalled). **Note: as of v0.24.0 the summary pops on Pull only — the fetch summary popup of ② has been removed accordingly.**
 - **v0.23.2** (2026-09-10): branch grouping upgraded to **recursive multi-level prefix nesting** — sidebar and picker alike: multi-segment prefixes nest level by level (`release/1.0/x` → group `release/` > subgroup `1.0/`), with indentation stepping deeper each level (headers 12/26/42/58px, rows 28/44/60/76px, +16px per level, unlimited depth); grouped rows show prefix-stripped short names (remote rows also drop the remote name) so the hierarchy reads at a glance; collapse states stay remembered across sessions with backward-compatible keys.
 - **v0.23.1** (2026-09-10): the sidebar is now resizable — drag its right edge (170–460px, hover highlight), width remembered across sessions; the handle hides when the sidebar is collapsed.
 - **v0.23.0** (2026-09-10): hierarchy & readability pass ([#22](https://github.com/Emon9426/VSCodeGitGUI/issues/22) full-UI geometry audit) — ① **indentation everywhere**: the branch picker gains three indent levels (section / top-level / prefix-header / grouped rows at 12/28/26/44px; flat in search mode), the working-copy directory groups step 12/28px, sidebar tag rows align with branch rows, and sidebar section headers get weight 600 (fixing the inverted hierarchy); ② **resizable notifications**: new `gitboard.notifyWidth` setting (320–560, default 420) plus drag-to-resize on the notification area's left edge, remembered across sessions; ③ **alignment fixes**: the commit-list header and rows now share the same scrollbar-gutter source (fixing a 2–5px drift, with a regression assertion), and picker remote rows get proper spacing between name/flags; ④ **compact narrow layout**: below 1080px the view switcher collapses to icons; ⑤ **cleanup**: emoji removed from the file-page hint, font sizes converged to 5 steps (10–14px).

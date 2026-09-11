@@ -21,13 +21,12 @@ const fmtSize = (n: number): string =>
   : `${n} B`;
 
 export function showPullSummary(
-  kind: 'pull' | 'fetch',
   entries: PullSummaryEntry[],
   truncated: boolean,
   stat: PullFileStatMap,
   app: App,
 ): void {
-  const title = S.t(kind === 'pull' ? 'pullSummaryTitle' : 'fetchSummaryTitle', { n: String(entries.length) });
+  const title = S.t('pullSummaryTitle', { n: String(entries.length) });
   const { box, body, close } = openModal(title);
   box.classList.add('gg-psum-modal');
 
@@ -52,11 +51,10 @@ export function showPullSummary(
     c: String(entries.length), a: String(byAuthor.size), f: String(uniqFiles.size),
   })));
 
-  // Issue #29：fetch 摘要的文件尚未合并到工作区；pull 摘要中个别文件可能被同批后续提交删除
+  // Issue #29 P2：同批拉到的提交里后续又删除/移动的文件给出计数提示
+  //（#31 起摘要仅在 Pull 合并完成触发，文件均已合并，缺失只剩"后续提交已删除"）
   const goneCount = [...uniqFiles].filter(p => stat?.[p] === null).length;
-  if (kind === 'fetch') {
-    body.appendChild(el('div', 'gg-psum-note', S.t('fetchSummaryPending')));
-  } else if (goneCount > 0) {
+  if (goneCount > 0) {
     body.appendChild(el('div', 'gg-psum-note', S.t('pullSummaryGone', { n: String(goneCount) })));
   }
 
@@ -96,22 +94,11 @@ export function showPullSummary(
   body.appendChild(listBox);
 
   const btns = el('div', 'gg-modal-btns');
-  if (kind === 'fetch') {
-    // Issue #29：fetch 只更新远端引用未合并工作区——「立即拉取」一步完成合并，关弹窗
-    const pull = el('button', 'gg-btn primary', S.t('pullNow'));
-    pull.addEventListener('click', () => { close(); app.runPull(); });
-    btns.appendChild(pull);
-    const later = el('button', 'gg-btn', S.t('close'));
-    later.addEventListener('click', close);
-    btns.appendChild(later);
-    later.focus();
-  } else {
-    const ok = el('button', 'gg-btn primary', S.t('close'));
-    ok.addEventListener('click', close);
-    btns.appendChild(ok);
-    ok.focus();
-  }
+  const ok = el('button', 'gg-btn primary', S.t('close'));
+  ok.addEventListener('click', close);
+  btns.appendChild(ok);
   box.appendChild(btns);
+  ok.focus();
 }
 
 /** 单个文件行：文件名 | 大小 | 修改时间 | ×N | 打开/定位按钮（作用于工作区新路径） */
@@ -125,7 +112,7 @@ function sumRow(
   const [oldP, newP] = f.includes(RENAME_SEP) ? f.split(RENAME_SEP) : [undefined, f];
   const nameText = oldP !== undefined ? `${base(oldP)} → ${base(newP)}` : base(newP);
   const st = stat?.[newP];
-  // Issue #29 三态：值=在工作区；null=已探测不在（fetch 未合并/已删除）→ 禁用行操作；
+  // Issue #29 三态：值=在工作区；null=已探测不在（同批后续提交已删除）→ 禁用行操作；
   // undefined=未采集（超宿主 stat 上限）→ 保持可点，点击后由宿主存在性探测兜底
   const gone = st === null;
 
