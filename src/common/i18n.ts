@@ -142,6 +142,9 @@ const zh: Record<string, string> = {
   tagDeleteRemoteDone: '本地与远端标签已删除',
   tagPush: '推送标签',
   tagPushDone: '标签已推送',
+  branchDelete: '删除分支',
+  branchDeleteCurrent: '删除分支（当前分支不可删除）',
+  branchDeleteDone: '已删除本地分支 {name}',
   opCancelled: '操作已取消',
   opFailed: '{op} 失败',
   viewOutput: '查看完整输出',
@@ -436,6 +439,10 @@ const zh: Record<string, string> = {
   pushThisTag: '推送此标签',
   copyTagName: '复制标签名',
   tagDeleteRemoteConfirm: '将删除本地与远端标签 {name}（远端操作不可撤销）。确定？',
+  branchDeleteConfirm: '确定删除本地分支 {name}？仅删本地，远端不受影响。',
+  branchDeleteForceTitle: '分支未完全合并',
+  branchDeleteForceText: '分支 {name} 尚未完全合并到其他分支。强制删除后，其未合并的提交将随分支丢弃且可能无法恢复。仍要强制删除？',
+  branchDeleteForceBtn: '强制删除',
 
   // ---------- 详情面板多选 / 高度记忆（v0.11） ----------
   openSelectedFiles: '打开选中的 {n} 个文件',
@@ -675,6 +682,9 @@ const en: Record<string, string> = {
   tagDeleteRemoteDone: 'Tag deleted locally and remotely',
   tagPush: 'Push tag',
   tagPushDone: 'Tag pushed',
+  branchDelete: 'Delete Branch',
+  branchDeleteCurrent: 'Delete Branch (current is not deletable)',
+  branchDeleteDone: 'Local branch {name} deleted',
   opCancelled: 'Operation cancelled',
   opFailed: '{op} failed',
   viewOutput: 'View full output',
@@ -969,6 +979,10 @@ const en: Record<string, string> = {
   pushThisTag: 'Push this tag',
   copyTagName: 'Copy tag name',
   tagDeleteRemoteConfirm: 'This deletes {name} both locally and on the remote (irreversible). Continue?',
+  branchDeleteConfirm: 'Delete local branch {name}? Only local — the remote is untouched.',
+  branchDeleteForceTitle: 'Branch not fully merged',
+  branchDeleteForceText: 'Branch {name} is not fully merged. Force-deleting discards its unmerged commits, which may be unrecoverable. Force delete anyway?',
+  branchDeleteForceBtn: 'Force Delete',
 
   // ---------- Detail panel multi-select / height memory (v0.11) ----------
   openSelectedFiles: 'Open {n} selected file(s)',

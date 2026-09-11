@@ -239,6 +239,14 @@ export function createSidebar(app: App): Sidebar {
         { label: S.t('pushThis'), run: () => app.runPush() },
         { sep: true },
         { label: S.t('copyBranchName'), run: () => app.copy(b.name) },
+        { sep: true },
+        // 删除本地分支（#39）：仅删本地；当前分支 git 硬限制不可删，禁用并说明
+        ...(b.isHead
+          ? [{ label: S.t('branchDeleteCurrent'), disabled: true }]
+          : [{ label: S.t('branchDelete'), danger: true, run: () => {
+            void confirmDialog(S.t('branchDelete'), S.t('branchDeleteConfirm', { name: b.name }), S.t('branchDelete'), true)
+              .then(ok => { if (ok) app.branchDelete(b.name); });
+          } }]),
       ], e.clientX, e.clientY);
     });
     return item;

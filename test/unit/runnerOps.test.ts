@@ -233,3 +233,13 @@ describe('buildArgs checkout（Issue #24 检出选择器新建分支）', () => 
     expect(buildArgs({ kind: 'checkout', sha: 'abc123', detached: true })).toEqual([['checkout', '--detach', 'abc123']]);
   });
 });
+
+describe('buildArgs branchDelete（#39 删除本地分支）', () => {
+  it('默认安全删除：git branch -d <name>，不带任何远端 refspec', () => {
+    expect(buildArgs({ kind: 'branchDelete', name: 'feature/x' })).toEqual([['branch', '-d', 'feature/x']]);
+  });
+
+  it('force=true 强删：git branch -D <name>，同样仅本地', () => {
+    expect(buildArgs({ kind: 'branchDelete', name: 'wip', force: true })).toEqual([['branch', '-D', 'wip']]);
+  });
+});

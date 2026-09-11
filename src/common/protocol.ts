@@ -51,6 +51,7 @@ export type OpKind = 'fetch' | 'pull' | 'push' | 'reset' | 'checkout'
   | 'resolveConflict' | 'commitNoEdit'
   | 'mergeAbort' | 'mergeContinue' | 'resolveDelete'
   | 'tagCreate' | 'tagDelete' | 'tagDeleteRemote' | 'tagPush'
+  | 'branchDelete'
   // 文件页操作（v0.14）：移动/重命名同为 git mv（重命名=同目录）；删除=git rm（未跟踪走 fs）
   | 'moveFolder' | 'renamePath' | 'deletePaths'
   | 'refresh';   // v0.9.2：refresh 纳入统一进度模型（无取消、秒级）
@@ -210,6 +211,7 @@ export type WVCommand =
   | 'tag.create'            // { name, sha?, message? }（message 非空=附注标签）
   | 'tag.delete'            // { name, remote? }（remote 存在=同时删远端）
   | 'tag.push'              // { name, remote? }
+  | 'branch.delete'         // { name, force? } -> { ok, unmerged? }（仅删本地；unmerged=-d 被拒待确认强删）
   | 'work.stageAll'         // {}
   | 'work.unstageAll'       // {}
   | 'work.discard'          // { paths: string[] }
