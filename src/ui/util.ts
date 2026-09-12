@@ -57,3 +57,43 @@ export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number)
     timer = window.setTimeout(() => { timer = undefined; fn(...a); }, ms);
   };
 }
+
+// ---------- 路径分组（#46 收敛：workView / detailPanel / pullSummary 三处同构逻辑） ----------
+
+/** 文件基名（'a/b/c.txt' → 'c.txt'；无斜杠原样） */
+export function baseOf(path: string): string {
+  const i = path.lastIndexOf('/');
+  return i >= 0 ? path.slice(i + 1) : path;
+}
+
+/** 目录部分（'a/b/c.txt' → 'a/b'；根目录 ''）——不含尾斜杠 */
+export function dirOf(path: string): string {
+  const i = path.lastIndexOf('/');
+  return i > 0 ? path.slice(0, i) : '';
+}
+
+export interface PathGroup<T> {
+  /** 目录（根目录为 ''；不含尾斜杠，排序/逻辑用） */
+  dir: string;
+  /** 组头显示文本：根目录显仓库绝对路径（rootLabel），其余为 '目录/'（带尾斜杠，v0.12 起的既有视觉） */
+  head: string;
+  /** 组内项（保持传入序，组内排序归调用方） */
+  items: T[];
+}
+
+/**
+ * 按目录分组：目录字母序、根目录置顶（三处调用点统一的 #22/#35 语义）。
+ * 组内不排序——调用方按各自需求处理（workView 传前预排序，pullSummary 按新路径排序）。
+ */
+export function groupPaths<T>(items: T[], pathOf: (t: T) => string, rootLabel?: string): PathGroup<T>[] {
+  const groups = new Map<string, T[]>();
+  for (const it of items) {
+    const d = dirOf(pathOf(it));
+    const list = groups.get(d);
+    if (list) list.push(it); else groups.set(d, [it]);
+  }
+  const root = rootLabel ?? '/';
+  return [...groups.keys()]
+    .sort((a, b) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)))
+    .map(d => ({ dir: d, head: d === '' ? root : d + '/', items: groups.get(d)! }));
+}

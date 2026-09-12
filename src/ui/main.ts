@@ -95,14 +95,19 @@ const app: App = {
     void rpc('op:fetch', remote ? { all: false, remote } : { all: true, prune: S.config.fetchPrune }).catch(showErr);
   },
   runPull() {
-    if (netBusy()) { toast('warn', S.t('netOpBusy')); return; }
+    // #45 幽灵推送链防护：runPull 未真正发起（前置拦截）时，「拉取并推送」链条意图作废——
+    // 否则标志挂起后任意 workState 事件（含后台 watcher）都会延迟触发自动推送
+    const abortChain = () => { pendingPushAfterPull = false; };
+    if (netBusy()) { abortChain(); toast('warn', S.t('netOpBusy')); return; }
     // #33 B3：分离 HEAD（不在任何分支上）与「无上游」是不同情形，分开提示便于定位
     if (S.state?.head.detached) {
+      abortChain();
       toast('warn', S.t('pullDetached'));
       return;
     }
     const head = S.state?.branches.find(b => b.isHead);
     if (!head?.upstream) {
+      abortChain();
       toast('warn', S.t('pullNoUpstream'));
       return;
     }
@@ -534,8 +539,9 @@ const app: App = {
   toggleBranchGroup(key) {
     const set = S.branchGroupsCollapsed;
     if (set.has(key)) set.delete(key); else set.add(key);
+    // #46 流畅度：只翻转状态并持久化；DOM 由 sidebar 在点击处就地重绘该组，
+    // 不再 sidebar.update() 全量重建（折叠是高频轻交互，重建数百行不可接受）
     void rpc('ui:saveBranchGroups', { collapsed: [...set] }).catch(() => undefined);
-    sidebar.update();
   },
   saveNotifyWidth(width) {
     S.notifyWidthSaved = width;
@@ -804,10 +810,15 @@ function armResolveHint(path: string): void {
   }, 5000);
 }
 
-/** 当前分支主干段集合（Issue #24 B3）：HEAD 提交沿第一父回溯——图形层对这些分段加粗 */
+/** 当前分支主干段集合（Issue #24 B3）：HEAD 提交沿第一父回溯——图形层对这些分段加粗。
+ *  #46 流畅度：按 repo+HEAD sha 缓存——commitsAppend 追加的是更旧提交，主干段不变时跳过 O(n) 重算 */
+let trunkCacheKey = '';
 function computeTrunkSegs(): void {
-  const set = new Set<number>();
   const head = S.commits.find(c => c.refs.some(r => r.isHead));
+  const key = `${S.repoId ?? ''}:${head?.sha ?? ''}`;
+  if (key === trunkCacheKey) return;
+  trunkCacheKey = key;
+  const set = new Set<number>();
   if (head) {
     const bySha = new Map(S.commits.map(c => [c.sha, c]));
     let cur: typeof head | undefined = head;
@@ -975,18 +986,22 @@ window.addEventListener('message', e => {
     case 'opResult':
       S.activeOps.delete(m.opId);
       opstatus.update();          // 先按剩余队列收起/切换
-      netmodal.onResult(m);       // 阻塞弹窗收口（成功闪绿/失败即关；非网络类操作自忽略）
+      netmodal.onResult(m);       // 阻塞弹窗收口（成功闪绿/warn 琥珀/失败即关；非网络类操作自忽略）
       if (m.ok) {
-        opstatus.finish(m.kind, m.verify === 'warn');  // 成功：绿色闪现；校验警示=琥珀（Issue #6 后续）
+        opstatus.finish(m.kind, m.verify === 'warn', m.message);  // 成功：绿色闪现；校验警示=琥珀（Issue #6 后续）；细化消息优先（#45）
         toolbar.flash(m.kind);    // 按钮短暂闪绿，明确"点击已生效"
       }
       toolbar.updateProgress();
       if (!m.ok) {
+        // #45 幽灵推送链防护：「拉取并推送」的 pull 落败（失败/取消）即作废续推意图
+        if (m.kind === 'pull') pendingPushAfterPull = false;
         // 删除本地分支（#39）：失败分诊由 branch.delete 返回值驱动（未合并→二次确认强删），
         // 不走通用错误通知与 AI 自动诊断（删除被拒不是需要 AI 诊断的故障）
         if (m.kind === 'branchDelete') break;
-        // R3 事后兜底：push 被拒（non-fast-forward / fetch first / rejected）→ 引导先拉取（决策对话保留模态）
-        if (m.kind === 'push' && m.outputTail && /non-fast-forward|fetch first|rejected|failed to push/i.test(m.outputTail)) {
+        // #45：取消是用户显式动作——轻量 info 提示即可，不进失败分诊（不诱导重试/不常驻报错）
+        if (m.cancelled) {
+          notify('info', { title: m.message || S.t('opCancelled') });
+        } else if (m.kind === 'push' && m.outputTail && /non-fast-forward|fetch first|rejected|failed to push/i.test(m.outputTail)) {
           void confirmDialog(
             S.t('pushRejectedTitle'),
             S.t('pushRejectedText'),

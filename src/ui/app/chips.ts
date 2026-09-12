@@ -9,6 +9,8 @@ import type { Commit } from '../../common/models';
 export interface ChipModel {
   cls: string;
   text: string;
+  /** 悬停提示（#45）：徽标被截断或单元格剪裁时全名仍可达；+N 徽标为剩余标签名清单 */
+  title?: string;
 }
 
 /** 远程名（origin/feature/x）剥离首段 remote 后是否命中本地分支名集合 */
@@ -23,8 +25,8 @@ export function chipModels(
   opts: { showRemoteChips: boolean; maxTagChips: number; localNames?: Set<string> },
 ): ChipModel[] {
   const out: ChipModel[] = [];
-  let tagTotal = 0;
-  for (const ref of c.refs) if (ref.kind === 'tag') tagTotal++;
+  const tagNames: string[] = [];
+  for (const ref of c.refs) if (ref.kind === 'tag') tagNames.push(ref.name);
   let shownTags = 0;
   for (const ref of c.refs) {
     if (ref.kind === 'remote' && !opts.showRemoteChips) continue;
@@ -47,10 +49,12 @@ export function chipModels(
     } else {
       text = ref.name;
     }
-    out.push({ cls, text });
+    out.push({ cls, text, title: ref.name });
   }
-  if (tagTotal > opts.maxTagChips) {
-    out.push({ cls: 'gg-chip tag more', text: `+${tagTotal - opts.maxTagChips}` });
+  if (tagNames.length > opts.maxTagChips) {
+    // 剩余标签名进悬停提示（#45）：+N 不再只是数字
+    const rest = tagNames.slice(opts.maxTagChips).join('\n');
+    out.push({ cls: 'gg-chip tag more', text: `+${tagNames.length - opts.maxTagChips}`, title: rest });
   }
   return out;
 }

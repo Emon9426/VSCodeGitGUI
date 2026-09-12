@@ -17,14 +17,14 @@ describe('chipModels 前缀与醒目', () => {
     const out = chipModels(C([
       { name: 'main', kind: 'head', isHead: true }, local('main'), remote('origin/dev'),
     ]), { showRemoteChips: true, maxTagChips: 2 });
-    expect(out[0]).toEqual({ cls: 'gg-chip head current', text: 'HEAD → main' });
-    expect(out[1]).toEqual({ cls: 'gg-chip head', text: '⑂ main' });
-    expect(out[2]).toEqual({ cls: 'gg-chip remote', text: '⇅ origin/dev' });
+    expect(out[0]).toEqual({ cls: 'gg-chip head current', text: 'HEAD → main', title: 'main' });
+    expect(out[1]).toEqual({ cls: 'gg-chip head', text: '⑂ main', title: 'main' });
+    expect(out[2]).toEqual({ cls: 'gg-chip remote', text: '⇅ origin/dev', title: 'origin/dev' });
   });
 
   it('detached HEAD 徽标：current 类，文本 HEAD', () => {
     const out = chipModels(C([{ name: 'HEAD', kind: 'head', isHead: true }]), { showRemoteChips: true, maxTagChips: 2 });
-    expect(out[0]).toEqual({ cls: 'gg-chip head current', text: 'HEAD' });
+    expect(out[0]).toEqual({ cls: 'gg-chip head current', text: 'HEAD', title: 'HEAD' });
   });
 });
 
@@ -43,10 +43,10 @@ describe('chipModels 降淡与开关', () => {
     expect(out.find(x => x.cls.includes('tag'))!.text).toBe('v1.0');
   });
 
-  it('标签超 maxTagChips 截断并聚合 +N', () => {
+  it('标签超 maxTagChips 截断并聚合 +N（#45：剩余标签名进 title）', () => {
     const out = chipModels(C([tag('v1'), tag('v2'), tag('v3')]), { showRemoteChips: true, maxTagChips: 2 });
     expect(out.filter(x => x.cls.includes('tag'))).toHaveLength(3);   // v1 v2 + +1
-    expect(out[out.length - 1]).toEqual({ cls: 'gg-chip tag more', text: '+1' });
+    expect(out[out.length - 1]).toEqual({ cls: 'gg-chip tag more', text: '+1', title: 'v3' });
   });
 });
 

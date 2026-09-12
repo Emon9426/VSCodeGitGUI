@@ -18,7 +18,7 @@ const DONE_FLASH_MS = 700;
 
 /** opProgress / opResult 事件的最小切片（避免引入全量协议类型） */
 interface OpProgressLike { opId: number; kind: string; text: string; pct?: number; queued?: boolean; position?: number }
-interface OpResultLike { opId: number; kind: string; ok: boolean }
+interface OpResultLike { opId: number; kind: string; ok: boolean; verify?: 'pass' | 'warn' | 'unknown'; cancelled?: boolean }
 
 export interface NetModal {
   onProgress(m: OpProgressLike): void;
@@ -78,7 +78,7 @@ export function createNetModal(app: App): NetModal {
       overlay.appendChild(box);
       document.body.appendChild(overlay);
     }
-    box!.classList.remove('done');
+    box!.classList.remove('done', 'warn');
     setIcon(KIND_ICON[kind] ?? 'hourglass');
     titleEl!.textContent = S.t(kind);
     bar!.classList.add('indet');
@@ -124,9 +124,13 @@ export function createNetModal(app: App): NetModal {
   function onResult(m: OpResultLike): void {
     if (!NET_MODAL_KINDS.has(m.kind) || m.opId !== opId || !overlay) return;
     if (!m.ok) { close(); return; }   // 失败/取消：立即关闭，错误通知流接管
-    // 成功：绿色完成态（图标/标题/满条），留宽限窗给「拉取并推送」链条续接
+    // 成功：完成态（图标/标题/满条），留宽限窗给「拉取并推送」链条续接。
+    // #45：校验警示（verify=warn，假成功）走琥珀色而非绿色——不被阻塞弹窗「洗白」，
+    // 右下角另有琥珀 warn 通知（z 1300 在遮罩之上）
+    const warn = m.verify === 'warn';
     box!.classList.add('done');
-    setIcon('checkCircle');
+    box!.classList.toggle('warn', warn);
+    setIcon(warn ? 'warnTriangle' : 'checkCircle');
     titleEl!.textContent = S.t(`${m.kind}Done`);
     bar!.classList.remove('indet');
     fill!.style.width = '100%';

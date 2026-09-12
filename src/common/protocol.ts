@@ -82,6 +82,8 @@ export interface OpResult {
   exitCode?: number;
   /** 网络停滞看门狗触发（Issue #8：前端据此不提供 AI 诊断入口，文案已专属） */
   stalled?: boolean;
+  /** 用户主动取消（#45）：前端走轻量 info 提示，不进「失败」分诊（不诱导重试/不报错误） */
+  cancelled?: boolean;
 }
 
 /** AI 修复方案步骤（Issue #8 P2）：level 由本地校验器独立判定，不读模型自报 risk */

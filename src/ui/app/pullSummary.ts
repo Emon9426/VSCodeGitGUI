@@ -7,11 +7,9 @@
 import { RENAME_SEP, type PullFileStatMap, type PullSummaryEntry } from '../../common/models';
 import { setIcon, type IconName } from '../icons';
 import { S, type App } from '../state';
-import { el, formatTime } from '../util';
+import { baseOf, el, formatTime, groupPaths } from '../util';
 import { openModal } from './overlays';
 
-const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
-const dirOf = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : '');
 /** rename 条目 "旧 → 新" 取新路径；普通条目原样 */
 const newPathOf = (f: string) => (f.includes(RENAME_SEP) ? f.split(RENAME_SEP)[1] : f);
 
@@ -69,17 +67,12 @@ export function showPullSummary(
     })));
     listBox.appendChild(head);
 
-    // 作者内目录分组（与工作副本 appendGrouped 同语义：localeCompare、根目录置顶）
-    const dirs = new Map<string, string[]>();
-    for (const f of a.files.keys()) dirs.set(dirOf(newPathOf(f)), [...(dirs.get(dirOf(newPathOf(f))) ?? []), f]);
-    const sortedDirs = [...dirs.keys()].sort((x, y) => (x === '' ? -1 : y === '' ? 1 : x.localeCompare(y)));
-
-    for (const d of sortedDirs) {
-      const headText = d === '' ? (repoRoot ?? '/') : d;
-      const dirHead = el('div', 'gg-psum-dir', headText);
-      dirHead.title = headText;   // 路径过长时省略号，悬停看全
+    // 作者内目录分组（#46 收敛为 util.groupPaths：localeCompare、根目录置顶、根组显仓库绝对路径）
+    for (const g of groupPaths([...a.files.keys()], f => newPathOf(f), repoRoot)) {
+      const dirHead = el('div', 'gg-psum-dir', g.head);
+      dirHead.title = g.head;   // 路径过长时省略号，悬停看全
       listBox.appendChild(dirHead);
-      for (const f of (dirs.get(d) ?? []).sort((x, y) => newPathOf(x).localeCompare(newPathOf(y)))) {
+      for (const f of g.items.sort((x, y) => newPathOf(x).localeCompare(newPathOf(y)))) {
         listBox.appendChild(sumRow(f, a.files.get(f)!, stat, fmt, app));
       }
     }
@@ -110,7 +103,7 @@ function sumRow(
   app: App,
 ): HTMLElement {
   const [oldP, newP] = f.includes(RENAME_SEP) ? f.split(RENAME_SEP) : [undefined, f];
-  const nameText = oldP !== undefined ? `${base(oldP)} → ${base(newP)}` : base(newP);
+  const nameText = oldP !== undefined ? `${baseOf(oldP)} → ${baseOf(newP)}` : baseOf(newP);
   const st = stat?.[newP];
   // Issue #29 三态：值=在工作区；null=已探测不在（同批后续提交已删除）→ 禁用行操作；
   // undefined=未采集（超宿主 stat 上限）→ 保持可点，点击后由宿主存在性探测兜底

@@ -50,3 +50,26 @@ export function countNode<T>(n: PrefixNode<T>): number {
 export function stripTo(path: string, name: string): string {
   return path && name.startsWith(path + '/') ? name.slice(path.length + 1) : name;
 }
+
+/** 剥离首段 remote 名（'origin/feature/x' → 'feature/x'；无斜杠原样）——#46 收敛三处内联实现 */
+export function stripRemote(name: string): string {
+  return name.includes('/') ? name.slice(name.indexOf('/') + 1) : name;
+}
+
+/**
+ * 前缀组树统一遍历（#46 收敛 sidebar.renderPrefixTree 与 branchPicker 两处递归渲染）：
+ * items 回调收到剥好组前缀的短名；children 以 childDepth=depth+1 回调组头（由调用方映射为
+ * 各自的组头 DOM 约定，如 sidebar level=depth+2 / picker sectionHead level=depth+2）。
+ */
+export function walkPrefixTree<T>(
+  node: PrefixNode<T>,
+  nameOf: (t: T) => string,
+  visit: {
+    item: (t: T, depth: number, disp: string) => void;
+    group: (ch: PrefixNode<T>, childDepth: number) => void;
+  },
+  depth = 0,
+): void {
+  for (const it of node.items) visit.item(it, depth, stripTo(node.path, nameOf(it)));
+  for (const ch of node.children) visit.group(ch, depth + 1);
+}

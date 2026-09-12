@@ -75,6 +75,8 @@ export function createCommitList(app: App): CommitList {
   let loadingMore = false;
   let lastGraph: unknown = undefined;
   let rafPending = false;
+  let lastFooterKey = '';
+  let lastWidthsKey = '';
   const FOOTER_H = 36;
 
   /** 时间列降级状态（Issue #18 S1）：0=完整格式 / 1=紧凑 MM-DD HH:mm / 2=极窄兜底（60px ellipsis，完整值在 title） */
@@ -97,9 +99,16 @@ export function createCommitList(app: App): CommitList {
   const total = () => S.commits.length * rowHeight() + (S.commits.length ? FOOTER_H : 0);
 
   function applyWidths(): void {
-    canvas.setPure(S.view === 'pure');   // 纯提交：Canvas 切时间线模式（固定窄列）
-    canvas.setUserGraphWidth(S.colWidths.graph);
+    // #46 流畅度：宽度/状态无变化的滚动帧直接跳过（此前每帧读写 6 个 CSS 变量 + 布局读）
+    const w = timeWidths();
+    const avail = scroll.clientWidth;
     const pure = S.view === 'pure';
+    const key = `${pure}|${S.lang}|${S.colWidths.graph}|${S.colWidths.msg}|${S.colWidths.author}|${S.colWidths.sha}`
+      + `|${avail}|${w.full}|${w.compact}|${timeState}|${canvas.graphWidth}`;
+    if (key === lastWidthsKey) return;
+    lastWidthsKey = key;
+    canvas.setPure(pure);   // 纯提交：Canvas 切时间线模式（固定窄列）
+    canvas.setUserGraphWidth(S.colWidths.graph);
     wrap.classList.toggle('pure', pure);
     // 表头首格保留占位（grid 五列固定）：pure 置空文案而非 display:none，防列错位
     headCells[0].firstChild!.textContent = pure ? '' : S.t('colGraph');
@@ -110,8 +119,6 @@ export function createCommitList(app: App): CommitList {
     // 时间列保底与降级（Issue #18 S1）：容量 = 列表内容宽 - graph - 各列 grid 地板（缺额时 grid 把
     // author/sha/msg 压回地板，按用户列宽预算会误判——实测扫描定论）；宽裕=完整格式、紧张=紧凑格式、
     // 极窄=60px ellipsis 兜底并同步下调 msg 下限防五列总和溢出容器。格式切换即失效行池缓存令 syncRows 重填。
-    const w = timeWidths();
-    const avail = scroll.clientWidth;
     const capacity = avail - canvas.graphWidth - MSG_FLOOR - MIN_W.author - MIN_W.sha;
     const next = avail === 0 ? 0 : capacity >= w.full ? 0 : capacity >= w.compact ? 1 : 2;
     if (next !== timeState) { timeState = next; invalidateRows(); }
@@ -225,8 +232,14 @@ export function createCommitList(app: App): CommitList {
     const cells = row.children;
     const msg = cells[1] as HTMLElement;
     msg.textContent = '';
-    msg.appendChild(el('span', 'gg-subject', c.subject));
-    for (const chip of buildChips(c)) msg.appendChild(chip);
+    const subject = el('span', 'gg-subject', c.subject);
+    subject.title = c.subject;   // #45：窄列截断时悬停看全文
+    msg.appendChild(subject);
+    for (const m of buildChips(c)) {
+      const chip = el('span', m.cls, m.text);
+      if (m.title) chip.title = m.title;
+      msg.appendChild(chip);
+    }
     (cells[2] as HTMLElement).textContent = c.author.name;
     (cells[2] as HTMLElement).title = c.author.email;
     (cells[3] as HTMLElement).textContent = c.shortSha;
@@ -245,12 +258,12 @@ export function createCommitList(app: App): CommitList {
     return set;
   }
 
-  function buildChips(c: Commit): HTMLElement[] {
+  function buildChips(c: Commit) {
     return chipModels(c, {
       showRemoteChips: S.config.showRemoteChips,
       maxTagChips: S.config.maxTagChips,
       localNames: localNames(),
-    }).map(m => el('span', m.cls, m.text));
+    });
   }
 
   function commitMenu(c: Commit, x: number, y: number): void {
@@ -307,18 +320,24 @@ export function createCommitList(app: App): CommitList {
 
     footer.style.transform = `translateY(${n * R}px)`;
     footer.style.height = `${FOOTER_H}px`;
-    footer.textContent = '';
-    if (loadingMore) {
-      footer.appendChild(el('span', 'gg-spinner'));
-      footer.appendChild(el('span', undefined, S.t('loading')));
-    } else if (S.state?.hasMore && n >= S.config.maxAutoLoad) {
-      const btn = el('button', 'gg-btn small', S.t('loadMore'));
-      btn.addEventListener('click', () => {
-        if (!loadingMore) { loadingMore = true; app.loadMore(); syncRows(); }
-      });
-      footer.appendChild(btn);
-    } else if (S.state && !S.state.hasMore && n > 20) {
-      footer.appendChild(el('span', 'gg-footer-count', S.t('loadedCount', { n })));
+    // #46 流畅度：footer 只在状态签名变化时重填（此前每滚动帧清空重建 DOM）
+    const showCount = !!S.state && !S.state.hasMore && n > 20;
+    const fkey = `${loadingMore}|${S.state?.hasMore}|${n >= S.config.maxAutoLoad}|${showCount}|${n}`;
+    if (fkey !== lastFooterKey) {
+      lastFooterKey = fkey;
+      footer.textContent = '';
+      if (loadingMore) {
+        footer.appendChild(el('span', 'gg-spinner'));
+        footer.appendChild(el('span', undefined, S.t('loading')));
+      } else if (S.state?.hasMore && n >= S.config.maxAutoLoad) {
+        const btn = el('button', 'gg-btn small', S.t('loadMore'));
+        btn.addEventListener('click', () => {
+          if (!loadingMore) { loadingMore = true; app.loadMore(); syncRows(); }
+        });
+        footer.appendChild(btn);
+      } else if (showCount) {
+        footer.appendChild(el('span', 'gg-footer-count', S.t('loadedCount', { n })));
+      }
     }
 
     if (!loadingMore && S.state?.hasMore && lastB >= n - 8 && n < S.config.maxAutoLoad) {
