@@ -70,8 +70,9 @@ button { cursor: pointer; background: var(--vscode-button-secondaryBackground); 
 button:not(:disabled):hover { background: var(--vscode-button-secondaryHoverBackground); }
 button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 button.primary:not(:disabled):hover { background: var(--vscode-button-hoverBackground); }
-button.danger { background: #ad0707; color: #fff; }
-button.danger:not(:disabled):hover { background: #c62121; }
+/* #49：danger 底色主题化（原 #ad0707/#c62121 写死，唯一非主题感知按钮） */
+button.danger { background: var(--vscode-errorForeground, #ad0707); color: #fff; }
+button.danger:not(:disabled):hover { background: color-mix(in srgb, var(--vscode-errorForeground, #ad0707) 82%, #fff); }
 /* B7（Issue #18）：禁用态统一——保留 hover 事件让 title 原因可悬停可见（禁用必须可解释） */
 button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 
@@ -95,7 +96,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-select { max-width: 200px; min-width: 0; }
 .gg-branch-label { color: var(--vscode-charts-green); white-space: nowrap; }
 .gg-dirty-badge { margin-left: 6px; color: var(--vscode-charts-yellow); font-size: 11px; }
-.gg-tb-btn { min-width: 34px; font-size: 14px; line-height: 1; padding: 4px 8px; transition: color .15s ease; }
+.gg-tb-btn { min-width: 34px; font-size: 14px; line-height: 1; padding: 4px 8px; transition: color .12s ease; }
 .gg-icon-btn { min-width: 24px; padding: 2px 6px; }
 /* 内联 SVG 图标（v0.8.1）：描边跟随按钮前景色，明暗主题自适应 */
 .gg-ic { width: 13px; height: 13px; display: block; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
@@ -107,11 +108,11 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-branch-label { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .gg-branch-label .gg-ic { width: 12px; height: 12px; }
 .gg-opstatus-icon .gg-ic { display: block; }
-.gg-files-vbtn .gg-ic { width: 11px; height: 11px; }
+.gg-files-vbtn .gg-ic { width: 12px; height: 12px; }   /* #49：与同栏 abtn/cbtn 统一 12px */
 .gg-files-abtn { display: inline-flex; align-items: center; justify-content: center; }
 .gg-files-abtn .gg-ic { width: 12px; height: 12px; }
 .gg-files-cbtn .gg-ic { width: 12px; height: 12px; }
-.gg-files-flt .gg-ic { width: 11px; height: 11px; }
+.gg-files-flt .gg-ic { width: 12px; height: 12px; }
 .gg-files-addr-ico .gg-ic { width: 13px; height: 13px; }
 .gg-files-crumb.home .gg-ic { width: 12px; height: 12px; display: inline-block; vertical-align: -2px; }
 .gg-fp-back { display: inline-flex; align-items: center; gap: 4px; }
@@ -163,15 +164,15 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   border-radius: 2px;
   transition: width 0.25s ease;
 }
-/* 无百分比的阶段（计数对象/更新引用/refresh）：流动动画 */
+/* 无百分比的阶段（计数对象/更新引用/refresh）：流动动画（#49：三条不定态合一，键名沿用 opslide） */
 .gg-opstatus-bar.indet .gg-opstatus-fill {
   width: 34%;
-  animation: gg-opslide 1.2s ease-in-out infinite;
+  animation: gg-indet-slide 1.2s ease-in-out infinite;
   transition: none;
 }
-@keyframes gg-opslide {
+@keyframes gg-indet-slide {
   0% { transform: translateX(-110%); }
-  100% { transform: translateX(330%); }
+  100% { transform: translateX(400%); }
 }
 .gg-opstatus-pct {
   flex: none;
@@ -238,7 +239,8 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-author-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gg-author-caret { font-size: 10px; color: var(--vscode-descriptionForeground); }
 .gg-author-pop {
-  position: absolute; top: calc(100% + 4px); left: 0; z-index: 1200;
+  /* #49：降到 1050——高于右键菜单、低于模态遮罩（原 1200 会悬空盖在遮罩上） */
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 1050;
   width: 230px; padding: 6px;
   display: flex; flex-direction: column; gap: 4px;
   background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
@@ -270,6 +272,16 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   height: auto !important;
   border-top: none;
   border-left: 1px solid var(--vscode-panel-border, #333);
+}
+/* #49：窄窗下右置详情回落 bottom（左栏 min-width 320px 会把 diff 区压到 0px） */
+@media (max-width: 760px) {
+  .gg-main.detail-right { flex-direction: column; }
+  .gg-main.detail-right .gg-detail {
+    width: auto;
+    height: 40% !important;
+    border-top: 1px solid var(--vscode-panel-border, #333);
+    border-left: none;
+  }
 }
 
 /* ---------------- 侧栏 ---------------- */
@@ -394,8 +406,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 /* 启动期 git 加载进度条（v0.15.1）：indeterminate 流动动画，完成即收起（高度过渡防跳变） */
 .gg-loadbar { height: 0; overflow: hidden; transition: height 0.2s ease; background: transparent; }
 .gg-loadbar.show { height: 3px; }
-.gg-loadbar-inner { height: 3px; width: 40%; background: var(--vscode-charts-blue, #3794ff); border-radius: 2px; animation: gg-loadslide 1.1s ease-in-out infinite; }
-@keyframes gg-loadslide { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
+.gg-loadbar-inner { height: 3px; width: 40%; background: var(--vscode-charts-blue, #3794ff); border-radius: 2px; animation: gg-indet-slide 1.2s ease-in-out infinite; }
 .gg-spinner {
   width: 12px; height: 12px;
   border: 2px solid var(--vscode-descriptionForeground);
@@ -409,7 +420,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   position: absolute;
   top: 0; left: 0; right: 0;
   align-items: center;
-  cursor: default;
+  cursor: pointer;   /* #49：可点列表行统一 pointer（原 default 与侧栏/详情行两派） */
 }
 .gg-row:hover { background: var(--vscode-list-hoverBackground); }
 .gg-row.selected {
@@ -419,7 +430,8 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 }
 .gg-cell { padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .gg-cell.msg { display: flex; align-items: center; gap: 6px; }
-.gg-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* #49：说明保最小可读宽度（120px）——徽标再多也不被挤到不可读（chips 可收缩让位） */
+.gg-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 120px; }
 .gg-cell.sha, .gg-cell.time { font-family: var(--vscode-editor-font-family); font-size: 12px; color: var(--vscode-descriptionForeground); }
 .gg-row.selected .gg-cell.sha, .gg-row.selected .gg-cell.time, .gg-row.selected .gg-cell.author { color: inherit; }
 .gg-cell.time { text-align: right; }
@@ -475,7 +487,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   min-height: 0;
 }
 .gg-detail.hidden { display: none; }
-.gg-detail.stale { opacity: 0.55; transition: opacity 0.15s ease; }
+.gg-detail.stale { opacity: 0.55; transition: opacity 0.12s ease; }
 .gg-detail.collapsed { height: 30px !important; }
 .gg-detail.collapsed .gg-detail-body { display: none; }
 .gg-detail-handle { flex: none; height: 4px; cursor: row-resize; background: transparent; }
@@ -533,7 +545,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-dfiles-head-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gg-dfiles-head .gg-icon-btn { flex: none; opacity: 0.75; }
 .gg-dfiles-head .gg-icon-btn:hover { opacity: 1; }
-.gg-dfiles { display: flex; flex-direction: column; }
+.gg-dfiles { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }   /* #49：长文件列表独立滚动，概要区不被推走 */
 /* 目录分组头（v0.9.2；#46 缩进统一为组头 12px）：完整路径只显示一次，组内行仅文件名 */
 .gg-file-group {
   padding: 5px 4px 1px var(--gg-indent-dir);
@@ -664,8 +676,9 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   justify-content: center;
 }
 .gg-modal {
-  min-width: 380px;
-  max-width: 560px;
+  /* #49：小窗保护（<420px 视口不再溢出） */
+  width: max(380px, min(560px, 92vw));
+  max-width: 92vw;
   max-height: 70vh;
   overflow: auto;
   background: var(--vscode-editorWidget-background, #222);
@@ -702,7 +715,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   font-size: var(--gg-fs-m);
   border: 1px solid;
 }
-.gg-banner-ic { flex: none; width: 15px; height: 15px; margin-top: 1px; }
+.gg-banner-ic { flex: none; width: 16px; height: 16px; margin-top: 1px; }
 .gg-banner-text { min-width: 0; flex: 1; }
 .gg-banner-t { font-weight: 600; color: var(--vscode-foreground); }
 .gg-banner-b { color: var(--gg-t2); margin-top: 1px; word-break: break-word; }
@@ -720,7 +733,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-banner.accent { background: var(--gg-accent-bg); border-color: var(--gg-accent-bd); }
 .gg-banner.accent .gg-banner-ic { color: var(--gg-accent); }
 
-.gg-psum-modal { max-width: 720px; }
+.gg-psum-modal { width: max(560px, min(720px, 92vw)); max-width: 92vw; }
 .gg-psum-sum { font-size: 11px; color: var(--vscode-descriptionForeground); margin: 0 0 6px; }
 /* Issue #29：fetch 摘要「尚未合并」/ pull 摘要缺失文件计数的提示行 */
 .gg-psum-note {
@@ -730,7 +743,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   border: 1px solid var(--gg-warn-bd, rgba(204, 153, 0, 0.35));
   border-radius: 4px;
 }
-.gg-psum-list { max-height: 56vh; overflow: auto; min-width: 520px; }
+.gg-psum-list { max-height: 56vh; overflow: auto; min-width: 0; }   /* #49：min-width 520px 移除（弹窗宽度已钳 92vw） */
 .gg-psum-author {
   display: flex; align-items: baseline; gap: 8px;
   padding: 8px 2px 3px; margin-top: 4px;
@@ -755,7 +768,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-psum-size { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gg-psum-time { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gg-psum-n { color: var(--vscode-descriptionForeground); }
-.gg-psum-acts { display: flex; gap: 1px; flex: none; align-self: center; }
+.gg-psum-acts { display: flex; gap: 1px; flex: none; align-self: flex-start; }   /* #49：对齐首行（原 center 在文件名换行时悬空于整行中部） */
 .gg-psum-act {
   display: flex; align-items: center; justify-content: center;
   width: 20px; height: 20px; padding: 0; border: none; background: none; cursor: pointer;
@@ -770,7 +783,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-psum-more { font-size: 11px; color: var(--vscode-descriptionForeground); font-style: italic; padding-top: 4px; }
 
 /* ---------------- Notification（Issue #18 S2：右下通知） ---------------- */
-.gg-notifs { position: fixed; right: 12px; bottom: 12px; z-index: 1300; display: flex; flex-direction: column; gap: 8px; width: 380px; }
+.gg-notifs { position: fixed; right: 12px; bottom: 12px; z-index: 1300; display: flex; flex-direction: column; gap: 8px; width: 380px; max-width: 92vw; max-height: calc(100vh - 24px); overflow-y: auto; }   /* #49：小窗钳宽 + 不堆出视口 */
 /* 左缘拖拽手柄（#22 B1）：调宽通知区，松开记忆 */
 .gg-notifs-grip {
   position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
@@ -789,7 +802,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 }
 .gg-notif.fade { opacity: 0; }
 .gg-notif-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 0 10px; min-width: 0; }
-.gg-notif-head .gg-ic { width: 15px; height: 15px; color: var(--gg-info); flex: none; }
+.gg-notif-head .gg-ic { width: 16px; height: 16px; color: var(--gg-info); flex: none; }
 .gg-notif-title { font-size: var(--gg-fs-m); font-weight: 600; min-width: 0; word-break: break-word; }
 .gg-notif-x { flex: none; margin-left: auto; min-width: 20px; padding: 0 4px; background: transparent; border: none; color: var(--gg-t2); font-size: 13px; line-height: 1; cursor: pointer; border-radius: var(--gg-r-s); }
 .gg-notif-x:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
@@ -830,7 +843,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-viewseg { display: flex; border: 1px solid var(--vscode-dropdown-border, #666); border-radius: 5px; overflow: hidden; flex: none; }
 .gg-viewseg-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  border: none; border-radius: 0; padding: 3px 11px;
+  border: none; border-radius: 0; padding: 3px 12px;   /* #49：11→12 归网 */
   background: transparent; color: var(--vscode-foreground); font-size: 12px; white-space: nowrap;
 }
 .gg-viewseg-btn + .gg-viewseg-btn { border-left: 1px solid var(--vscode-dropdown-border, #666); }
@@ -983,9 +996,9 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-work-rows { display: flex; flex-direction: column; }
 .gg-work-row {
   position: relative;   /* 行尾悬浮操作组的定位基准 */
-  display: flex; align-items: center; gap: 7px;
-  padding: 3px 10px 3px var(--gg-indent-file); margin: 0 4px; border-radius: 4px;   /* A2（#22）/#46：28px 行缩进 */
-  cursor: default; white-space: nowrap;
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 10px 3px var(--gg-indent-file); margin: 0 4px; border-radius: 4px;   /* A2（#22）/#46：28px 行缩进；#49：gap 7→8 归 4px 网格 */
+  cursor: pointer; white-space: nowrap;   /* #49：可点行统一 pointer */
 }
 .gg-work-row:hover { background: var(--vscode-list-hoverBackground); }
 .gg-work-row.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
@@ -1039,9 +1052,8 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   text-overflow: ellipsis;
   cursor: default;
 }
-/* 刷新按钮点击反馈：图标转一圈 */
+/* 刷新按钮点击反馈：图标转一圈（#49：gg-spin 定义只剩 L417 一处） */
 .gg-icon-btn.spin .gg-ic { animation: gg-spin 0.55s ease; }
-@keyframes gg-spin { to { transform: rotate(360deg); } }
 
 /* ---- 右：单文件 diff ---- */
 .gg-work-diff { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -1236,7 +1248,8 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   border-left: 1px solid var(--vscode-panel-border, #333);
   background: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent);
 }
-.gg-merge-map i { position: absolute; left: 2px; right: 2px; height: 6px; border-radius: 2px; cursor: pointer; }
+.gg-merge-map i { position: absolute; left: 2px; right: 2px; height: 6px; border-radius: 2px; cursor: pointer; opacity: .75; transition: opacity .12s ease; }
+.gg-merge-map i:hover { opacity: 1; outline: 1px solid var(--vscode-focusBorder); }   /* #49：唯一无 hover 反馈的可点元素补齐 */
 .gg-merge-map i.todo { background: var(--vscode-charts-yellow); opacity: 0.85; }
 .gg-merge-map i.ok { background: var(--vscode-charts-green); opacity: 0.85; }
 
@@ -1255,7 +1268,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-merge-special-title { font-size: 14px; font-weight: 600; color: var(--vscode-charts-yellow); margin-bottom: 8px; }
 .gg-merge-special-text { font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 16px; white-space: pre-line; }
 .gg-merge-special-btns { display: flex; gap: 10px; flex-wrap: wrap; }
-.gg-merge-cards { display: flex; gap: 14px; flex-wrap: wrap; }
+.gg-merge-cards { display: flex; gap: 12px; flex-wrap: wrap; }   /* #49：14→12 归网 */
 .gg-merge-card {
   display: flex; flex-direction: column; gap: 8px; min-width: 220px; padding: 16px;
   border: 1px solid var(--vscode-panel-border, #444); border-radius: 8px; align-items: flex-start;
@@ -1331,15 +1344,15 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-files-sort-arr { font-size: 10px; margin-left: 3px; color: var(--vscode-charts-blue, #0078d4); }
 .gg-files-colrs { position: absolute; right: -4px; top: 4px; bottom: 4px; width: 9px; cursor: col-resize; z-index: 3;
   display: flex; justify-content: center; }
-.gg-files-colrs::after { content: ""; width: 2px; height: 100%; background: transparent; border-radius: 1px; transition: background .1s; }
+.gg-files-colrs::after { content: ""; width: 2px; height: 100%; background: transparent; border-radius: 1px; transition: background .12s; }
 .gg-files-colrs:hover::after, .gg-files-colrs.on::after { background: var(--vscode-charts-blue, #0078d4); }
 .gg-files-table td { padding: 4px 8px; border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 40%, transparent);
   color: var(--vscode-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gg-files-table th:last-child, .gg-files-table td.gg-files-sz { text-align: right; }
-.gg-files-row { cursor: default; }
+.gg-files-row { cursor: pointer; }   /* #49：可点行统一 pointer */
 .gg-files-row:hover td { background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent); }
 .gg-files-row.sel td { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
-.gg-files-nm { display: flex; align-items: center; gap: 7px; }
+.gg-files-nm { display: flex; align-items: center; gap: 8px; }   /* #49：7→8 归 4px 网格 */
 .gg-files-nm-t { overflow: hidden; text-overflow: ellipsis; }
 .gg-files-cnt { color: var(--vscode-descriptionForeground); font-size: 11px; }
 .gg-files-row.sel .gg-files-cnt { opacity: .8; }
@@ -1350,7 +1363,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 
 /* ---- 列表区：文件夹（平铺）视图 ---- */
 .gg-files-grid { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 8px; }
-.gg-files-card { width: 92px; padding: 9px 4px 7px; border-radius: 6px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: default; }
+.gg-files-card { width: 92px; padding: 9px 4px 7px; border-radius: 6px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; }
 .gg-files-card:hover { background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent); }
 .gg-files-card.sel { background: var(--vscode-list-activeSelectionBackground); }
 .gg-files-card-ic { width: 30px; height: 30px; }
@@ -1360,7 +1373,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent); border-radius: 4px; padding: 0 4px; }
 
 /* ---- 右区：文件头（S5：水平内边距统一 12px 基准） ---- */
-.gg-fp-head { display: flex; align-items: center; gap: 9px; padding: 10px 12px; flex: none; flex-wrap: wrap;
+.gg-fp-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; flex: none; flex-wrap: wrap;   /* #49：9→8 归网 */
   border-bottom: 1px solid var(--vscode-panel-border, #333); }
 .gg-fp-ico { display: inline-flex; }
 .gg-fp-name { font-weight: 600; font-size: 13px; color: var(--vscode-foreground); }
@@ -1377,7 +1390,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fp-fol { display: inline-flex; gap: 6px; align-items: center; font-size: 11px; cursor: pointer;
   background: var(--vscode-button-secondaryBackground, #2a2a2a); border: 1px solid var(--vscode-panel-border, #333);
   border-radius: 5px; padding: 2px 9px; color: var(--vscode-foreground); }
-.gg-fp-sw { width: 24px; height: 13px; border-radius: 7px; background: var(--vscode-charts-blue, #0078d4); position: relative; display: inline-block; transition: .15s; }
+.gg-fp-sw { width: 24px; height: 13px; border-radius: 7px; background: var(--vscode-charts-blue, #0078d4); position: relative; display: inline-block; transition: .12s; }
 .gg-fp-sw::after { content: ""; position: absolute; right: 2px; top: 2px; width: 9px; height: 9px; border-radius: 50%; background: #fff; }
 .gg-fp-fol.off .gg-fp-sw { background: var(--vscode-descriptionForeground, #484f58); }
 .gg-fp-fol.off .gg-fp-sw::after { right: auto; left: 2px; }
@@ -1402,7 +1415,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-fp-note { font-size: 11px; color: var(--vscode-charts-purple, #b180d7); }
 .gg-fp-opshint { font-size: 11px; opacity: .8; }
 .gg-fp-list { flex: 1; overflow: auto; min-height: 0; padding-bottom: 6px; }
-.gg-fp-row { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 12px 0 12px; border-left: 2px solid transparent; cursor: pointer; }
+.gg-fp-row { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 12px; border-left: 2px solid transparent; cursor: pointer; }
 .gg-fp-row:hover { background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent); }
 .gg-fp-row.mile { background: color-mix(in srgb, var(--vscode-charts-purple, #8250df) 8%, transparent); border-left-color: var(--vscode-charts-purple, #8250df); }
 .gg-fp-row.open { background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent); border-left-color: var(--vscode-charts-blue, #0078d4); }
@@ -1418,7 +1431,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   box-shadow: 0 0 0 1.5px var(--vscode-editor-background); position: relative; z-index: 1; }
 .gg-fp-row.mile .gg-fp-dot { background: var(--vscode-charts-purple, #8250df); }
 .gg-fp-msg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-foreground); font-size: 12px; }
-.gg-fp-mb { display: inline-flex; align-items: center; gap: 4px; border-radius: 4px; padding: 0 6px; font-size: 10px; font-weight: 600; line-height: 16px;
+.gg-fp-mb { display: inline-flex; align-items: center; gap: 4px; border-radius: 4px; padding: 0 6px; font-size: 10px; font-weight: 600; line-height: 17px;
   color: var(--vscode-charts-purple, #b180d7); background: color-mix(in srgb, var(--vscode-charts-purple, #8250df) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--vscode-charts-purple, #8250df) 40%, transparent); margin-right: 7px; vertical-align: 1px; }
 .gg-fp-era { flex: none; border-radius: 4px; padding: 0 6px; font-size: 10px; font-weight: 600; line-height: 17px; max-width: 150px;
@@ -1462,7 +1475,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 /* 手动移动检测横幅已统一为 .gg-banner.accent（Issue #18 S3） */
 
 /* ---- 移动目标选择对话框（v0.14.2：webview 内实现，替代原生 showOpenDialog） ---- */
-.gg-move-dlg { width: 480px; }
+.gg-move-dlg { width: min(480px, 92vw); max-width: 92vw; }
 .gg-move-crumbs { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; margin-bottom: 8px;
   font-size: 12px; color: var(--vscode-descriptionForeground); }
 .gg-move-crumb { padding: 2px 7px; border-radius: 4px; cursor: pointer; color: var(--vscode-foreground); }
@@ -1481,7 +1494,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-move-foot .gg-btn.dis { opacity: .45; pointer-events: none; }
 
 /* ---------------- AI 诊断模态与一键修复（Issue #8） ---------------- */
-.gg-diag { min-width: 480px; max-width: 560px; display: flex; flex-direction: column; }
+.gg-diag { width: max(480px, min(560px, 92vw)); max-width: 92vw; display: flex; flex-direction: column; }
 .gg-diag .gg-modal-body { flex: 1; }
 .gg-diag-sub { margin-bottom: 8px; padding: 4px 8px; border-radius: var(--gg-r-s);
   background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
@@ -1548,7 +1561,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 /* S6 危险确认（confirm 级修复步骤）：图标+命令行+不可撤销红副行；叠于诊断模态上加深遮罩 */
 .gg-modal-overlay.deep { background: rgba(0, 0, 0, 0.6); }
 .gg-dc-head { display: flex; align-items: center; gap: 8px; color: var(--gg-err); font-size: var(--gg-fs-m); flex-wrap: wrap; }
-.gg-dc-head .gg-ic { width: 15px; height: 15px; flex: none; }
+.gg-dc-head .gg-ic { width: 16px; height: 16px; flex: none; }
 .gg-dc-pre { color: var(--gg-t2); }
 .gg-dc-cmd { font-family: var(--vscode-editor-font-family, Consolas, monospace); font-size: var(--gg-fs-m);
   background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
@@ -1570,14 +1583,16 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   position: fixed;
   inset: 0;
   z-index: 1200;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.55);   /* #49：深色主题下 0.45 遮罩感知弱，加浓以明确阻塞态 */
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .gg-net-box {
-  min-width: 380px;
-  max-width: 520px;
+  /* #49：小窗保护 + 入场动画（P3：增强阻塞感） */
+  width: max(380px, min(520px, 92vw));
+  max-width: 92vw;
+  animation: gg-pop-in .16s ease;
   background: var(--vscode-editorWidget-background, #222);
   border: 1px solid var(--vscode-widget-border, #444);
   border-radius: 8px;
@@ -1601,18 +1616,14 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   background: var(--vscode-charts-blue);
   transition: width 0.25s ease;
 }
-/* 无百分比阶段：不定态流动动画（与状态条同语言） */
+/* 无百分比阶段：不定态流动动画（#49：与状态条共用 gg-indet-slide） */
 .gg-net-bar.indet .gg-net-fill {
   width: 34%;
-  animation: gg-netslide 1.2s ease-in-out infinite;
+  animation: gg-indet-slide 1.2s ease-in-out infinite;
   transition: none;
 }
-@keyframes gg-netslide {
-  0% { transform: translateX(-110%); }
-  100% { transform: translateX(400%); }
-}
 .gg-net-text {
-  margin-top: 9px;
+  margin-top: 8px;   /* #49：9→8 归网 */
   min-height: 14px;
   font-family: var(--vscode-editor-font-family, Consolas, monospace);
   font-size: 11px;
@@ -1630,3 +1641,12 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-net-box.done .gg-net-fill { background: var(--gg-ok); transition: none; }
 .gg-net-box.done.warn .gg-net-ic { color: var(--gg-warn); }
 .gg-net-box.done.warn .gg-net-fill { background: var(--gg-warn); }
+
+/* ---------- #49：键盘焦点环兜底（仅键盘导航时显示，不扰鼠标流） ---------- */
+:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+
+/* #49：阻塞弹窗入场（增强阻塞感知） */
+@keyframes gg-pop-in {
+  from { opacity: 0; transform: scale(.96); }
+  to { opacity: 1; transform: scale(1); }
+}

@@ -62,6 +62,7 @@ export function createMergeView(app: { setView(view: 'graph' | 'work'): void }):
   const vscodeBtn = el('button', 'gg-btn tiny');
   const abortBtn = el('button', 'gg-btn tiny danger');
   const closeBtn = el('button', 'gg-merge-close', '✕');
+  closeBtn.title = S.t('close');   // #49：补 title（其余浮层关闭按钮均有）
   top.append(fileName, fileProg, prevFile, nextFile, el('span', 'gg-merge-spacer'), chunkNav, prevChunk, nextChunk, wholeBtn, vscodeBtn, abortBtn, closeBtn);
 
   const colsWrap = el('div', 'gg-merge-cols');

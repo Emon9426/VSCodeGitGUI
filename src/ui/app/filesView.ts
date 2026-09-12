@@ -108,12 +108,13 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
     bRen.classList.toggle('dis', S.files.sel.length !== 1 || busy);
     bCopy.classList.toggle('dis', !S.files.sel.length);
     bDel.title = busy ? S.t('filesOpBusy') : 'Del';
-    bMove.title = busy ? S.t('filesOpBusy') : '';
+    bMove.title = busy ? S.t('filesOpBusy') : S.t('filesMove');
+    // #49：bMove 空闲时不再空 title（bDel/bRen 同款语义）
     bRen.title = busy ? S.t('filesOpBusy') : 'F2';
     // 命令条 label（语言/选中态刷新）
     const n = S.files.sel.length;
-    bDel.querySelector('span')!.textContent = n ? `${S.t('filesDelete')}（${n}）` : S.t('filesDelete');
-    bMove.querySelector('span')!.textContent = n ? `${S.t('filesMove')}（${n}）` : S.t('filesMove');
+    bDel.querySelector('span')!.textContent = n ? S.t('filesDeleteN', { n: String(n) }) : S.t('filesDelete');
+    bMove.querySelector('span')!.textContent = n ? S.t('filesMoveN', { n: String(n) }) : S.t('filesMove');
     bRen.querySelector('span')!.textContent = S.t('filesRename');
     bCopy.querySelector('span')!.textContent = S.t('copyPath');
     renderCrumbs();

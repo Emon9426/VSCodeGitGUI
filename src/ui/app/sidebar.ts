@@ -148,11 +148,17 @@ export function createSidebar(app: App): Sidebar {
     }
     clearChildren(tagSec.list);
     if (st) {
+      if (!st.tags.length) {
+        // #49：空态文案（对齐工程/仓库区惯例，不再整块空白）
+        tagSec.list.appendChild(el('div', 'gg-side-empty', S.t('noTags')));
+      }
       for (const tg of st.tags) {
         const item = el('div', `gg-side-item tag${S.state?.filterRef === tg.name ? ' filtered' : ''}`);
         item.appendChild(el('span', 'gg-side-name', tg.name));
         // #45：标签名优先（被截时悬停可见），日期作次行
         item.title = `${tg.name}${tg.date ? `\n${tg.date}` : ''}`;
+        // #49：双击=检出（detached），对齐分支/远程行「双击=检出」惯例
+        item.addEventListener('dblclick', () => app.checkoutDetached(tg.sha));
         filterClick(item, tg.name);
         item.addEventListener('contextmenu', e => {
           e.preventDefault();
