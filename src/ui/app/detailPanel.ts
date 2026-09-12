@@ -6,7 +6,7 @@
  */
 import type { FileChange } from '../../common/models';
 import { S, type App } from '../state';
-import { el, clearChildren, formatTime } from '../util';
+import { el, clearChildren, formatTime, baseOf, groupPaths } from '../util';
 import { rpc } from '../rpc';
 import { renderDiff } from '../diff/render';
 import { setIcon } from '../icons';
@@ -193,21 +193,13 @@ export function createDetailPanel(app: App): DetailPanel {
     filesHeadText.textContent = `${S.t('changedFiles')} · ${d.files.length} · +${totalAdd} −${totalDel}`;
     filesOpenBtn.title = S.t('openSelectedFiles', { n: String(Math.max(1, selectedPaths().length)) });
     clearChildren(filesList);
-    const groups = new Map<string, FileChange[]>();
-    for (const f of d.files) {
-      const dir = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/') + 1) : '';
-      const list = groups.get(dir);
-      if (list) list.push(f); else groups.set(dir, [f]);
-    }
-    // 根目录组('')置顶，其余按路径字母序
-    const dirs = [...groups.keys()].sort((a, b) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
+    // #46 收敛为 util.groupPaths（目录字母序、根目录组置顶、根组显仓库绝对路径）
     const repoRoot = S.repos.find(r => r.id === S.repoId)?.root;
-    for (const dir of dirs) {
-      const headText = dir === '' ? (repoRoot ?? '/') : dir;
-      const groupHead = el('div', 'gg-file-group', headText);
-      groupHead.title = headText;
+    for (const g of groupPaths(d.files, f => f.path, repoRoot)) {
+      const groupHead = el('div', 'gg-file-group', g.head);
+      groupHead.title = g.head;
       filesList.appendChild(groupHead);
-      for (const f of groups.get(dir)!) filesList.appendChild(fileRow(app, f));
+      for (const f of g.items) filesList.appendChild(fileRow(app, f));
     }
     if (!S.selectedFile && d.files.length) {
       S.selectedFile = d.files[0].path;
@@ -241,8 +233,7 @@ export function createDetailPanel(app: App): DetailPanel {
       num.appendChild(el('b'));
     }
     row.appendChild(num);
-    const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
-    const label = f.oldPath ? `${base(f.oldPath)} → ${base(f.path)}` : base(f.path);
+    const label = f.oldPath ? `${baseOf(f.oldPath)} → ${baseOf(f.path)}` : baseOf(f.path);
     const pathEl = el('span', 'gg-file-path', label);
     pathEl.title = f.oldPath ? `${f.oldPath} → ${f.path}` : f.path;
     row.appendChild(pathEl);

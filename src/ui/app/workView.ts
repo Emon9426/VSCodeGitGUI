@@ -5,7 +5,7 @@
  */
 import type { FileEntry } from '../../common/models';
 import { S, type App } from '../state';
-import { el, clearChildren } from '../util';
+import { el, clearChildren, baseOf, groupPaths } from '../util';
 import { rpc } from '../rpc';
 import { renderDiff } from '../diff/render';
 import { showContextMenu, confirmDialog } from './overlays';
@@ -117,9 +117,8 @@ export function createWorkView(app: App): WorkView {
   function officeTemps(): string[] {
     const st = S.work.state;
     if (!st) return [];
-    const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
     return [...st.unstaged, ...st.staged]
-      .filter(e => base(e.path).startsWith('~$'))
+      .filter(e => baseOf(e.path).startsWith('~$'))
       .map(e => e.path);
   }
   cleanTempBtn.addEventListener('click', () => {
@@ -203,9 +202,8 @@ export function createWorkView(app: App): WorkView {
     if (resolving) stCell.appendChild(el('span', 'gg-spinner gg-st-spin'));
     else stCell.textContent = 'C';
     r.appendChild(stCell);
-    const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
     const pathEl = el('span', 'gg-work-fpath');
-    pathEl.appendChild(el('b', undefined, base(e.path)));
+    pathEl.appendChild(el('b', undefined, baseOf(e.path)));
     pathEl.title = e.path;
     r.appendChild(pathEl);
     const btns = el('div', 'gg-work-cbtns');
@@ -409,24 +407,18 @@ export function createWorkView(app: App): WorkView {
   }
 
   /**
-   * 按目录分组渲染（与提交详情一致）：目录头行显示完整路径一次（根目录显示仓库绝对路径），
+   * 按目录分组渲染（#46 收敛为 util.groupPaths）：目录头行显示完整路径一次（根目录显示仓库绝对路径），
    * 组内行只显示文件名；目录按字母序、根目录置顶，组内按路径序。
    */
   function appendGrouped(box: HTMLElement, list: FileEntry[], mkRow: (e: FileEntry) => HTMLElement): void {
     if (!list.length) return;
     const sorted = [...list].sort((a, b) => a.path.localeCompare(b.path));
     const repoRoot = S.repos.find(r => r.id === S.repoId)?.root;
-    let curDir: string | null = null;
-    for (const e of sorted) {
-      const dir = e.path.includes('/') ? e.path.slice(0, e.path.lastIndexOf('/') + 1) : '';
-      if (dir !== curDir) {
-        curDir = dir;
-        const text = dir === '' ? (repoRoot ?? '/') : dir;
-        const h = el('div', 'gg-work-dirgroup', text);
-        h.title = text;
-        box.appendChild(h);
-      }
-      box.appendChild(mkRow(e));
+    for (const g of groupPaths(sorted, e => e.path, repoRoot)) {
+      const h = el('div', 'gg-work-dirgroup', g.head);
+      h.title = g.head;
+      box.appendChild(h);
+      for (const e of g.items) box.appendChild(mkRow(e));
     }
   }
 
@@ -443,14 +435,13 @@ export function createWorkView(app: App): WorkView {
     r.appendChild(cb);
     const stLetter = e.untracked ? 'U' : inStagedGroup ? (e.staged ?? 'M') : (e.unstaged ?? 'M');
     r.appendChild(el('span', `gg-st ${stLetter}`, stLetter));
-    const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
     const pathEl = el('span', 'gg-work-fpath');
     if (e.origPath) {
-      pathEl.appendChild(el('span', 'gg-work-fdir', base(e.origPath) + ' → '));
-      pathEl.appendChild(el('b', undefined, base(e.path)));
+      pathEl.appendChild(el('span', 'gg-work-fdir', baseOf(e.origPath) + ' → '));
+      pathEl.appendChild(el('b', undefined, baseOf(e.path)));
       pathEl.title = `${e.origPath} → ${e.path}`;
     } else {
-      pathEl.appendChild(el('b', undefined, base(e.path)));
+      pathEl.appendChild(el('b', undefined, baseOf(e.path)));
       pathEl.title = e.path;
     }
     r.appendChild(pathEl);
@@ -472,7 +463,7 @@ export function createWorkView(app: App): WorkView {
     };
     acts.append(
       mkAct('goToFile', S.t('openFile'), '', () => app.openFile(e.path)),
-      mkAct('copyName', S.t('copyFileName'), '', () => app.copy(base(e.path))),
+      mkAct('copyName', S.t('copyFileName'), '', () => app.copy(baseOf(e.path))),
       mkAct('copy', S.t('copyPath'), '', () => app.copy(e.path)),
       // 行内删除：从磁盘移除，语义与「丢弃」（恢复内容）相反
       mkAct('trash', S.t('deleteFile'), 'gg-work-del', () => askDelete([e.path])),
@@ -493,7 +484,7 @@ export function createWorkView(app: App): WorkView {
         { label: `${S.t('deleteFile')}…`, danger: true, run: () => askDelete([e.path]) },
         { label: S.t('openFile'), run: () => app.openFile(e.path) },
         { label: S.t('revealInFM'), run: () => app.revealInFM(e.path) },
-        { label: S.t('copyFileName'), run: () => app.copy(base(e.path)) },
+        { label: S.t('copyFileName'), run: () => app.copy(baseOf(e.path)) },
         { label: S.t('copyPath'), run: () => app.copy(e.path) },
       );
       showContextMenu(items, ev.clientX, ev.clientY);

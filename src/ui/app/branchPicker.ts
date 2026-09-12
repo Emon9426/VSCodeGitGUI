@@ -12,7 +12,7 @@ import type { BranchInfo, GraphScope } from '../../common/models';
 import { S, type App } from '../state';
 import { el } from '../util';
 import { fuzzyMatch } from '../fuzzy';
-import { buildPrefixTree, countNode, stripTo, type PrefixNode } from './branchGroup';
+import { buildPrefixTree, countNode, stripRemote, walkPrefixTree, type PrefixNode } from './branchGroup';
 import { openModal, toast } from './overlays';
 
 type Row =
@@ -59,7 +59,6 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   box.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
 
   const localNames = new Set(st.branches.map(b => b.name));
-  const strip = (n: string) => (n.includes('/') ? n.slice(n.indexOf('/') + 1) : n);
 
   /** 全量条目（显示名/匹配名分离：远程行显示剥前缀名，匹配用全名）。
    *  #40：checkout 模式只收「可检出」条目——本地分支不进列表，远程分支剔除已有本地同名者 */
@@ -74,7 +73,7 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   }
   for (const g of st.remotes) {
     for (const b of g.branches) {
-      const stripped = strip(b.name);
+      const stripped = stripRemote(b.name);
       if (mode === 'checkout' && localNames.has(stripped)) continue;
       all.push({ row: { kind: 'remote', b, remote: g.name, hasLocal: localNames.has(stripped) }, display: stripped, sub: g.name });
     }
@@ -103,6 +102,9 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
     else row.appendChild(el('span', 'gg-bp-ic', '⇅'));
     const nm = el('span', 'gg-bp-name');
     const name = e.disp ?? displayNameOf(e);
+    // #45：深层级被 ellipsis 截断时悬停看全名（远程含 remote 前缀全名）
+    if (r.kind === 'remote') row.title = r.b.name;
+    else if (r.kind === 'local') row.title = r.b.name;
     let last = 0;
     for (const p of e.positions) {
       if (p < last || p >= name.length) continue;
@@ -136,13 +138,15 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
       ordered.push(e);
       list.appendChild(rowEl(e));
     };
-    /** 前缀组树递归（v0.23.2）：以 depth=0 调用 → 一级组头 level 2（26px）、组内行 depth 1（44px），每深一级 +16px */
+    /** 前缀组树递归（v0.23.2；#46 收敛为 walkPrefixTree）：以 depth=0 调用 → 一级组头 level 2（26px）、组内行 depth 1（44px），每深一级 +16px */
     const renderTree = (node: PrefixNode<{ row: Row; display: string; sub: string }>, depth: number): void => {
-      for (const a of node.items) addRow(a, [], depth, stripTo(node.path, a.display));
-      for (const ch of node.children) {
-        list.appendChild(sectionHead(`${ch.seg}/`, countNode(ch), depth + 2));
-        renderTree(ch, depth + 1);
-      }
+      walkPrefixTree(node, a => a.display, {
+        item: (a, d, disp) => addRow(a, [], d, disp),
+        group: (ch, d) => {
+          list.appendChild(sectionHead(`${ch.seg}/`, countNode(ch), d + 1));
+          renderTree(ch, d);
+        },
+      }, depth);
     };
     /** 子序列模糊命中收集（远程行用全名匹配） */
     const collectHits = () => {
@@ -173,11 +177,19 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
           posOf.set(h.a.row, off ? h.positions.map(p => p - off).filter(p => p >= 0) : [...h.positions]);
         }
         const renderHitTree = (node: PrefixNode<{ row: Row; display: string; sub: string }>, depth: number): void => {
-          for (const a of node.items) addRow(a, posOf.get(a.row) ?? [], depth, stripTo(node.path, a.display));
-          for (const ch of node.children) {
-            list.appendChild(sectionHead(`${ch.seg}/`, countNode(ch), depth + 2));
-            renderHitTree(ch, depth + 1);
-          }
+          walkPrefixTree(node, a => a.display, {
+            item: (a, d, disp) => {
+              // #45：display 名再被剥掉组前缀——命中位置须补扣该前缀长度（含分隔斜杠），
+              // 否则命中组前缀字符时高亮错位、命中内层时越界丢失
+              const cut = a.display.length - disp.length;
+              const base = posOf.get(a.row) ?? [];
+              addRow(a, cut ? base.map(p => p - cut).filter(p => p >= 0) : base, d, disp);
+            },
+            group: (ch, d) => {
+              list.appendChild(sectionHead(`${ch.seg}/`, countNode(ch), d + 1));
+              renderHitTree(ch, d);
+            },
+          }, depth);
         };
         let any = false;
         for (const g of st?.remotes ?? []) {

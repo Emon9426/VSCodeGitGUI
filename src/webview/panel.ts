@@ -10,7 +10,7 @@ import * as vscode from 'vscode';
 import { createT, resolveLang, type Lang, type Translate } from '../common/i18n';
 import type { Commit, FileEntry, LogFilter, MergeSessionAny, ProjectInfo, PullFileStatMap, RepoMeta, RepoState, WorkState } from '../common/models';
 import { RENAME_SEP } from '../common/models';
-import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, FixStepDto, WVRequest } from '../common/protocol';
+import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, FixStepDto, OpKind, WVRequest } from '../common/protocol';
 import { GitError, GitExecutor, isGitError } from '../git/executor';
 import { discoverRepos, repoIdOf, sharedDetect } from '../git/discovery';
 import { GitService, EMPTY_TREE, SCAN_CAP, authorDateWindow, cleanAuthorName } from '../git/service';
@@ -1163,14 +1163,9 @@ export class GraphPanel {
   private async runFileOp(spec: OpSpec): Promise<{ ok: boolean; outputTail?: string }> {
     if (!this.runner || !this.currentRepoId) return { ok: false };
     const root = this.roots.get(this.currentRepoId)!;
-    const opId = ++this.opSeq;
     const kind = spec.kind;
-    this.post({ t: 'opProgress', opId, kind, text: '' });
-    const outcome = await this.runner.run(
-      root, spec, opId,
-      (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
-      ok => ok ? this.t(`${kind}Done`) : this.t('opFailed', { op: this.t(kind) }),
-    );
+    const { opId, onProgress } = this.beginOp(kind);
+    const outcome = await this.runner.run(root, spec, opId, onProgress, this.doneMsg(kind));
     this.post({ t: 'opResult', opId, kind, ok: outcome.ok, message: outcome.message, outputTail: outcome.outputTail });
     if (outcome.ok) {
       this.files?.invalidateTree(root);
@@ -1243,6 +1238,37 @@ export class GraphPanel {
     }
   }
 
+  // ---------- op 包装公共件（#46 收敛 5 处逐字重复的样板） ----------
+
+  /** 进度转发 lambda：超长行截断（117+…）后转发 opProgress */
+  private forwardProgress(opId: number, kind: OpKind): (text: string, pct?: number) => void {
+    return (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct });
+  }
+
+  /** 分配 opId 并立即播报「进行中」（不等首条 --progress 输出）：runFileOp / startOp / workCommit 共用 */
+  private beginOp(kind: OpKind): { opId: number; onProgress: (text: string, pct?: number) => void } {
+    const opId = ++this.opSeq;
+    this.post({ t: 'opProgress', opId, kind, text: '' });
+    return { opId, onProgress: this.forwardProgress(opId, kind) };
+  }
+
+  /** buildDone 标准形态：成功 `${kind}Done`（可覆盖键）/ 失败 `opFailed` */
+  private doneMsg(kind: string, doneKey?: string): (ok: boolean) => string {
+    return ok => ok ? this.t(doneKey ?? `${kind}Done`) : this.t('opFailed', { op: this.t(kind) });
+  }
+
+  /** 操作后快速校验（Issue #6 后续；#46 收敛 startOp/workCommit 两处同构块）：fail-open，warn 转琥珀文案 */
+  private async verifyOutcome(
+    root: string, spec: OpSpec, kind: string, message: string,
+    ctx: { headBefore?: string } = {},
+  ): Promise<{ message: string; verify?: 'pass' | 'warn' | 'unknown' }> {
+    if (!this.verifier || this.config.opVerify === 'off') return { message };
+    const v = await this.verifier.verify(root, spec, ctx, this.config.opVerify === 'deep' ? 'deep' : 'quick');
+    if (v.verdict === 'warn') return { message: this.verifyWarnText(kind, v), verify: 'warn' };
+    if (v.verdict !== 'skip') return { message, verify: v.verdict };
+    return { message };
+  }
+
   /** 统一操作入口（Issue #8：返回 Promise 供修复步骤逐步 await；普通调用方照旧忽略返回值） */
   private startOp(spec: OpSpec): Promise<OpOutcome | undefined> {
     if (!this.runner || !this.currentRepoId) return Promise.resolve(undefined);
@@ -1254,23 +1280,21 @@ export class GraphPanel {
       return Promise.resolve(undefined);
     }
     const releaseKind = (): void => this.releaseNetKind(root, spec);
-    const opId = ++this.opSeq;
     const kind = spec.kind;
     const label = this.t(kind);
-    // 立即播报"进行中"（不等首条 --progress 输出），按钮随即进入繁忙态
-    this.post({ t: 'opProgress', opId, kind, text: '' });
+    // 立即播报"进行中"（不等首条 --progress 输出），按钮随即进入繁忙态（#46 经 beginOp）
+    const { opId, onProgress } = this.beginOp(kind);
     const refsBefore = kind === 'fetch' || kind === 'pull' ? this.snapshotRefs() : undefined;
     const headBefore = kind === 'pull' ? this.lastState?.head.sha : undefined;   // 摘要范围：pull 前后 HEAD 差
     // F3（Issue #6）：pull 的"已是最新"反馈带上游分支名——拉错分支/远端时一眼可见
     const upstreamBefore = kind === 'pull' ? this.lastState?.branches.find(b => b.isHead)?.upstream : undefined;
     return this.runner.run(
-      root, spec, opId,
-      (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
+      root, spec, opId, onProgress,
       ok => ok ? this.t(`${kind}Done`) : this.t('opFailed', { op: label }),
     ).then(async outcome => {
       try {
         if (outcome.message === 'cancelled') {
-          this.post({ t: 'opResult', opId, kind, ok: false, message: this.t('opCancelled') });
+          this.post({ t: 'opResult', opId, kind, ok: false, cancelled: true, message: this.t('opCancelled') });
           return outcome;
         }
         // 结果细化：让"点了但没变化"也有明确反馈（v0.7.1）
@@ -1295,16 +1319,10 @@ export class GraphPanel {
           } else if (kind === 'branchDelete') {
             message = this.t('branchDeleteDone', { name: spec.name ?? '' });
           }
-          // 操作后快速校验（Issue #6 后续）：退出码 0 后按意图核对仓库状态，
+          // 操作后快速校验（Issue #6 后续；#46 经 verifyOutcome）：退出码 0 后按意图核对仓库状态，
           // 假成功（拉错分支/推错分支/未合并/HEAD 未按预期变化）显式警示；探针 fail-open
-          if (kind !== 'fetch' && this.verifier && this.config.opVerify !== 'off') {
-            const v = await this.verifier.verify(root, spec, {}, this.config.opVerify === 'deep' ? 'deep' : 'quick');
-            if (v.verdict === 'warn') {
-              message = this.verifyWarnText(kind, v);
-              verify = 'warn';
-            } else if (v.verdict !== 'skip') {
-              verify = v.verdict;
-            }
+          if (kind !== 'fetch') {
+            ({ message, verify } = await this.verifyOutcome(root, spec, kind, message ?? ''));
           }
         } else if (outcome.stalled) {
           // F2（Issue #6）：无输出看门狗触发——连接停滞快速失败并明示原因，重试即新连接
@@ -1448,8 +1466,8 @@ export class GraphPanel {
     // Issue #7 方案 B：本地 op 入队即有进度（quiet 仅收窄为「成功不弹 toast」）；
     // 排队位次 >0 时显示「排队中」，轮到执行时切回执行态
     void this.runner.run(root, spec, opId,
-      (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
-      ok => ok ? this.t(`${kind}Done`) : this.t('opFailed', { op: this.t(kind) }),
+      this.forwardProgress(opId, kind),
+      this.doneMsg(kind),
       position => { if (position > 0) this.post({ t: 'opProgress', opId, kind, text: '', queued: true, position }); },
       () => this.post({ t: 'opProgress', opId, kind, text: '' }),
     ).then(outcome => {
@@ -1483,7 +1501,7 @@ export class GraphPanel {
     const opId = ++this.opSeq;
     const kind = 'resolveConflict';
     void this.runner.run(root, { kind, paths, ours }, opId,
-      (text, pct) => this.post({ t: 'opProgress', opId, kind, text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
+      this.forwardProgress(opId, kind),
       ok => ok ? this.t('resolveConflictDone') : this.t('opFailed', { op: this.t('resolveConflict') }),
       // Issue #7 方案 B：入队即反馈——排队位次可见，轮到执行时切回执行态
       position => { if (position > 0) this.post({ t: 'opProgress', opId, kind, text: '', queued: true, position }); },
@@ -1704,30 +1722,23 @@ export class GraphPanel {
     fs.writeFileSync(file, message, 'utf8');
 
     const root = this.currentRoot();
-    const opId = ++this.opSeq;
-    this.post({ t: 'opProgress', opId, kind: 'commit', text: '' });
+    const { opId, onProgress } = this.beginOp('commit');
     // 校验基准（Issue #6 后续）：提交前 HEAD——commit 判定"HEAD 必须前进"
     const headBefore = (await this.service!.headShaOf(root).catch(() => null)) ?? undefined;
     let outcome;
     try {
       outcome = await this.runner!.run(root, { kind: 'commit', messageFile: file, amend }, opId,
-        (text, pct) => this.post({ t: 'opProgress', opId, kind: 'commit', text: text.length > 120 ? text.slice(0, 117) + '…' : text, pct }),
-        ok => ok ? this.t(amend ? 'amendDone' : 'commitDone') : this.t('opFailed', { op: this.t('commit') }),
+        onProgress,
+        this.doneMsg('commit', amend ? 'amendDone' : 'commitDone'),
       );
     } finally {
       try { fs.unlinkSync(file); } catch { /* best effort */ }
     }
-    // 操作后校验（Issue #6 后续）：HEAD 未前进 = 假成功警示（fail-open）
+    // 操作后校验（Issue #6 后续；#46 经 verifyOutcome）：HEAD 未前进 = 假成功警示（fail-open）
     let verify: 'pass' | 'warn' | 'unknown' | undefined;
     let commitMessage = outcome.message;
-    if (outcome.ok && this.verifier && this.config.opVerify !== 'off') {
-      const v = await this.verifier.verify(root, { kind: 'commit' }, { headBefore }, this.config.opVerify === 'deep' ? 'deep' : 'quick');
-      if (v.verdict === 'warn') {
-        commitMessage = this.verifyWarnText('commit', v);
-        verify = 'warn';
-      } else if (v.verdict !== 'skip') {
-        verify = v.verdict;
-      }
+    if (outcome.ok) {
+      ({ message: commitMessage, verify } = await this.verifyOutcome(root, { kind: 'commit' }, 'commit', outcome.message ?? '', { headBefore }));
     }
     this.post({ t: 'opResult', opId, kind: 'commit', ok: outcome.ok, message: commitMessage, outputTail: outcome.outputTail, verify });
     if (!outcome.ok) throw new Error(outcome.message ?? 'commit failed');

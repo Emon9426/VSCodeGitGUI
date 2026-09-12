@@ -3,7 +3,7 @@
  * 多段前缀逐级建树、无前缀留顶层、组间字母序、组内保序、空段防御、计数与短名剥离。
  */
 import { describe, expect, it } from 'vitest';
-import { buildPrefixTree, countNode, stripTo } from '../../src/ui/app/branchGroup';
+import { buildPrefixTree, countNode, stripRemote, stripTo, walkPrefixTree } from '../../src/ui/app/branchGroup';
 
 const N = (names: string[]) => names.map(n => ({ n }));
 
@@ -76,5 +76,32 @@ describe('countNode / stripTo', () => {
     expect(stripTo('release/1.0', 'release/1.0/a')).toBe('a');
     expect(stripTo('', 'main')).toBe('main');
     expect(stripTo('release', 'feature/x')).toBe('feature/x');
+  });
+});
+
+describe('walkPrefixTree / stripRemote（#46 收敛三处递归渲染）', () => {
+  /** 模拟调用方的递归形态（sidebar/branchPicker 的用法） */
+  function walkAll<T>(node: { items: T[]; children: any[] }, nameOf: (t: T) => string, depth = 0): { depth: number; disp: string }[] {
+    const out: { depth: number; disp: string }[] = [];
+    walkPrefixTree(node as any, nameOf, {
+      item: (_t, depth2, disp) => out.push({ depth: depth2, disp }),
+      group: (ch, childDepth) => out.push(...walkAll(ch, nameOf, childDepth)),
+    }, depth);
+    return out;
+  }
+
+  it('items 回调收到剥好组前缀的短名；children 以 childDepth=depth+1 回调', () => {
+    const { root } = buildPrefixTree(N(['release/hot', 'release/1.0/a']), x => x.n);
+    const rows = walkAll(root, (x: { n: string }) => x.n);
+    // release 组头 childDepth=1，其 items 在 depth 1；1.0 子组 childDepth=2，a 在 depth 2
+    expect(rows).toEqual([
+      { depth: 1, disp: 'hot' },
+      { depth: 2, disp: 'a' },
+    ]);
+  });
+
+  it('stripRemote：剥首段 remote 名，无斜杠原样', () => {
+    expect(stripRemote('origin/feature/x')).toBe('feature/x');
+    expect(stripRemote('main')).toBe('main');
   });
 });

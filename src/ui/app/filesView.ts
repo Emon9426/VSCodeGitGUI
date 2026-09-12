@@ -284,6 +284,7 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
       const tdT = el('td', 'gg-files-dim', it.isDir ? S.t('filesTypeFolder') : fileTypeInfo(it.name).type);
       const tdS = el('td', 'gg-files-dim gg-files-sz', it.isDir ? '—' : fmtSize(it.size ?? it.gitSize));
       tr.append(tdN, tdD, tdT, tdS);
+      tr.title = it.path;   // #45：文件名列 ellipsis 截断时悬停看完整相对路径
       bindRow(tr, it);
       tbody.append(tr);
     }
@@ -302,6 +303,7 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
       const big = fileIconSvg(it.name, it.isDir, 30);
       big.classList.add('gg-files-card-ic');
       card.append(big, el('span', 'gg-files-card-nm', it.name));
+      card.title = it.path;   // #45：卡片名 86px 内必截，悬停看完整相对路径
       bindRow(card, it);
       grid.append(card);
     }

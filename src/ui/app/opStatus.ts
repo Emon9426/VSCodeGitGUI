@@ -11,8 +11,9 @@ export interface OpStatus {
   el: HTMLElement;
   /** activeOps 变化（opProgress/opResult 到达）后重渲染 */
   update(): void;
-  /** 操作成功完成：绿色闪现约 0.8s（队列中还有后续操作则立即切换）；warn=校验警示琥珀色 */
-  finish(kind: string, warn?: boolean): void;
+  /** 操作成功完成：绿色闪现约 0.8s（队列中还有后续操作则立即切换）；warn=校验警示琥珀色；
+   *  message=宿主细化消息优先展示（#45：避免 Done 键占位符未插值，如 branchDeleteDone 的 {name}） */
+  finish(kind: string, warn?: boolean, message?: string): void;
 }
 
 /** 进度行图标（与工具栏按钮一致的 SVG 线性图标，Issue #18 S4 去 emoji） */
@@ -107,12 +108,13 @@ export function createOpStatus(app: App): OpStatus {
     cancel.title = S.t('cancel');
   }
 
-  function finish(kind: string, warn = false): void {
+  function finish(kind: string, warn = false, message?: string): void {
     root.classList.remove('off');
     root.classList.add('done');
     root.classList.toggle('warn', warn);   // 操作后校验警示（Issue #6 后续）：琥珀色区别于常规绿色
     setIcon(icon, warn ? 'warnTriangle' : 'checkCircle');
-    name.textContent = S.t(`${kind}Done`);
+    // #45：宿主细化消息（fetch 计数/推送明细/删除分支名）优先，缺失再退回通用 Done 文案
+    name.textContent = message || S.t(`${kind}Done`);
     pct.textContent = '';
     text.textContent = '';
     bar.classList.remove('indet');
