@@ -194,7 +194,7 @@ export function createCommitBar(app: App): CommitBar {
     const rect = caretBtn.getBoundingClientRect();
     const blocked = blockReason() !== undefined;   // 菜单项同步门控（B1）
     showContextMenu([
-      { label: S.t('commitBtn') + '  Ctrl+⏎', run: () => doCommit({}), disabled: blocked },
+      { label: `${S.t('commitBtn')}  Ctrl+Enter`, run: () => doCommit({}), disabled: blocked },
       { label: S.t('commitAndPush'), run: () => doCommit({ push: true }), disabled: blocked },
       { sep: true },
       { label: `${S.t('amend')}…`, run: () => enterAmend(), disabled: blocked },

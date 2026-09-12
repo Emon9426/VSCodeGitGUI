@@ -54,40 +54,68 @@ export function closeContextMenu(): void {
 
 // ---------------- 对话框 ----------------
 
-/** 通用模态骨架（标题 + 可滚动 body；close 移除浮层）。提交摘要等自定义弹窗复用。 */
-export function openModal(title: string): { box: HTMLElement; body: HTMLElement; close: () => void } {
+/**
+ * 通用模态骨架（标题 + 可滚动 body；close 移除浮层）。提交摘要等自定义弹窗复用。
+ * #49：opts.onCancel 提供时，Esc / 点击遮罩走「取消」语义（回调后移除浮层）——
+ * 此前遮罩点击只 remove DOM，确认框的 Promise 永不落定（操作被静默吞掉）。
+ */
+export function openModal(title: string, opts?: { onCancel?: () => void }): { box: HTMLElement; body: HTMLElement; close: () => void } {
   const overlay = el('div', 'gg-modal-overlay');
   const box = el('div', 'gg-modal');
   const head = el('div', 'gg-modal-title', title);
   const body = el('div', 'gg-modal-body');
   box.append(head, body);
   overlay.appendChild(box);
-  overlay.addEventListener('mousedown', e => { if (e.target === overlay) overlay.remove(); });
+  const dismiss = () => { opts?.onCancel?.(); overlay.remove(); };
+  if (opts?.onCancel) {
+    overlay.addEventListener('mousedown', e => { if (e.target === overlay) dismiss(); });
+    box.addEventListener('keydown', e => { if (e.key === 'Escape') dismiss(); });
+  } else {
+    overlay.addEventListener('mousedown', e => { if (e.target === overlay) overlay.remove(); });
+  }
   document.body.appendChild(overlay);
   return { box, body, close: () => overlay.remove() };
+}
+
+/** 确认/取消双按钮对话框骨架（#49 收敛：onCancel 统一走遮罩/Esc，ok/cancel 双路径防重复 resolve） */
+function askDialog(title: string, okLabel: string, danger: boolean, build: (body: HTMLElement, ok: HTMLButtonElement) => void): Promise<boolean> {
+  return new Promise(resolve => {
+    let settled = false;
+    const { box, body, close } = openModal(title, {
+      onCancel: () => { settled = true; resolve(false); },
+    });
+    const finish = (v: boolean) => {
+      if (settled) return;
+      settled = true;
+      close();
+      resolve(v);
+    };
+    const btns = el('div', 'gg-modal-btns');
+    const cancel = el('button', 'gg-btn', S.t('cancel'));
+    const ok = el('button', danger ? 'gg-btn danger' : 'gg-btn primary', okLabel);
+    // B4（Issue #18）：确认/取消首点即禁用——双击间隔内不再重复触发动作（防 index.lock 类二次提交）
+    cancel.addEventListener('click', () => { ok.disabled = true; cancel.disabled = true; finish(false); });
+    ok.addEventListener('click', () => { ok.disabled = true; cancel.disabled = true; finish(true); });
+    btns.append(cancel, ok);
+    box.appendChild(btns);
+    build(body, ok);
+    ok.focus();
+  });
 }
 
 export function confirmDialog(
   title: string, message: string, okLabel: string, danger = false,
 ): Promise<boolean> {
-  return new Promise(resolve => {
-    const { box, body, close } = openModal(title);
+  return askDialog(title, okLabel, danger, body => {
     body.appendChild(el('div', 'gg-modal-text', message));
-    const btns = el('div', 'gg-modal-btns');
-    const cancel = el('button', 'gg-btn', S.t('cancel'));
-    const ok = el('button', danger ? 'gg-btn danger' : 'gg-btn primary', okLabel);
-    // B4（Issue #18）：确认/取消首点即禁用——双击间隔内不再重复触发动作（防 index.lock 类二次提交）
-    cancel.addEventListener('click', () => { ok.disabled = true; cancel.disabled = true; close(); resolve(false); });
-    ok.addEventListener('click', () => { ok.disabled = true; cancel.disabled = true; close(); resolve(true); });
-    btns.append(cancel, ok);
-    box.appendChild(btns);
-    ok.focus();
   });
 }
 
 export function promptDialog(title: string, label: string, value: string): Promise<string | null> {
   return new Promise(resolve => {
-    const { box, body, close } = openModal(title);
+    let settled = false;
+    const done = (v: string | null) => { if (settled) return; settled = true; close(); resolve(v); };
+    const { box, body, close } = openModal(title, { onCancel: () => done(null) });
     const lab = el('label', 'gg-modal-label', label);
     const input = el('input', 'gg-input') as HTMLInputElement;
     input.value = value;
@@ -96,7 +124,6 @@ export function promptDialog(title: string, label: string, value: string): Promi
     const btns = el('div', 'gg-modal-btns');
     const cancel = el('button', 'gg-btn', S.t('cancel'));
     const ok = el('button', 'gg-btn primary', S.t('ok'));
-    const done = (v: string | null) => { close(); resolve(v); };
     cancel.addEventListener('click', () => done(null));
     ok.addEventListener('click', () => done(input.value.trim() || null));
     input.addEventListener('keydown', e => { if (e.key === 'Enter') done(input.value.trim() || null); });
@@ -118,7 +145,7 @@ export function tagDialog(
   t: (k: string, p?: Record<string, string | number>) => string,
 ): Promise<{ name: string; message: string } | null> {
   return new Promise(resolve => {
-    const { box, body, close } = openModal(t('tagTitle', { sha: shaShort }));
+    const { box, body, close } = openModal(t('tagTitle', { sha: shaShort }), { onCancel: () => done(null) });
     const nameLabel = el('label', 'gg-modal-label', t('tagNameLabel'));
     const nameInput = el('input', 'gg-input') as HTMLInputElement;
     nameInput.placeholder = 'v1.0.0';
@@ -133,13 +160,17 @@ export function tagDialog(
     const ok = el('button', 'gg-btn primary', t('tagCreateBtn'));
     const done = (v: { name: string; message: string } | null) => { close(); resolve(v); };
     cancel.addEventListener('click', () => done(null));
+    // #49：空名时创建按钮禁用（视觉反馈），不再静默 no-op
+    const syncOk = () => { ok.disabled = !nameInput.value.trim(); };
     ok.addEventListener('click', () => {
       const name = nameInput.value.trim();
       if (name) done({ name, message: msgInput.value.trim() });
     });
+    nameInput.addEventListener('input', syncOk);
     nameInput.addEventListener('keydown', e => { if (e.key === 'Enter' && nameInput.value.trim()) done({ name: nameInput.value.trim(), message: msgInput.value.trim() }); });
     btns.append(cancel, ok);
     box.appendChild(btns);
+    syncOk();
     nameInput.focus();
   });
 }
@@ -147,7 +178,7 @@ export function tagDialog(
 /** reset 模式选择（设计方案 6.5：hard 需强确认；Issue #18 S6：警示图标 + 不可撤销副行） */
 export function resetDialog(sha: string, dirtyCount: number, t: (k: string, p?: Record<string, string | number>) => string): Promise<ResetMode | null> {
   return new Promise(resolve => {
-    const { box, body, close } = openModal(t('resetTitle', { sha: sha.slice(0, 7) }));
+    const { box, body, close } = openModal(t('resetTitle', { sha: sha.slice(0, 7) }), { onCancel: () => done(null) });
     const modes: ResetMode[] = ['soft', 'mixed', 'hard'];
     let selected: ResetMode = 'mixed';
     const warn = el('div', 'gg-modal-warn');
@@ -186,10 +217,12 @@ export function resetDialog(sha: string, dirtyCount: number, t: (k: string, p?: 
     const btns = el('div', 'gg-modal-btns');
     const cancel = el('button', 'gg-btn', S.t('cancel'));
     const ok = el('button', 'gg-btn primary', t('confirm'));
+    const done = (v: ResetMode | null) => { close(); resolve(v); };
     cancel.addEventListener('click', () => { close(); resolve(null); });
     ok.addEventListener('click', () => { close(); resolve(selected); });
     btns.append(cancel, ok);
     box.appendChild(btns);
+    ok.focus();   // #49：初始焦点（Esc/Enter 可用）
   });
 }
 
@@ -234,7 +267,7 @@ function notifHostEl(): HTMLElement {
     notifHost.style.width = `${notifyWidth()}px`;
     // 左缘拖拽手柄（#22 B1）：向左拖加宽/向右拖收窄，松开存 globalState 记忆
     const grip = el('div', 'gg-notifs-grip');
-    grip.title = '↔';
+    grip.title = S.t('dragResize');
     grip.addEventListener('mousedown', e => {
       e.preventDefault();
       const startX = e.clientX;
@@ -314,15 +347,17 @@ export function notify(level: NotifyLevel, opts: NotifyOpts): void {
   x.addEventListener('click', remove);
   h.insertBefore(item, h.querySelector('.gg-notifs-more') ?? null);
   trimNotifications();
-  const ms = NOTIFY_MS[level];
+  let ms = NOTIFY_MS[level];
+  // #49：带动作按钮的通知（如「推送到 origin？」）停留加长到 ≥8s，用户来得及点
+  if (opts.actions?.length) ms = Math.max(ms, 8000);
   if (ms > 0) {
     setTimeout(() => item.classList.add('fade'), ms - 350);
     setTimeout(remove, ms);
   }
 }
 
-/** 旧签名兼容入口（info/warn/error 单行消息）：内部转发 Notification */
-export function toast(level: 'info' | 'warn' | 'error', message: string, action?: { label: string; run: () => void }): void {
+/** 旧签名兼容入口（单行消息）：内部转发 Notification；#49 起接受 success 级（checkCircle 图标） */
+export function toast(level: 'info' | 'success' | 'warn' | 'error', message: string, action?: { label: string; run: () => void }): void {
   notify(level, { title: message, actions: action ? [action] : undefined });
 }
 

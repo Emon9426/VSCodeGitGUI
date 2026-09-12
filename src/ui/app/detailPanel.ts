@@ -29,7 +29,7 @@ export function createDetailPanel(app: App): DetailPanel {
   const head = el('div', 'gg-detail-head');
   const headSha = el('span', 'gg-detail-sha');
   const collapseBtn = el('button', 'gg-icon-btn', '⌃');
-  collapseBtn.title = '⌃';
+  collapseBtn.title = S.t('detailCollapse');
   head.append(headSha, collapseBtn);
   const body = el('div', 'gg-detail-body');
   const left = el('div', 'gg-detail-left');
@@ -46,7 +46,7 @@ export function createDetailPanel(app: App): DetailPanel {
   left.append(summary, msgBlock, filesHead, filesList);
   const diffHead = el('div', 'gg-diff-head');
   const diffPath = el('span', 'gg-diff-path');
-  const diffRevealBtn = el('button', 'gg-btn small');
+  const diffRevealBtn = el('button', 'gg-icon-btn');   // #49：与同排 diffVscodeBtn 统一规格（原 gg-btn small）
   setIcon(diffRevealBtn, 'folder');
   const diffVscodeBtn = el('button', 'gg-icon-btn');   // 在 VS Code 中打开工作区文件
   setIcon(diffVscodeBtn, 'goToFile');
@@ -150,7 +150,8 @@ export function createDetailPanel(app: App): DetailPanel {
     root.classList.toggle('stale', !!S.detailLoading);
     const d = S.detail;
     if (!d) return;
-    root.classList.toggle('right', S.config.detailPanelPosition === 'right');
+    // （#49：原此处 toggle 的 'right' 类无任何 CSS 规则=死代码，右置布局由 main.ts applyLayout
+    //  的 .gg-main.detail-right 驱动，窄窗降级见 main.css @media 760px）
     headSha.textContent = d.shortSha;
     collapseBtn.textContent = collapsed ? '⌄' : '⌃';
 
@@ -169,7 +170,7 @@ export function createDetailPanel(app: App): DetailPanel {
       }
       summary.appendChild(r);
     };
-    row('SHA', d.sha, true);
+    row(S.t('shaLabel'), d.sha, true);
     row(S.t('author'), `${d.author.name} <${d.author.email}>`);
     row(S.t('authorDate'), ft(d.author.date));
     row(S.t('committer'), `${d.committer.name} <${d.committer.email}>`);
@@ -193,8 +194,12 @@ export function createDetailPanel(app: App): DetailPanel {
     filesHeadText.textContent = `${S.t('changedFiles')} · ${d.files.length} · +${totalAdd} −${totalDel}`;
     filesOpenBtn.title = S.t('openSelectedFiles', { n: String(Math.max(1, selectedPaths().length)) });
     clearChildren(filesList);
-    // #46 收敛为 util.groupPaths（目录字母序、根目录组置顶、根组显仓库绝对路径）
+    // #49 收敛为 util.groupPaths（目录字母序、根目录组置顶、根组显仓库绝对路径）
     const repoRoot = S.repos.find(r => r.id === S.repoId)?.root;
+    if (!d.files.length) {
+      // 空提交（如 --allow-empty）：不再整块空白
+      filesList.appendChild(el('div', 'gg-file-empty', S.t('noFileChanges')));
+    }
     for (const g of groupPaths(d.files, f => f.path, repoRoot)) {
       const groupHead = el('div', 'gg-file-group', g.head);
       groupHead.title = g.head;

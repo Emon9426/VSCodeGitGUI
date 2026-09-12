@@ -131,7 +131,9 @@
       }
     }
     await twoFrames(); await sleep(120);
-    const btn = document.querySelector('.gg-diff-head .gg-icon-btn');
+    // #49：diff 工具栏图标按钮统一 gg-icon-btn（reveal + vscode 两枚），按 title 定位目标按钮
+    const btn = [...document.querySelectorAll('.gg-diff-head .gg-icon-btn')]
+      .find(x => (x.title || '').includes('VS Code') || (x.title || '').includes('工作区'));
     ok(btn, '② diff 工具栏无 icon 按钮');
     if (btn) {
       ok(btn.title.includes('VS Code') || btn.title.includes('工作区'), '② 按钮提示文案异常: ' + btn.title);
@@ -186,6 +188,11 @@
     ok((broom.title || '').includes('~$') && broom.title.includes('2'), '③ 按钮提示未含数量: ' + broom.title);
     broom.click();
     await sleep(60);
+    // #49：清理入口补了 danger 确认——断言确认框出现并点确认后才发送 work.deleteFile
+    const dlgBtns = [...document.querySelectorAll('.gg-modal-btns .gg-btn')];
+    const dlgOk = dlgBtns.find(x => x.classList.contains('danger'));
+    ok(dlgOk, '③ 清理确认框未出现');
+    if (dlgOk) { dlgOk.click(); await sleep(60); }
     const m = lastSent('work.deleteFile');
     ok(m && JSON.stringify(m.args.paths) === JSON.stringify(['~$季度报告.docx', '~$方案.pptx']), '③ 点击未发送正确的 work.deleteFile: ' + JSON.stringify(m && m.args));
   }

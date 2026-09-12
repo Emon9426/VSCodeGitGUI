@@ -67,6 +67,19 @@ export function showPullSummary(
     })));
     listBox.appendChild(head);
 
+    // #49：无文件变更的提交（如 --allow-empty）也可见——作者块内直接列提交行（subject + 短SHA）
+    if (!a.files.size) {
+      for (const e of a.entries) {
+        const row = el('div', 'gg-psum-row gg-psum-nofile');
+        row.title = e.subject;
+        row.append(
+          el('span', 'gg-psum-name', e.subject),
+          el('span', 'gg-psum-meta', e.shortSha),
+        );
+        listBox.appendChild(row);
+      }
+      continue;
+    }
     // 作者内目录分组（#46 收敛为 util.groupPaths：localeCompare、根目录置顶、根组显仓库绝对路径）
     for (const g of groupPaths([...a.files.keys()], f => newPathOf(f), repoRoot)) {
       const dirHead = el('div', 'gg-psum-dir', g.head);

@@ -349,6 +349,8 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
       e.preventDefault();
       goInline();
     } else if (e.key === 'Escape') {
+      // #49：只回到搜索态，阻止冒泡到 box 级 Esc（否则整个选择器被关掉）
+      e.stopPropagation();
       resetInline();
       search.focus();
     }

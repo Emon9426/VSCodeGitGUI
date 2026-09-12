@@ -120,7 +120,7 @@ const app: App = {
     const head = S.state?.branches.find(b => b.isHead);
     const branch = S.state?.head.branch;
     if (!head?.upstream) {
-      void confirmDialog(S.t('push'), S.t('pushNoUpstream'), S.t('yes')).then(ok => {
+      void confirmDialog(S.t('push'), S.t('pushNoUpstream'), S.t('push')).then(ok => {
         if (!ok) return;
         const remote = S.state?.remotes[0]?.name ?? 'origin';
         void rpc('op:push', { remote, branch, setUpstream: true }).catch(showErr);
@@ -130,11 +130,11 @@ const app: App = {
     const remote = head.upstream.split('/')[0];
     // R3 事前拦截：本地落后远端 → 引导先拉取（拉取并推送 = pull 后无冲突自动续推）
     if ((head.behind ?? 0) > 0) {
+      // #49：拉取并推送非不可逆操作，确认框用常规级（原 danger 降级）
       void confirmDialog(
         S.t('pushBehindTitle'),
         S.t('pushBehindText', { n: String(head.behind) }),
         S.t('pushPullAndPush'),
-        true,
       ).then(ok => {
         if (!ok) return;
         pendingPushAfterPull = true;
@@ -191,7 +191,7 @@ const app: App = {
     void rpc('op:checkout', { newBranch: name, ref: base }).catch(showErr);
   },
   checkoutDetached(sha) {
-    void confirmDialog(S.t('checkoutDetached'), sha.slice(0, 12), S.t('yes')).then(ok => {
+    void confirmDialog(S.t('checkoutDetached'), sha.slice(0, 12), S.t('checkout')).then(ok => {
       if (ok) void rpc('op:checkout', { sha, detached: true }).catch(showErr);
     });
   },
@@ -266,7 +266,7 @@ const app: App = {
   },
   deleteFile(paths) {
     void rpc('work.deleteFile', { paths })
-      .then(r => { if (r?.deleted > 0) toast('info', S.t('deleteFileDone', { n: r.deleted })); })
+      .then(r => { if (r?.deleted > 0) toast('success', S.t('deleteFileDone', { n: r.deleted })); })
       .catch(showErr);
   },
   requestWorkDiff(path) {
@@ -354,7 +354,7 @@ const app: App = {
   tagCreate(name, sha, message) {
     void rpc('tag.create', { name, sha, message })
       .then(() => {
-        toast('info', S.t('tagCreated', { name }), {
+        toast('success', S.t('tagCreated', { name }), {
           label: S.t('pushTagTo', { remote: 'origin' }),
           run: () => app.tagPush(name),
         });
@@ -497,7 +497,7 @@ const app: App = {
           S.files.sel = [];
           app.filesNavigate(S.files.cwd);
           filepanel.update();
-          toast('info', S.t('moveDone', { n: String(srcs.length) }));
+          toast('success', S.t('moveDone', { n: String(srcs.length) }));
         })
         .catch(showErr);
     });
@@ -508,7 +508,7 @@ const app: App = {
       if (!nn || nn === name || !nn.trim()) return;
       void rpc('folder.rename', { path, newName: nn.trim() })
         .then(() => {
-          toast('info', S.t('renameDone', { from: name, to: nn.trim() }));
+          toast('success', S.t('renameDone', { from: name, to: nn.trim() }));
           const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
           app.filesNavigate(parent, { select: parent ? parent + '/' + nn.trim() : nn.trim() });
         })
@@ -522,7 +522,7 @@ const app: App = {
         .then(() => {
           S.files.sel = [];
           app.filesNavigate(S.files.cwd);
-          toast('info', S.t('deleteDone', { n: String(paths.length) }));
+          toast('success', S.t('deleteDone', { n: String(paths.length) }));
         })
         .catch(showErr);
     });
@@ -587,7 +587,7 @@ function retryPullWithStash(): void {
  *  仓库内目录浏览（files.ls 懒加载子目录）+「移动到此处」确认；返回目标相对路径或 null（取消）。 */
 function moveDialog(srcs: string[]): Promise<string | null> {
   return new Promise(resolve => {
-    const { box, body, close } = openModal(S.t('moveDlgTitle', { n: String(srcs.length) }));
+    const { box, body, close } = openModal(S.t('moveDlgTitle', { n: String(srcs.length) }), { onCancel: () => finish(null) });
     box.classList.add('gg-move-dlg');
     // 初始目录=首个源文件所在目录（资源管理器"移动到"惯例；多选取第一项父目录）
     const first = srcs[0] ?? '';
@@ -610,6 +610,7 @@ function moveDialog(srcs: string[]): Promise<string | null> {
     cancelBtn.addEventListener('click', () => finish(null));
     okBtn.addEventListener('click', () => finish(cwd));
     foot.append(cancelBtn, okBtn);
+    okBtn.focus();   // #49：初始焦点（Esc/Enter 可用）
     body.append(crumbs, list, hint, foot);
 
     function renderCrumbs(): void {
@@ -1006,7 +1007,6 @@ window.addEventListener('message', e => {
             S.t('pushRejectedTitle'),
             S.t('pushRejectedText'),
             S.t('pushPullAndPush'),
-            true,
           ).then(ok => {
             if (!ok) return;
             pendingPushAfterPull = true;

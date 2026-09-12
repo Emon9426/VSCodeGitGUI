@@ -185,10 +185,10 @@ export function createFilePanel(app: App) {
     multi.append(el('div', 'gg-fp-multi-sub', S.t('filesMultiHint')));
     const ops = el('div', 'gg-fp-multi-ops');
     const bDel = el('button', 'gg-files-cbtn danger has-ic') as HTMLButtonElement;
-    bDel.append(iconSvg('trash'), el('span', undefined, `${S.t('filesDelete')}（${S.files.sel.length}）`));
+    bDel.append(iconSvg('trash'), el('span', undefined, S.t('filesDeleteN', { n: String(S.files.sel.length) })));
     bDel.addEventListener('click', () => app.folderDelete([...S.files.sel]));
     const bMove = el('button', 'gg-files-cbtn has-ic') as HTMLButtonElement;
-    bMove.append(iconSvg('movePath'), el('span', undefined, `${S.t('filesMove')}（${S.files.sel.length}）`));
+    bMove.append(iconSvg('movePath'), el('span', undefined, S.t('filesMoveN', { n: String(S.files.sel.length) })));
     bMove.addEventListener('click', () => app.folderMove([...S.files.sel]));
     ops.append(bDel, bMove);
     multi.append(ops);

@@ -123,7 +123,10 @@ export function createWorkView(app: App): WorkView {
   }
   cleanTempBtn.addEventListener('click', () => {
     const temps = officeTemps();
-    if (temps.length) app.deleteFile(temps);   // 复用「删除文件」：磁盘移除 + 关闭悬空标签 + 刷新列表
+    if (!temps.length) return;
+    // #49：与其他 deleteFile 入口同口径——删除前 danger 确认
+    void confirmDialog(S.t('deleteFile'), S.t('cleanTempConfirm', { n: String(temps.length) }), S.t('deleteFile'), true)
+      .then(ok => { if (ok) app.deleteFile(temps); });   // 复用「删除文件」：磁盘移除 + 关闭悬空标签 + 刷新列表
   });
   // 手动刷新：编辑器改文件不动 .git/index（watcher 侦听不到），点击立即跑 git status 取最新修改状态
   refreshBtn.addEventListener('click', () => {
