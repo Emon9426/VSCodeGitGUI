@@ -154,14 +154,18 @@ export class GitService {
     }
   }
 
-  /** 汇总某仓库当前呈现所需全部数据（首屏页）；pre 允许复用外层已取的 status 与排序设置（少跑一次）。scanned = 首屏扫描深度（带日期窗口时补页/续扫的游标，Issue #5） */
-  async buildState(root: string, repoId: string, filter: LogFilter, pageSize: number, stateVersion: number, pre?: { statusInfo?: StatusInfo; order?: 'topo' | 'date' }): Promise<{ state: RepoState; scanned: number }> {
-    const [refs, status, headSha] = await Promise.all([
-      this.refsOf(root),
-      pre?.statusInfo ? Promise.resolve(pre.statusInfo) : this.statusFullOf(root).then(s => s.info),
-      this.headShaOf(root),
-    ]);
-    const headBranch = status.detached ? undefined : status.branch;
+  /** 汇总某仓库当前呈现所需全部数据（首屏页）；pre 允许复用外层已取的 refs/HEAD/排序（少跑一次）。
+   *  Issue #56 并行化：status/refs/headSha 三个 git 进程并发启动（原为 status 先行串行），
+   *  大仓库下宿主侧首屏 git 等待从「status + max(refs,head) + log」降为「max(status,refs) + log」。
+   *  返回 status 原始明细（doWorkState 复用，doRefresh 不再单独跑一次 statusFullOf）。 */
+  async buildState(root: string, repoId: string, filter: LogFilter, pageSize: number, stateVersion: number, pre?: { refs?: RawRef[]; headSha?: string | null; order?: 'topo' | 'date' }): Promise<{ state: RepoState; scanned: number; status: { entries: FileEntry[]; merging: boolean } }> {
+    const statusP = this.statusFullOf(root);
+    const refsP = pre?.refs !== undefined ? Promise.resolve(pre.refs) : this.refsOf(root);
+    const headP = pre?.headSha !== undefined ? Promise.resolve(pre.headSha) : this.headShaOf(root);
+    const status = await statusP;
+    const refs = await refsP;
+    const headSha = await headP;
+    const headBranch = status.info.detached ? undefined : status.info.branch;
     const tree = buildRefTree(refs, headBranch);
     const ctx = {
       localBranches: new Set(tree.branches.map(b => b.name)),
@@ -176,11 +180,11 @@ export class GitService {
       : { commits: [] as Commit[], hasMore: false, scanned: 0 };
     const state: RepoState = {
       repoId,
-      head: { sha: headSha ?? '', branch: headBranch, detached: status.detached },
+      head: { sha: headSha ?? '', branch: headBranch, detached: status.info.detached },
       branches: tree.branches,
       remotes: tree.remotes,
       tags: tree.tags,
-      status: { dirtyCount: status.dirtyCount },
+      status: { dirtyCount: status.info.dirtyCount },
       filterRef: filter.ref,
       scopeMode: filter.scopeMode ?? 'all',
       logFilter: { authors: filter.authors, since: filter.since, until: filter.until, noMerges: filter.noMerges },
@@ -189,7 +193,7 @@ export class GitService {
       hasMore,
       stateVersion,
     };
-    return { state, scanned };
+    return { state, scanned, status: { entries: status.entries, merging: status.merging } };
   }
 
   /** 提交详情：变更文件（merge 按 first-parent 口径，root 用 --empty 基线）；两次 diff-tree 并行（v0.7.2） */

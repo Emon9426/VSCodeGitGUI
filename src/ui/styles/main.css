@@ -1095,7 +1095,13 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: default;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
+/* Issue #55：目录头 Checkbox——文件夹级批量暂存/取消（与文件行 Checkbox 同源样式） */
+.gg-work-dirgroup input[type='checkbox'] { flex: none; margin: 0; cursor: pointer; }
+.gg-work-dirtext { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* 刷新按钮点击反馈：图标转一圈（#49：gg-spin 定义只剩 L417 一处） */
 .gg-icon-btn.spin .gg-ic { animation: gg-spin 0.55s ease; }
 

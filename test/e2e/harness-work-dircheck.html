@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * Issue #55 验证 harness：工作副本目录头 Checkbox 文件夹级全选。
+ * 断言：①未暂存组目录头 Checkbox 存在且未勾选 ②已暂存组目录头 Checkbox 已勾选
+ * ③冲突组目录头无 Checkbox ④勾选未暂存目录 → 单次 work.stage RPC 携带该目录全部可见路径
+ * ⑤搜索过滤后勾选 → 仅过滤后可见路径 ⑥取消已暂存目录 → work.unstage RPC。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'github',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'work',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', colWidths: undefined, selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  // repoState 先行：workState 按 repoId 匹配丢弃过期推送（S.repoId 须先就位）
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: 'a' + '0'.repeat(39), branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'a' + '0'.repeat(39), isHead: true }],
+      remotes: [], tags: [], status: { dirtyCount: 8 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits: [], commitsLoaded: 0, hasMore: false, stateVersion: 1,
+    },
+  });
+  window.__send({ t: 'showWork' });
+  await twoFrames();
+
+  const fe = (path, extra) => ({ path, staged: null, unstaged: 'M', untracked: false, ...extra });
+  const state = {
+    repoId: 'r1',
+    staged: [
+      fe('src/alpha/a1.ts', { staged: 'M', unstaged: null }),
+      fe('src/alpha/a2.ts', { staged: 'M', unstaged: null }),
+    ],
+    unstaged: [
+      fe('src/alpha/a3.ts'), fe('src/alpha/a4.ts'),
+      fe('src/beta/b1.ts'), fe('src/beta/b2.ts'), fe('src/beta/b3.js'),
+    ],
+    conflicts: [
+      fe('src/conflict/c1.ts', { conflict: true, conflictCode: 'UU', staged: null, unstaged: null }),
+    ],
+    dirtyCount: 8, merging: true, mergeKind: 'merge', mergeActive: true,
+    headShortSha: 'abcdef1', headSubject: 'head', headDate: '2026-09-15T10:00:00+08:00',
+  };
+  window.__send({ t: 'workState', state });
+  await twoFrames(); await sleep(200);
+
+  const errs = [];
+  // 目录头 → 组归属：从 DOM 顺序找（conflict 组 → staged 组 → unstaged 组各目录块）
+  const dirHeads = [...document.querySelectorAll('.gg-work-dirgroup')];
+  const cbs = dirHeads.map(h => h.querySelector('input[type=checkbox]'));
+  // ① 冲突目录头无 Checkbox（src/conflict）
+  const confHead = dirHeads.find(h => /src\/conflict/.test(h.textContent));
+  if (!confHead) errs.push('no-conflict-dir');
+  else if (confHead.querySelector('input[type=checkbox]')) errs.push('conflict-has-cb');
+  // ② staged 组目录头（src/alpha，含 a1/a2）：Checkbox 勾选态
+  const boxes = [...document.querySelectorAll('.gg-work-rows')];
+  // 组顺序：conflictBox, stagedBox, unstagedBox（构造时 groups.append 顺序）
+  const stagedBox = boxes[1], unstagedBox = boxes[2];
+  const sHead = stagedBox.querySelector('.gg-work-dirgroup input[type=checkbox]');
+  const uHeads = [...unstagedBox.querySelectorAll('.gg-work-dirgroup')];
+  if (!sHead) errs.push('no-staged-cb');
+  else if (!sHead.checked) errs.push('staged-cb-unchecked');
+  const alphaHead = uHeads.find(h => /src\/alpha/.test(h.textContent));
+  const betaHead = uHeads.find(h => /src\/beta/.test(h.textContent));
+  if (!alphaHead || !betaHead) { errs.push('no-unstaged-dirs:' + uHeads.length); finish(errs.join(',')); return; }
+  const aCb = alphaHead.querySelector('input[type=checkbox]');
+  if (!aCb) errs.push('no-alpha-cb');
+  else if (aCb.checked) errs.push('alpha-checked-should-not');
+
+  // ③ 勾选 beta 目录 → work.stage 单次 RPC，paths = beta 3 文件
+  const sent0 = window.__sent.length;
+  const bCb = betaHead.querySelector('input[type=checkbox]');
+  bCb.checked = true;
+  bCb.dispatchEvent(new Event('change'));
+  await twoFrames();
+  const stageCalls = window.__sent.slice(sent0).filter(m => m.cmd === 'work.stage');
+  if (stageCalls.length !== 1) errs.push('stage-calls=' + stageCalls.length);
+  else {
+    const paths = stageCalls[0].args.paths.slice().sort();
+    const want = ['src/beta/b1.ts', 'src/beta/b2.ts', 'src/beta/b3.js'].every(p => paths.includes(p)) && paths.length === 3;
+    if (!want) errs.push('stage-paths=' + JSON.stringify(paths));
+  }
+
+  // ④ 搜索过滤 "b1" 后勾选 alpha 目录 → 仅……alpha 无 b1 匹配。改：过滤 "a3" 后勾选 alpha → 仅 a3
+  const search = document.querySelector('.gg-work-search');
+  search.value = 'a3';
+  search.dispatchEvent(new Event('input'));
+  await twoFrames(); await sleep(100);
+  const alphaHead2 = [...unstagedBox.querySelectorAll('.gg-work-dirgroup')].find(h => /src\/alpha/.test(h.textContent));
+  if (!alphaHead2) errs.push('filtered-alpha-gone');
+  else {
+    const cb2 = alphaHead2.querySelector('input[type=checkbox]');
+    const sent1 = window.__sent.length;
+    cb2.checked = true;
+    cb2.dispatchEvent(new Event('change'));
+    await twoFrames();
+    const c2 = window.__sent.slice(sent1).filter(m => m.cmd === 'work.stage');
+    if (c2.length !== 1 || c2[0].args.paths.length !== 1 || c2[0].args.paths[0] !== 'src/alpha/a3.ts') {
+      errs.push('filtered-paths=' + JSON.stringify(c2.map(c => c.args.paths)));
+    }
+  }
+
+  // ⑤ 取消 staged 组目录勾选 → work.unstage 携带 a1/a2
+  search.value = '';
+  search.dispatchEvent(new Event('input'));
+  await twoFrames(); await sleep(100);
+  const sHead2 = stagedBox.querySelector('.gg-work-dirgroup input[type=checkbox]');
+  const sent2 = window.__sent.length;
+  sHead2.checked = false;
+  sHead2.dispatchEvent(new Event('change'));
+  await twoFrames();
+  const un = window.__sent.slice(sent2).filter(m => m.cmd === 'work.unstage');
+  if (un.length !== 1 || un[0].args.paths.length !== 2) errs.push('unstage-calls=' + JSON.stringify(un.map(c => c.args.paths)));
+
+  finish(errs.length ? 'FAIL ' + errs.join(',') : 'PASS');
+
+  function finish(result) {
+    window.__result = result;
+    document.title = 'e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>

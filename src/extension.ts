@@ -7,6 +7,9 @@ import { GraphPanel } from './webview/panel';
 import { ReposTreeProvider } from './webview/reposTree';
 
 export function activate(context: vscode.ExtensionContext): void {
+  // Issue #56 首开预热：activate（图标点击）即并行启动 git 探测与仓库发现，
+  // 与 webview 创建同时进行——面板 bootstrap 时仓库列表已就绪
+  GraphPanel.warmup();
   const tree = new ReposTreeProvider();
   const treeView = vscode.window.createTreeView('gitboard.repos', { treeDataProvider: tree });
   tree.bindView(treeView);   // 角标数据源：load 后设置活动栏图标未提交改动数
@@ -48,7 +51,7 @@ export function activate(context: vscode.ExtensionContext): void {
       GraphPanel.show(context).revealInFiles(uri.fsPath);
     }),
     GraphPanel.onDidState(() => tree.refresh()),
-    vscode.workspace.onDidChangeWorkspaceFolders(() => tree.refresh()),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => { GraphPanel.invalidateWarmRepos(); tree.refresh(); }),
   );
 }
 
