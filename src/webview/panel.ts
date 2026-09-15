@@ -31,6 +31,27 @@ import { parseFixBlock, validateStep, type FixStepRaw } from '../ai/fixplan';
 /** Pull 摘要历史保留条数（Issue #51） */
 const PULL_HISTORY_MAX = 5;
 
+/**
+ * 仓库发现预热（Issue #56）：活动栏图标点击（扩展 activate）即启动 git 探测 + 工作区
+ * 仓库发现，与 webview 创建（~2s，VS Code 架构成本）并行——面板 bootstrap 时仓库列表
+ * 已就绪，点击后的串行探测等待（~数百 ms）被完全掩盖。共享 promise 去重，失败不缓存。
+ */
+let reposWarm: Promise<RepoMeta[]> | undefined;
+function warmRepos(): Promise<RepoMeta[]> {
+  if (!reposWarm) {
+    const configured = vscode.workspace.getConfiguration('gitboard').get<string>('gitPath', '') || '';
+    reposWarm = (async () => {
+      const executor = await sharedDetect(configured, builtinGitPath());
+      return discoverRepos(executor, vscode.workspace.workspaceFolders ?? []);
+    })().catch(e => { reposWarm = undefined; throw e; });
+  }
+  return reposWarm;
+}
+/** 工作区根变化：预热结果失效（下次 ensureRepos/预热重新发现） */
+function invalidateWarmRepos(): void {
+  reposWarm = undefined;
+}
+
 function readConfig(): ConfigDto {
   const cfg = vscode.workspace.getConfiguration('gitboard');
   const rowHeight = cfg.get<'compact' | 'default' | 'loose'>('rowHeight', 'default');
@@ -104,6 +125,21 @@ export class GraphPanel {
   /** 每次仓库状态刷新后通知（侧栏树监听以同步分支名） */
   static readonly onDidStateChange = new vscode.EventEmitter<void>();
   static readonly onDidState = GraphPanel.onDidStateChange.event;
+
+  /**
+   * 启动预热（Issue #56）：activate（活动栏图标点击）即启动 git 探测 + 仓库发现，
+   * 与 webview 创建并行——面板 bootstrap 时仓库已知，点击后的串行探测等待被掩盖。
+   * 面板已存在（仓库已解析）时无操作；失败静默（resolveRepos 会重试）。
+   */
+  static warmup(): void {
+    if (GraphPanel.current) return;
+    void warmRepos().catch(() => undefined);
+  }
+
+  /** 工作区根变化：预热结果失效（extension.ts 的 onDidChangeWorkspaceFolders 调用） */
+  static invalidateWarmRepos(): void {
+    invalidateWarmRepos();
+  }
 
   readonly roots = new Map<string, string>();          // repoId → root（diffProvider 共享）
   private panel!: vscode.WebviewPanel;
@@ -796,7 +832,7 @@ export class GraphPanel {
       this.pullSummary = new PullSummaryService(this.executor);
       this.files = new FilesService(this.executor);
     }
-    this.repos = await discoverRepos(this.executor, vscode.workspace.workspaceFolders ?? []);
+    this.repos = await warmRepos();   // Issue #56 预热：activate 期已并行启动，此处通常即刻返回
     for (const r of this.repos) this.roots.set(r.id, r.root);
     this.post({ t: 'reposChanged', repos: this.repos });
     this.reposResolved = true;
@@ -896,11 +932,10 @@ export class GraphPanel {
     const version = (this.stateVersions.get(repoId) ?? 0) + 1;
     this.stateVersions.set(repoId, version);
     try {
-      // 一次 status 同时喂 buildState（分支信息）与工作副本矩阵（v0.7.2 少跑一次）
-      const status = await this.service.statusFullOf(root);
+      // Issue #56：status 由 buildState 并行跑（与 refs/HEAD 并发）并随结果带回——
+      // 工作副本矩阵复用同一次 status，打开链路不再有先行串行段
       const filter = this.filters.get(repoId) ?? this.defaultFilter();
-      const { state, scanned: scanned0 } = await this.service.buildState(root, repoId, filter, this.config.commitPageSize, version, {
-        statusInfo: status.info,
+      const { state, scanned: scanned0, status } = await this.service.buildState(root, repoId, filter, this.config.commitPageSize, version, {
         order: this.config.logOrder,
       });
       const fk = JSON.stringify(filter);

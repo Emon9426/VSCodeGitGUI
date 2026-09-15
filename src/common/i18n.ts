@@ -217,6 +217,9 @@ const zh: Record<string, string> = {
   unstage: '取消暂存',
   stageAll: '全部暂存',
   unstageAll: '全部取消暂存',
+  // Issue #55：目录头 Checkbox 文件夹级批量
+  stageDir: '暂存此文件夹的全部文件',
+  unstageDir: '取消暂存此文件夹的全部文件',
   refreshWork: '刷新文件状态（编辑器改动不触发自动刷新，点此立即获取）',
   copyFileName: '复制文件名',
   stageDone: '已暂存',
@@ -776,6 +779,9 @@ const en: Record<string, string> = {
   unstage: 'Unstage',
   stageAll: 'Stage all',
   unstageAll: 'Unstage all',
+  // Issue #55: folder-level checkbox in the directory header
+  stageDir: 'Stage all files in this folder',
+  unstageDir: 'Unstage all files in this folder',
   refreshWork: 'Refresh file status (editor edits do not auto-refresh; click to fetch now)',
   copyFileName: 'Copy file name',
   stageDone: 'Staged',

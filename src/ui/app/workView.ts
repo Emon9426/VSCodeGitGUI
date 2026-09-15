@@ -349,7 +349,8 @@ export function createWorkView(app: App): WorkView {
     allTheirsBtn.textContent = st.mergeKind === 'other' ? S.t('resolveAllTheirsOther') : S.t('resolveAllTheirs');
     conflictBox.classList.toggle('hidden', conflictHead.isCollapsed() || !st.conflicts.length);
     clearChildren(conflictBox);
-    appendGrouped(conflictBox, conflicts, e => conflictRow(e, st.mergeKind));
+    // 冲突组目录头无 Checkbox（冲突不能以 stage 解决）；staged 组目录头=已勾选
+    appendGrouped(conflictBox, conflicts, e => conflictRow(e, st.mergeKind), undefined);
     renderGroup(stagedHead, stagedBox, S.t('workStaged'), st.staged.filter(match), true);
     renderGroup(unstagedHead, unstagedBox, S.t('workUnstaged'), st.unstaged.filter(match), false);
 
@@ -397,7 +398,7 @@ export function createWorkView(app: App): WorkView {
     updateDiff();
   }
 
-  function renderGroup(head: { el: HTMLElement; caret: HTMLElement; name: HTMLElement; cnt: HTMLElement; isCollapsed(): boolean }, box: HTMLElement, label: string, list: FileEntry[], _staged: boolean): void {
+  function renderGroup(head: { el: HTMLElement; caret: HTMLElement; name: HTMLElement; cnt: HTMLElement; isCollapsed(): boolean }, box: HTMLElement, label: string, list: FileEntry[], staged: boolean): void {
     head.name.textContent = label;
     head.cnt.textContent = String(list.length);
     box.classList.toggle('hidden', head.isCollapsed());
@@ -406,19 +407,35 @@ export function createWorkView(app: App): WorkView {
       box.appendChild(el('div', 'gg-work-rowempty', `— ${S.t('workEmpty')} —`));
       return;
     }
-    appendGrouped(box, list, e => row(e, head === stagedHead));
+    appendGrouped(box, list, e => row(e, staged), staged);
   }
 
   /**
    * 按目录分组渲染（#46 收敛为 util.groupPaths）：目录头行显示完整路径一次（根目录显示仓库绝对路径），
    * 组内行只显示文件名；目录按字母序、根目录置顶，组内按路径序。
+   * staged 目录头带 Checkbox（Issue #55）：勾选=批量暂存/取消该目录当前可见文件（过滤后口径，
+   * 与用户所见一致）；undefined（冲突组）无 Checkbox。
    */
-  function appendGrouped(box: HTMLElement, list: FileEntry[], mkRow: (e: FileEntry) => HTMLElement): void {
+  function appendGrouped(box: HTMLElement, list: FileEntry[], mkRow: (e: FileEntry) => HTMLElement, staged: boolean | undefined): void {
     if (!list.length) return;
     const sorted = [...list].sort((a, b) => a.path.localeCompare(b.path));
     const repoRoot = S.repos.find(r => r.id === S.repoId)?.root;
     for (const g of groupPaths(sorted, e => e.path, repoRoot)) {
-      const h = el('div', 'gg-work-dirgroup', g.head);
+      const h = el('div', 'gg-work-dirgroup');
+      if (staged !== undefined) {
+        const cb = el('input') as HTMLInputElement;
+        cb.type = 'checkbox';
+        cb.checked = staged;
+        cb.title = staged ? S.t('unstageDir') : S.t('stageDir');
+        cb.addEventListener('click', ev => ev.stopPropagation());
+        cb.addEventListener('change', () => {
+          // 乐观勾选：批量走现有 workStage 通道（一命令多路径），workState 到达后重排
+          app.workStage(g.items.map(e => e.path), cb.checked);
+        });
+        h.appendChild(cb);
+      }
+      const label = el('span', 'gg-work-dirtext', g.head);
+      h.appendChild(label);
       h.title = g.head;
       box.appendChild(h);
       for (const e of g.items) box.appendChild(mkRow(e));

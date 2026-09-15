@@ -12,7 +12,8 @@ const path = require('path');
   const list = ['harness.html', 'harness-boot.html', 'harness-detail.html', 'harness-files.html', 'harness-lanes.html',
     'harness-op.html', 'harness-v11.html', 'harness-v13.html', 'harness-diag.html',
     // Issue #51/#52/#53：Pull 摘要表格化+历史 / 作者过滤 lane 泄漏 / ref 徽标省略号
-    'harness-psum-table.html', 'harness-author-filter.html', 'harness-chip-ellipsis.html'];
+    // Issue #55：工作副本目录头 Checkbox 文件夹级全选
+    'harness-psum-table.html', 'harness-author-filter.html', 'harness-chip-ellipsis.html', 'harness-work-dircheck.html'];
   let fails = 0;
   for (const h of list) {
     try {
