@@ -13,7 +13,8 @@ const path = require('path');
     'harness-op.html', 'harness-v11.html', 'harness-v13.html', 'harness-diag.html',
     // Issue #51/#52/#53：Pull 摘要表格化+历史 / 作者过滤 lane 泄漏 / ref 徽标省略号
     // Issue #55：工作副本目录头 Checkbox 文件夹级全选
-    'harness-psum-table.html', 'harness-author-filter.html', 'harness-chip-ellipsis.html', 'harness-work-dircheck.html'];
+    // Issue #59/#60/#61：工具栏 PR/历史按钮 + 文件页双击回退
+    'harness-psum-table.html', 'harness-author-filter.html', 'harness-chip-ellipsis.html', 'harness-work-dircheck.html', 'harness-prbtn-hist-dblclick.html'];
   let fails = 0;
   for (const h of list) {
     try {

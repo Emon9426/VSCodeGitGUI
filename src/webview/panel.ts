@@ -16,6 +16,7 @@ import { discoverRepos, repoIdOf, sharedDetect } from '../git/discovery';
 import { GitService, EMPTY_TREE, SCAN_CAP, authorDateWindow, cleanAuthorName } from '../git/service';
 import { FilesService, safeRelPath } from '../git/files';
 import { PullSummaryService } from '../git/summary';
+import { buildCreatePrUrl } from '../git/prurl';
 import { RepoWatcher } from '../git/watcher';
 import { classifyMergeSession, detectMove, scopeStartRefs, semanticToOurs } from '../git/parse';
 import { OpRunner, type OpOutcome, type OpSpec, type PullStrategy } from '../ops/runner';
@@ -73,6 +74,8 @@ function readConfig(): ConfigDto {
     opVerify: cfg.get('opVerify', 'quick'),
     defaultPullStrategy: cfg.get('defaultPullStrategy', 'merge'),
     logOrder: cfg.get('logOrder', 'topo'),
+    prUrlTemplate: cfg.get('pr.urlTemplate', ''),
+    prTargetBranch: cfg.get('pr.targetBranch', ''),
     aiEnabled: cfg.get('ai.enabled', true),
     aiLanguage: cfg.get('ai.language', 'auto'),
     aiLearnFromHistory: cfg.get('ai.learnFromHistory', true),
@@ -359,6 +362,11 @@ export class GraphPanel {
       }
       case 'listAuthors':
         return this.service!.authorsOf(this.currentRoot());
+      case 'pullHistory':
+        // Issue #59：工具栏入口——返回本会话 pull 摘要历史快照（最新在前）
+        return [...this.pullHistory];
+      case 'pr.open':
+        return this.openCreatePr();
       case 'op:fetch':
         this.startOp({ kind: 'fetch', all: args.all !== false, remote: args.remote, prune: args.prune ?? this.config.fetchPrune });
         return null;
@@ -1402,6 +1410,34 @@ export class GraphPanel {
       return;
     }
     if (this.bootstrapped) this.post({ t: 'pullSummaryShow', history: [...this.pullHistory] });
+  }
+
+  /**
+   * 创建 Pull Request（Issue #61）：解析当前分支 remote 的 Web 地址 → 生成创建页链接
+   * （from=当前分支；to=配置目标分支或远端默认分支，未知时平台侧自行回退）→ 系统浏览器打开。
+   * 生成失败/无 remote/分离 HEAD 给出明确错误（前端错误通知流）。
+   */
+  private async openCreatePr(): Promise<null> {
+    const st = this.lastState;
+    if (!st || !this.currentRepoId || !this.service) throw new Error(this.t('prNoRepo'));
+    if (st.head.detached || !st.head.branch) throw new Error(this.t('prDetached'));
+    const root = this.currentRoot();
+    const from = st.head.branch;
+    // remote：当前分支上游所属 remote，回退首个 remote
+    const upstream = st.branches.find(b => b.isHead)?.upstream;
+    const remoteName = upstream ? upstream.split('/')[0] : (await this.service.remotesOf(root))[0];
+    if (!remoteName) throw new Error(this.t('prNoRemote'));
+    const remoteUrl = await this.service.remoteUrlOf(root, remoteName);
+    if (!remoteUrl) throw new Error(this.t('prNoRemote'));
+    // 目标分支：设置优先 → 远端默认分支（refs/remotes/<r>/HEAD；未 set-head 为 null → 平台回退）
+    const to = this.config.prTargetBranch || await this.service.remoteDefaultBranchOf(root, remoteName);
+    const url = buildCreatePrUrl({ remoteUrl, from, to, template: this.config.prUrlTemplate || undefined });
+    if (!url) throw new Error(this.t('prNoUrl'));
+    // 仅允许 http/https（remote URL 解析产物防御）
+    const u = vscode.Uri.parse(url);
+    if (u.scheme !== 'https' && u.scheme !== 'http') throw new Error(this.t('prNoUrl'));
+    await vscode.env.openExternal(u);
+    return null;
   }
 
   /** 命令面板快捷操作（作用于当前分支） */

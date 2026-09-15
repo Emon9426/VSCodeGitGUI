@@ -200,6 +200,14 @@ export function createToolbar(app: App): Toolbar {
   const refreshBtn = mkBtn('', () => app.runRefresh());
   setIcon(refreshBtn, 'refresh');
   refreshBtn.title = S.t('refresh');
+  // 创建 Pull Request（Issue #61）：打开创建页（from=当前分支）
+  const prBtn = mkBtn('', () => app.createPr());
+  setIcon(prBtn, 'prLink');
+  prBtn.title = S.t('createPr');
+  // Pull 摘要历史回看（Issue #59）：独立按钮入口（此前仅命令面板）
+  const pullHistBtn = mkBtn('', () => app.openPullHistory());
+  setIcon(pullHistBtn, 'clock');
+  pullHistBtn.title = S.t('pullHistoryBtn');
   // 语言快捷切换（A/中/EN，点击弹三选一）——文字按钮保持
   const langBtn = mkBtn('', () => app.pickLanguage());
   const gearBtn = mkBtn('', () => app.openSettings());
@@ -235,7 +243,7 @@ export function createToolbar(app: App): Toolbar {
   const left = el('div', 'gg-toolbar-left');
   left.append(sideToggle, viewSeg, repoSel, branchLabel, checkoutBtn, scopeSeg, filterBtn, filterBox);
   const right = el('div', 'gg-toolbar-right');
-  right.append(fetchBtn, pullBtn, pushBtn, refreshBtn, langBtn, gearBtn, versionLabel);
+  right.append(fetchBtn, pullBtn, pushBtn, prBtn, pullHistBtn, refreshBtn, langBtn, gearBtn, versionLabel);
   root.append(left, right);
 
   function mkBtn(label: string, run: () => void): HTMLButtonElement {

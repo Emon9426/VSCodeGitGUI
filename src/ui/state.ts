@@ -20,6 +20,10 @@ export interface App {
   runRefresh(): void;
   cancelOp(opId: number): void;
   openSettings(): void;
+  /** Issue #59：工具栏独立入口——弹最近拉取摘要（无记录轻提示） */
+  openPullHistory(): void;
+  /** Issue #61：创建 Pull Request——打开创建页（from=当前分支）；不可用时错误通知 */
+  createPr(): void;
   copy(text: string): void;
   openDiffEditor(sha: string, path: string, worktree?: boolean): void;
   openFile(path: string): void;

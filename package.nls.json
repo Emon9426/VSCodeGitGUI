@@ -28,6 +28,8 @@
   "cfg.graphBranchScope": "Default commit-graph scope: local (local branches plus their upstreams; default), all (all refs) or current (current branch plus its upstream).",
   "cfg.branchGroupByPrefix": "Group branches by name prefix (the segment before \"/\") in the sidebar, with collapsible group headers.",
   "cfg.notifyWidth": "Width of the notification area (bottom-right) in pixels (320–560). Dragging its left edge overrides this value and is remembered.",
+  "cfg.prUrlTemplate": "Custom URL template for creating pull requests. Placeholders: {from} = current branch, {to} = target branch. Leave empty to auto-detect GitHub / GitLab / Azure DevOps from the remote URL.",
+  "cfg.prTargetBranch": "Default target branch when creating a pull request. Leave empty to use the remote default branch.",
   "cfg.showRemoteChips": "Show remote-branch chips on commit rows.",
   "cfg.maxTagChips": "Maximum tag chips shown on one commit row.",
   "cfg.detailPanelPosition": "Position of the commit detail panel.",

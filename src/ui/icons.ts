@@ -110,6 +110,8 @@ const PATHS: Record<string, readonly string[]> = {
   docRename: ['M3.2 1.8h6l3.6 3.6v8.8H3.2z', 'M9 2v3.4h3.4', 'M5.6 9.6h4.8'],
   /** 执行修复步骤：实心播放三角（Issue #8） */
   playTriangle: ['M5.4 3.2v9.6l7.2-4.8z'],
+  /** 创建 Pull Request（Issue #61）：外链出框 */
+  prLink: ['M9 2.4h4.6V7', 'M13.6 2.4 7.4 8.6', 'M12.4 9.6v3A1.4 1.4 0 0 1 11 14H4.4A1.4 1.4 0 0 1 3 12.6V6a1.4 1.4 0 0 1 1.4-1.4h3'],
 };
 
 export type IconName = keyof typeof PATHS;

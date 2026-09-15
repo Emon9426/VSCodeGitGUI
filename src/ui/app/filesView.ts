@@ -172,6 +172,14 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
     else renderTile(items);
   }
 
+  /** 打开文件（Issue #60）：工作区存在 → 打开可编辑副本；HEAD 有但工作区缺失
+   *  （历史提交中删除/移动、未检出）→ 回退打开 HEAD 只读版本，不再报「文件未找到」。
+   *  判定依据：size 仅在 lsOf 的工作区 stat 成功时设置，undefined = 不在工作区 */
+  function openItem(it: FileItem): void {
+    if (it.size !== undefined || !S.state?.head.sha) app.openFile(it.path);
+    else app.openFileAt(S.state.head.sha, it.path);
+  }
+
   function bindRow(node: HTMLElement, it: FileItem): void {
     node.addEventListener('click', e => {
       const multi = e.ctrlKey || e.metaKey;
@@ -196,7 +204,7 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
     });
     node.addEventListener('dblclick', () => {
       if (it.isDir) app.filesNavigate(it.path);
-      else app.openFile(it.path);
+      else openItem(it);
     });
     node.addEventListener('contextmenu', e => {
       e.preventDefault();
@@ -209,7 +217,7 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
       }
       const busy = fileOpBusy();   // 审查 P2-3：右键菜单危险项与按钮/快捷键同口径门控
       showContextMenu([
-        { label: S.t('filesOpen'), run: () => (it.isDir ? app.filesNavigate(it.path) : app.openFile(it.path)) },
+        { label: S.t('filesOpen'), run: () => (it.isDir ? app.filesNavigate(it.path) : openItem(it)) },
         { label: S.t('filesViewHist'), run: () => app.filesSelect(it.path, it.isDir) },
         { label: S.t('filesRename'), run: () => app.folderRename(it.path), disabled: busy },
         { label: S.t('filesMove'), run: () => app.folderMove([it.path]), disabled: busy },

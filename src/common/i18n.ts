@@ -491,6 +491,14 @@ const zh: Record<string, string> = {
   pullHistoryLabel: '历史',
   pullHistoryLatest: '最新',
   pullHistoryEmpty: '本次会话暂无拉取摘要记录',
+  // Issue #59：工具栏独立按钮入口
+  pullHistoryBtn: '拉取摘要历史',
+  // Issue #61：创建 Pull Request
+  createPr: '创建 Pull Request',
+  prNoRepo: '尚未加载仓库状态，无法创建 Pull Request',
+  prDetached: '分离 HEAD 状态没有当前分支，无法创建 Pull Request',
+  prNoRemote: '未找到远程仓库地址，无法创建 Pull Request',
+  prNoUrl: '无法识别远程平台，请在设置中配置创建 PR 链接模板（gitboard.pr.urlTemplate）',
   retryWithStash: '贮藏并重试',
   netOpBusy: '网络操作进行中，请等待完成后再执行其他网络操作',
   cleanTempTip: '移除 Office 临时文件（~$ 开头，共 {n} 个）',
@@ -1053,6 +1061,14 @@ const en: Record<string, string> = {
   pullHistoryLabel: 'History',
   pullHistoryLatest: 'Latest',
   pullHistoryEmpty: 'No pull summaries in this session yet',
+  // Issue #59: dedicated toolbar entry
+  pullHistoryBtn: 'Pull summary history',
+  // Issue #61: create pull request
+  createPr: 'Create Pull Request',
+  prNoRepo: 'Repository state not loaded yet — cannot create a pull request',
+  prDetached: 'Detached HEAD has no current branch — cannot create a pull request',
+  prNoRemote: 'No remote URL found — cannot create a pull request',
+  prNoUrl: 'Remote platform not recognized; configure the PR URL template (gitboard.pr.urlTemplate) in settings',
   retryWithStash: 'Stash & retry',
   netOpBusy: 'A network operation is in progress — wait for it to finish before starting another',
   cleanTempTip: 'Remove Office temp files (~$ prefix, {n} found)',

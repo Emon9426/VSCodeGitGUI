@@ -41,6 +41,11 @@ export interface ConfigDto {
   pullFetchSummary: boolean;
   /** 通知区默认宽度 px（#22 B1，320–560）：拖拽记忆（globalState）优先于此配置 */
   notifyWidth: number;
+  // 创建 Pull Request（Issue #61）
+  /** 自定义创建 PR 链接模板（占位 {from}=当前分支 /{to}=目标分支；空=按 remote 自动检测） */
+  prUrlTemplate: string;
+  /** 创建 PR 默认目标分支（空=自动探测远端默认分支） */
+  prTargetBranch: string;
 }
 
 export type OpKind = 'fetch' | 'pull' | 'push' | 'reset' | 'checkout'
