@@ -280,6 +280,16 @@
           "maximum": 560,
           "description": "%cfg.notifyWidth%"
         },
+        "gitboard.pr.urlTemplate": {
+          "type": "string",
+          "default": "",
+          "description": "%cfg.prUrlTemplate%"
+        },
+        "gitboard.pr.targetBranch": {
+          "type": "string",
+          "default": "",
+          "description": "%cfg.prTargetBranch%"
+        },
         "gitboard.showRemoteChips": {
           "type": "boolean",
           "default": true,

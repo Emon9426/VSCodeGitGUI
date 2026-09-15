@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.__sentFind = (cmd) => window.__sent.filter(m => m && m.cmd === cmd);
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => {
+      window.__sent.push(m);
+      if (m.id !== undefined && m.cmd && window.__mock && window.__mock[m.cmd] !== undefined) {
+        const data = typeof window.__mock[m.cmd] === 'function' ? window.__mock[m.cmd](m.args ?? {}) : window.__mock[m.cmd];
+        window.__send({ t: 'res', id: m.id, ok: true, data });
+      }
+    },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * Issue #59/#60/#61 验证 harness：
+ * ① 工具栏「创建 PR」与「拉取摘要历史」按钮存在且点击发对应 RPC
+ * ② 文件页双击：工作区存在文件 → ui:openFile；HEAD 快照独有（size 缺失）→ 回退 ui:openFileAt（sha=HEAD）
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const errs = [];
+  let dbg = 'n/a';
+  const assert = (name, cond) => { if (!cond) errs.push(name); };
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  window.__mock = {
+    'pullHistory': () => [],
+    'files.ls': () => ({
+      kind: 'dir',
+      items: [
+        { name: '现存.md', path: '现存.md', isDir: false, size: 100, mtime: '2026-09-15T01:00:00Z', gitSize: 100 },
+        { name: '仅HEAD.md', path: '仅HEAD.md', isDir: false, gitSize: 80 },   // 无 size = 工作区不存在
+      ],
+    }),
+    'files.log': () => ({ items: [], chain: { segments: [] } }),
+    'files.dirLog': () => ({ items: [], chain: { segments: [] } }),
+  };
+
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'github',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', colWidths: undefined, selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  const HEAD = 'a' + '0'.repeat(39);
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: HEAD, branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: HEAD, isHead: true }],
+      remotes: [], tags: [], status: { dirtyCount: 0 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits: [], commitsLoaded: 0, hasMore: false, stateVersion: 1,
+    },
+  });
+  await twoFrames(); await sleep(150);
+
+  // ---- ① 工具栏按钮存在 + RPC ----
+  const btns = [...document.querySelectorAll('.gg-tb-btn')];
+  const prBtn = btns.find(b => (b.title || '').includes('Pull Request'));
+  const histBtn = btns.find(b => (b.title || '').includes('拉取摘要历史') || (b.title || '').includes('Pull summary history'));
+  assert('pr-btn-exists', !!prBtn);
+  assert('hist-btn-exists', !!histBtn);
+  if (prBtn) { prBtn.click(); await twoFrames(); assert('pr-rpc', window.__sentFind('pr.open').length === 1); }
+  if (histBtn) { histBtn.click(); await twoFrames(); assert('hist-rpc', window.__sentFind('pullHistory').length === 1); }
+
+  // ---- ② 文件页双击回退 ----
+  const viewBtns = [...document.querySelectorAll('.gg-viewseg-btn')];
+  const filesBtn = viewBtns[3];
+  assert('files-view-btn', !!filesBtn);
+  if (filesBtn) {
+    filesBtn.click();
+    await twoFrames(); await sleep(300);   // files.ls mock 响应 + 列表渲染
+
+    const rowOf = (name) => [...document.querySelectorAll('.gg-files-table tbody tr')]
+      .find(r => (r.textContent || '').includes(name));
+    const cur = rowOf('现存.md');
+    const gone = rowOf('仅HEAD.md');
+    assert('rows-rendered', !!cur && !!gone);
+    dbg = 'rows=' + document.querySelectorAll('.gg-files-table tbody tr').length
+      + '/tiles=' + document.querySelectorAll('.gg-files-list > *').length
+      + '/cur=' + (cur ? cur.tagName + '.' + cur.className : 'none')
+      + '/sent=' + window.__sent.map(m => m.cmd || m.t).join(',');
+    if (cur) {
+      cur.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      await twoFrames(); await sleep(80);
+      const of = window.__sentFind('ui:openFile');
+      const ofa = window.__sentFind('ui:openFileAt');
+      assert('openFile-sent', of.length === 1 && of[0].args.path === '现存.md');
+      assert('openFileAt-not-sent', ofa.length === 0);
+    }
+    if (gone) {
+      gone.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      await twoFrames(); await sleep(80);
+      const ofa = window.__sentFind('ui:openFileAt');
+      assert('openFileAt-fallback', ofa.length === 1 && ofa[0].args.path === '仅HEAD.md' && ofa[0].args.sha === HEAD);
+    }
+  }
+
+  finish(errs.length ? 'FAIL ' + errs.join(',') + ' | dbg: ' + (dbg || 'n/a') : 'PASS');
+
+  function finish(result) {
+    window.__result = result;
+    document.title = 'e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>

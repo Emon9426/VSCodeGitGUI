@@ -402,8 +402,7 @@ export class GitService {
   }
 
   /** 仓库全部作者（姓名去重，字母序）——作者多选下拉的候选来源 */
-  async authorsOf(root: string): Promise<string[]> {
-    const r = await this.exec.exec(root, ['log', '--all', '--format=%an'], { timeoutMs: 30_000, maxBytes: 4 * 1024 * 1024 });
+  async authorsOf(root: string): Promise<string[]> {    const r = await this.exec.exec(root, ['log', '--all', '--format=%an'], { timeoutMs: 30_000, maxBytes: 4 * 1024 * 1024 });
     const names = new Set<string>();
     for (const line of r.stdout.split('\n')) {
       const n = line.trim();
@@ -415,6 +414,60 @@ export class GitService {
   async recentMessages(root: string, n: number): Promise<{ subject: string; body: string }[]> {
     const { commits } = await this.commitsPage(root, { ref: null, authors: [], since: '', until: '', noMerges: false }, 0, n);
     return commits.map(c => ({ subject: c.subject, body: c.body }));
+  }
+
+  /** remote 的原始 URL（Issue #61：创建 PR 链接生成）：直读 .git/config 的 [remote "x"] url
+   *  ——零 git 进程（spawn ~200ms），worktree/submodule 的 .git 文件间接（gitdir:）已解 */
+  async remoteUrlOf(root: string, remote: string): Promise<string | null> {
+    try {
+      const text = await fs.promises.readFile(await this.gitDirFile(root, 'config'), 'utf8');
+      let inSec = false;
+      for (const raw of text.split(/\r?\n/)) {
+        const t = raw.trim();
+        if (t.startsWith('[')) {
+          const inner = t.slice(1, t.lastIndexOf(']')).trim();
+          const sp = inner.indexOf(' ');
+          const sec = (sp > 0 ? inner.slice(0, sp) : inner).trim();
+          const nameRaw = sp > 0 ? inner.slice(sp + 1).trim() : '';
+          inSec = sec === 'remote' && nameRaw.replace(/^"|"$/g, '') === remote;
+          continue;
+        }
+        if (inSec && t.startsWith('url')) {
+          const eq = t.indexOf('=');
+          if (eq > 0) return t.slice(eq + 1).trim() || null;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** 远端默认分支（Issue #61）：读 .git/refs/remotes/<r>/HEAD（内容 ref: refs/remotes/<r>/<branch>；
+   *  未 set-head / 无法读取返回 null——调用方回退"目标分支未知"语义） */
+  async remoteDefaultBranchOf(root: string, remote: string): Promise<string | null> {
+    try {
+      const t = (await fs.promises.readFile(await this.gitDirFile(root, 'refs/remotes/' + remote + '/HEAD'), 'utf8')).trim();
+      const marker = 'ref: refs/remotes/' + remote + '/';
+      return t.startsWith(marker) ? t.slice(marker.length).trim() || null : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** .git 目录内文件路径（常规仓库 root/.git；worktree/submodule 的 .git 为文件时解析 gitdir: 指向） */
+  private async gitDirFile(root: string, rel: string): Promise<string> {
+    const dotGit = path.join(root, '.git');
+    let gitDir = dotGit;
+    try {
+      const st = await fs.promises.stat(dotGit);
+      if (st.isFile()) {
+        const t = (await fs.promises.readFile(dotGit, 'utf8')).trim();
+        const marker = 'gitdir:';
+        if (t.startsWith(marker)) gitDir = path.resolve(root, t.slice(marker.length).trim());
+      }
+    } catch { /* 无 .git：由调用方 catch */ }
+    return path.join(gitDir, rel);
   }
 
   // ---------- AI 提交信息上下文（设计方案 §5.3/§5.7） ----------

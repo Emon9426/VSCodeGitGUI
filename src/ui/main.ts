@@ -154,6 +154,16 @@ const app: App = {
   openSettings() {
     void rpc('ui:openSettings').catch(showErr);
   },
+  openPullHistory() {
+    // Issue #59：工具栏入口拉取宿主历史快照（最新在前）；空则轻提示
+    void rpc('pullHistory').then(history => {
+      if (!history?.length) { notify('info', { title: S.t('pullHistoryEmpty') }); return; }
+      showPullSummary(history[0].entries, history[0].truncated, history[0].stat, app, history);
+    }).catch(showErr);
+  },
+  createPr() {
+    void rpc('pr.open').catch(showErr);
+  },
   copy(text) {
     void rpc('ui:copy', { text }).catch(showErr);
   },
