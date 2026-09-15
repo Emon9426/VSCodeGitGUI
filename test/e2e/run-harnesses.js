@@ -10,7 +10,9 @@ const path = require('path');
   const b = await chromium.launch({ executablePath: exe });
   const page = await b.newPage();
   const list = ['harness.html', 'harness-boot.html', 'harness-detail.html', 'harness-files.html', 'harness-lanes.html',
-    'harness-op.html', 'harness-v11.html', 'harness-v13.html', 'harness-diag.html'];
+    'harness-op.html', 'harness-v11.html', 'harness-v13.html', 'harness-diag.html',
+    // Issue #51/#52/#53：Pull 摘要表格化+历史 / 作者过滤 lane 泄漏 / ref 徽标省略号
+    'harness-psum-table.html', 'harness-author-filter.html', 'harness-chip-ellipsis.html'];
   let fails = 0;
   for (const h of list) {
     try {

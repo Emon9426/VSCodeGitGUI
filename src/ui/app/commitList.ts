@@ -236,7 +236,10 @@ export function createCommitList(app: App): CommitList {
     subject.title = c.subject;   // #45：窄列截断时悬停看全文
     msg.appendChild(subject);
     for (const m of buildChips(c)) {
-      const chip = el('span', m.cls, m.text);
+      const chip = el('span', m.cls);
+      // #53：文本包一层块级 span——chip 是 inline-flex，裸文本成为匿名 flex item，
+      // text-overflow:ellipsis 对 flex 容器不生效（长 ref 名被 overflow:hidden 硬剪无省略号）
+      chip.appendChild(el('span', 'gg-chip-text', m.text));
       if (m.title) chip.title = m.title;
       msg.appendChild(chip);
     }

@@ -268,6 +268,14 @@ export interface PullFileStat {
   mtime: string;  // ISO 时间戳
 }
 
+/** 一次 Pull 摘要的历史快照（Issue #51）：at=pull 完成时刻；stat 为当时的工作区现状快照 */
+export interface PullSummaryHistoryItem {
+  at: string;                        // ISO 时间戳
+  entries: PullSummaryEntry[];
+  truncated: boolean;
+  stat: PullFileStatMap;
+}
+
 // ---------- 工程切换（v0.11） ----------
 
 /** 用户保存的工程：跨工作区快速切换目标（持久化于 globalState） */

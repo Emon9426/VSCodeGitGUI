@@ -8,7 +8,7 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import * as vscode from 'vscode';
 import { createT, resolveLang, type Lang, type Translate } from '../common/i18n';
-import type { Commit, FileEntry, LogFilter, MergeSessionAny, ProjectInfo, PullFileStatMap, RepoMeta, RepoState, WorkState } from '../common/models';
+import type { Commit, FileEntry, LogFilter, MergeSessionAny, ProjectInfo, PullFileStatMap, PullSummaryHistoryItem, RepoMeta, RepoState, WorkState } from '../common/models';
 import { RENAME_SEP } from '../common/models';
 import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, FixStepDto, OpKind, WVRequest } from '../common/protocol';
 import { GitError, GitExecutor, isGitError } from '../git/executor';
@@ -27,6 +27,9 @@ import { buildSystemPrompt, buildUserPrompt, type CommitPromptCtx } from '../ai/
 import { buildFileTree, diffContentUsable, formatEntryList } from '../ai/tree';
 import { buildDiagnosePrompt, maskSecrets } from '../ai/diagnose';
 import { parseFixBlock, validateStep, type FixStepRaw } from '../ai/fixplan';
+
+/** Pull 摘要历史保留条数（Issue #51） */
+const PULL_HISTORY_MAX = 5;
 
 function readConfig(): ConfigDto {
   const cfg = vscode.workspace.getConfiguration('gitboard');
@@ -141,6 +144,8 @@ export class GraphPanel {
   /** 最近一次诊断的修复步骤缓存（index → 原始命令与本地分级；spec 执行时重校验重建） */
   private fixSteps = new Map<number, { cmd: string; level: 'run' | 'confirm' | 'copy' }>();
   private pendingWorkView = false;
+  /** Pull 摘要历史（Issue #51）：最新在前，上限 5 条（内存级——面板关闭即清，回看当前会话足够） */
+  private pullHistory: PullSummaryHistoryItem[] = [];
 
   static show(context: vscode.ExtensionContext, repoId?: string): GraphPanel {
     if (GraphPanel.current) {
@@ -1126,7 +1131,10 @@ export class GraphPanel {
     const { entries, truncated } = await this.pullSummary.of(root, include, exclude);
     if (entries.length) {
       const stat = await this.statPullFiles(root, entries);
-      this.post({ t: 'pullSummary', repoId: this.currentRepoId, kind: 'pull', entries, truncated, stat });
+      // Issue #51：记录历史快照（最新在前，封顶 5 条）随事件下发，弹窗内可回看
+      this.pullHistory.unshift({ at: new Date().toISOString(), entries, truncated, stat });
+      if (this.pullHistory.length > PULL_HISTORY_MAX) this.pullHistory.length = PULL_HISTORY_MAX;
+      this.post({ t: 'pullSummary', repoId: this.currentRepoId, kind: 'pull', entries, truncated, stat, history: [...this.pullHistory] });
     }
     this.channel.appendLine(`[summary] pull new=${entries.length} include=${include.length} exclude=${exclude.length}`);
   }
@@ -1350,6 +1358,15 @@ export class GraphPanel {
         releaseKind();
       }
     });
+  }
+
+  /** 命令面板「查看拉取摘要历史」（Issue #51）：有历史 → webview 弹摘要窗（下拉可回看） */
+  showPullHistory(): void {
+    if (!this.pullHistory.length) {
+      void vscode.window.showInformationMessage(this.t('pullHistoryEmpty'));
+      return;
+    }
+    if (this.bootstrapped) this.post({ t: 'pullSummaryShow', history: [...this.pullHistory] });
   }
 
   /** 命令面板快捷操作（作用于当前分支） */

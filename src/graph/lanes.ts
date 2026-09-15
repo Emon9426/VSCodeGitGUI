@@ -35,12 +35,21 @@ export interface GraphData {
   segCount: number;
 }
 
-export function computeLanes(commits: Commit[]): GraphData {
+/**
+ * orphanRoots（Issue #52，过滤视图专用）：作者/日期等过滤会把中间提交剔除，输出列表里
+ * 大量提交的父不可见。默认语义下这些 lane 会一直"期待"永不出现的父提交而无法回收
+ * （lane 泄漏），laneCount 随匹配提交数线性膨胀 → 图形列宽 = laneCount×laneW 爆炸，
+ * 把消息/作者等列整体挤出视口（主区只剩左侧泳道、无空态提示）。
+ * 开启后：第一父不可见 → 该 lane 视为支线尖立即释放；第二父不可见 → 不开支线。
+ * 未过滤时不开（翻页截断处父在未加载页，竖线延伸到视口底是"还有更多历史"的正确暗示）。
+ */
+export function computeLanes(commits: Commit[], orphanRoots = false): GraphData {
   const lanes: (string | null)[] = [];
   const laneSeg: (number | null)[] = [];
   const activeBelow: ActiveLane[][] = [];
   const curves: Curve[] = [];
   let segCount = 0;
+  const visible = orphanRoots ? new Set(commits.map(c => c.sha)) : undefined;
 
   for (let i = 0; i < commits.length; i++) {
     const c = commits[i];
@@ -75,31 +84,34 @@ export function computeLanes(commits: Commit[]): GraphData {
     c.seg = laneSeg[lane] ?? 0;
 
     // 2) 安排父提交去向
-    if (c.parents.length === 0) {
+    const firstParent = c.parents[0];
+    if (firstParent === undefined || (visible && !visible.has(firstParent))) {
+      // 无父，或过滤视图下父不在列表（Issue #52）：支线到此为止，立即释放 lane
       lanes[lane] = null;
       laneSeg[lane] = null;
     } else {
-      lanes[lane] = c.parents[0];
+      lanes[lane] = firstParent;
       laneSeg[lane] = c.seg; // 第一父线延续本段
-      for (let p = 1; p < c.parents.length; p++) {
-        const parent = c.parents[p];
-        const existing = lanes.indexOf(parent);
-        if (existing !== -1) {
-          if (existing !== lane) {
-            curves.push({ row: i, fromLane: lane, toLane: existing, kind: 'mergeOut', seg: laneSeg[existing] ?? 0 });
-          }
-        } else {
-          let k = lanes.indexOf(null);
-          if (k === -1) {
-            k = lanes.length;
-            lanes.push(null);
-            laneSeg.push(null);
-          }
-          lanes[k] = parent;
-          laneSeg[k] = segCount; // 第二父是新支线：新分支段
-          segCount++;
-          curves.push({ row: i, fromLane: lane, toLane: k, kind: 'fork', seg: segCount - 1 });
+    }
+    for (let p = 1; p < c.parents.length; p++) {
+      const parent = c.parents[p];
+      if (visible && !visible.has(parent)) continue;   // 过滤视图：不可见父不开支线
+      const existing = lanes.indexOf(parent);
+      if (existing !== -1) {
+        if (existing !== lane) {
+          curves.push({ row: i, fromLane: lane, toLane: existing, kind: 'mergeOut', seg: laneSeg[existing] ?? 0 });
         }
+      } else {
+        let k = lanes.indexOf(null);
+        if (k === -1) {
+          k = lanes.length;
+          lanes.push(null);
+          laneSeg.push(null);
+        }
+        lanes[k] = parent;
+        laneSeg[k] = segCount; // 第二父是新支线：新分支段
+        segCount++;
+        curves.push({ row: i, fromLane: lane, toLane: k, kind: 'fork', seg: segCount - 1 });
       }
     }
 

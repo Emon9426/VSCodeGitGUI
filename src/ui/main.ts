@@ -814,6 +814,12 @@ function armResolveHint(path: string): void {
 /** 当前分支主干段集合（Issue #24 B3）：HEAD 提交沿第一父回溯——图形层对这些分段加粗。
  *  #46 流畅度：按 repo+HEAD sha 缓存——commitsAppend 追加的是更旧提交，主干段不变时跳过 O(n) 重算 */
 let trunkCacheKey = '';
+/** 日志过滤是否激活（Issue #52）：激活时 computeLanes 走孤儿根语义——过滤剔除中间提交后，
+ *  泄漏的期待 lane 会让 laneCount 随匹配数膨胀、图形列宽爆炸挤出其余列 */
+function filterActive(): boolean {
+  return S.logFilter.authors.length > 0 || !!S.logFilter.since || !!S.logFilter.until || S.logFilter.noMerges;
+}
+
 function computeTrunkSegs(): void {
   const head = S.commits.find(c => c.refs.some(r => r.isHead));
   const key = `${S.repoId ?? ''}:${head?.sha ?? ''}`;
@@ -920,13 +926,15 @@ window.addEventListener('message', e => {
       }
       S.state = st;
       S.commits = st.commits;
-      S.graph = computeLanes(st.commits);
+      // 先同步 logFilter 再算 lanes：本次快照就是按 st.logFilter 产出的（Issue #52 孤儿根
+      // 语义依赖过滤态判定，若读旧值首个过滤事件仍走全量语义 → lane 泄漏列宽爆炸）
+      if (st.logFilter) S.logFilter = st.logFilter;
+      S.graph = computeLanes(st.commits, filterActive());
       computeTrunkSegs();
       if (!repoChanged) commitBar.checkAmendBase();   // B5：amend 期间 HEAD 前进 → 自动退出修订
       emptyAppendStreak = 0;   // 列表整体重建：空页熔断计数随新快照复位
       // 列表已整体重建：作废在途分页请求（其页属旧快照，拼接必错位）
       pendingLoad = undefined;
-      if (st.logFilter) S.logFilter = st.logFilter;
       if (repoChanged) list.reset(); else list.refresh();
       sidebar.update();
       toolbar.update();
@@ -961,7 +969,7 @@ window.addEventListener('message', e => {
         if (m.commits.length) {
           emptyAppendStreak = 0;
           S.commits.push(...m.commits);
-          S.graph = computeLanes(S.commits);
+          S.graph = computeLanes(S.commits, filterActive());
           computeTrunkSegs();
         } else {
           emptyAppendStreak++;
@@ -1147,7 +1155,11 @@ window.addEventListener('message', e => {
       openBranchPicker(app, 'checkout');
       break;
     case 'pullSummary':
-      showPullSummary(m.entries, m.truncated, m.stat, app);
+      showPullSummary(m.entries, m.truncated, m.stat, app, m.history);
+      break;
+    // Pull 历史回看（Issue #51）：命令面板入口 → 弹窗展示最近数次摘要（默认最新）
+    case 'pullSummaryShow':
+      if (m.history.length) showPullSummary(m.history[0].entries, m.history[0].truncated, m.history[0].stat, app, m.history);
       break;
     case 'aiChunk':
       commitBar.onAiChunk(m.text);

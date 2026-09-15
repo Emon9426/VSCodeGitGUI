@@ -449,12 +449,15 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   border-radius: 9px;
   font-size: 11px;
   line-height: 1;
-  max-width: 160px;
+  /* #53：160→240px——企业多段命名（origin/dev/xxx_yyy）常规长度可完整显示；
+     超长时由内部 .gg-chip-text 显式省略号（原 inline-flex 上 ellipsis 不生效=硬剪无提示） */
+  max-width: 240px;
   overflow: hidden;
   white-space: nowrap;
-  text-overflow: ellipsis;
   border: 1px solid transparent;
 }
+/* #53：徽标文本节点——块级 span 承接 text-overflow:ellipsis，长 ref 名显式截断 + title 全名 */
+.gg-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gg-chip.head { color: var(--vscode-charts-green); background: color-mix(in srgb, var(--vscode-charts-green) 18%, transparent); }
 .gg-chip.head.current { flex: none; min-width: 0; }
 .gg-chip.remote { color: var(--vscode-charts-purple); background: color-mix(in srgb, var(--vscode-charts-purple) 18%, transparent); }
@@ -733,23 +736,57 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-banner.accent { background: var(--gg-accent-bg); border-color: var(--gg-accent-bd); }
 .gg-banner.accent .gg-banner-ic { color: var(--gg-accent); }
 
-.gg-psum-modal { width: max(560px, min(720px, 92vw)); max-width: 92vw; }
-.gg-psum-sum { font-size: 11px; color: var(--vscode-descriptionForeground); margin: 0 0 6px; }
+.gg-psum-modal { width: max(600px, min(760px, 92vw)); max-width: 92vw; }
+
+/* Issue #51：顶部工具行——历史下拉（仅多快照时可见） */
+.gg-psum-bar { display: flex; justify-content: flex-end; margin: 0 0 6px; }
+.gg-psum-hist { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.gg-psum-hist-label { white-space: nowrap; }
+.gg-psum-hist-sel {
+  font-size: 11px; font-family: inherit; color: var(--vscode-foreground);
+  background: var(--vscode-dropdown-background, #222);
+  border: 1px solid var(--vscode-dropdown-border, #444);
+  border-radius: 4px; padding: 2px 4px; max-width: 46vw;
+}
+
+/* Issue #51 表格化：单张 grid 表（文件 | 大小 | 修改时间 | 操作），作者/目录行跨全列，
+   行用 subgrid 继承轨道——列对齐与行级 hover/背景兼得 */
+.gg-psum-list { max-height: 56vh; overflow: auto; min-width: 0; }   /* #49：min-width 520px 移除（弹窗宽度已钳 92vw） */
+.gg-psum-table {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(56px, auto) minmax(118px, auto) auto;
+  column-gap: 10px;
+  align-items: center;
+}
+.gg-psum-sum, .gg-psum-note, .gg-psum-author, .gg-psum-dir, .gg-psum-more, .gg-psum-nofile { grid-column: 1 / -1; }
+.gg-psum-thead {
+  position: sticky; top: 0; z-index: 1;
+  display: grid; grid-template-columns: subgrid; grid-column: 1 / -1;
+  background: var(--vscode-editorWidget-background, #222);
+  font-size: 11px; color: var(--vscode-descriptionForeground);
+  padding: 2px 2px 4px; margin-bottom: 2px;
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+}
+.gg-psum-th { display: flex; align-items: center; gap: 2px; cursor: pointer; user-select: none; white-space: nowrap; }
+.gg-psum-th:hover { color: var(--vscode-foreground); }
+.gg-psum-th:last-child { cursor: default; }
+.gg-psum-th.sorted { color: var(--vscode-foreground); font-weight: 600; }
+.gg-psum-sort-arrow { font-size: 10px; }
+.gg-psum-sum { font-size: 11px; color: var(--vscode-descriptionForeground); padding: 2px 2px 4px; }
 /* Issue #29：fetch 摘要「尚未合并」/ pull 摘要缺失文件计数的提示行 */
 .gg-psum-note {
   font-size: 11px; color: var(--vscode-descriptionForeground);
-  margin: 0 0 6px; padding: 4px 8px;
+  margin: 2px 0 4px; padding: 4px 8px;
   background: var(--gg-warn-bg, rgba(204, 153, 0, 0.08));
   border: 1px solid var(--gg-warn-bd, rgba(204, 153, 0, 0.35));
   border-radius: 4px;
 }
-.gg-psum-list { max-height: 56vh; overflow: auto; min-width: 0; }   /* #49：min-width 520px 移除（弹窗宽度已钳 92vw） */
 .gg-psum-author {
   display: flex; align-items: baseline; gap: 8px;
   padding: 8px 2px 3px; margin-top: 4px;
   border-bottom: 1px solid var(--vscode-panel-border, #333);
 }
-.gg-psum-author:first-child { margin-top: 0; }
+.gg-psum-author:first-of-type { margin-top: 0; }
 .gg-psum-author-name { font-size: 12px; font-weight: 600; }
 .gg-psum-author-sub { font-size: 11px; color: var(--vscode-descriptionForeground); }
 .gg-psum-dir {
@@ -758,17 +795,24 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   padding: 7px 2px 3px var(--gg-indent-dir); margin-top: 2px;   /* #46：三层梯度 作者 2px → 目录 12px → 文件 24px */
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.gg-psum-row { display: flex; align-items: baseline; gap: 10px; padding: 3px 2px 3px 24px; flex-wrap: wrap; }
+/* 文件行：subgrid 继承列轨道（跨全列），列内对齐 + 行级 hover */
+.gg-psum-row {
+  display: grid; grid-template-columns: subgrid; grid-column: 1 / -1;
+  align-items: center;
+  padding: 3px 2px 3px 24px;
+}
+.gg-psum-row:hover { background: var(--vscode-list-hoverBackground); }
+.gg-psum-nofile { display: flex; align-items: baseline; gap: 10px; padding: 3px 2px; }
 .gg-psum-name {
-  flex: 1 1 auto; min-width: 40%;
   font-family: var(--vscode-editor-font-family); font-size: 12px;
   word-break: break-all;   /* 文件名完整优先：不省略号，过长换行 */
+  min-width: 0;
 }
-.gg-psum-meta { margin-left: auto; display: flex; gap: 10px; flex: none; font-size: 11px; align-items: baseline; }
+.gg-psum-cell { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; white-space: nowrap; justify-self: start; }
 .gg-psum-size { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gg-psum-time { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gg-psum-n { color: var(--vscode-descriptionForeground); }
-.gg-psum-acts { display: flex; gap: 1px; flex: none; align-self: flex-start; }   /* #49：对齐首行（原 center 在文件名换行时悬空于整行中部） */
+.gg-psum-acts { display: flex; gap: 1px; flex: none; justify-self: end; }
 .gg-psum-act {
   display: flex; align-items: center; justify-content: center;
   width: 20px; height: 20px; padding: 0; border: none; background: none; cursor: pointer;

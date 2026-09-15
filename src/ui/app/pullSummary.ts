@@ -1,10 +1,12 @@
 /**
- * Pull/Fetch 摘要弹窗（v0.13）：拉到的纯净提交（排除 merge）按
- * **作者 → 目录 → 文件** 三层呈现：作者头汇总其提交/文件数，目录头显示相对路径一次，
- * 组内只列文件名 + 工作区大小/修改时间，行尾按钮一键打开文件或在资源管理器中定位。
+ * Pull/Fetch 摘要弹窗（v0.13 → Issue #51 表格化）：拉到的纯净提交（排除 merge）按
+ * **作者 → 目录 → 文件** 三层呈现，叶子层文件条目以表格（文件 | 大小 | 修改时间 | 操作）
+ * 四列对齐渲染，表头点击按列排序（各目录组内生效，目录分组不动）。
+ * 历史回看（Issue #51）：宿主随事件下发最近 5 次摘要快照，弹窗顶部下拉可切换；
+ * 命令面板「查看最近拉取摘要」直接弹窗（pullSummaryShow）。
  * 同作者同文件多提交合并取最新（×N 标记，悬停列出全部提交）。
  */
-import { RENAME_SEP, type PullFileStatMap, type PullSummaryEntry } from '../../common/models';
+import { RENAME_SEP, type PullFileStatMap, type PullSummaryEntry, type PullSummaryHistoryItem } from '../../common/models';
 import { setIcon, type IconName } from '../icons';
 import { S, type App } from '../state';
 import { baseOf, el, formatTime, groupPaths } from '../util';
@@ -18,86 +20,182 @@ const fmtSize = (n: number): string =>
   : n >= 1024 ? `${(n / 1024).toFixed(1)} KB`
   : `${n} B`;
 
+/** 表格排序列（file=文件名 localeCompare；size/time 按工作区 stat，缺失/已删排末尾） */
+type SortKey = 'file' | 'size' | 'time';
+
 export function showPullSummary(
   entries: PullSummaryEntry[],
   truncated: boolean,
   stat: PullFileStatMap,
   app: App,
+  history?: PullSummaryHistoryItem[],
 ): void {
-  const title = S.t('pullSummaryTitle', { n: String(entries.length) });
-  const { box, body, close } = openModal(title);
-  box.classList.add('gg-psum-modal');
+  // 历史条目（最新在前）；未携带（旧宿主/测试）时以本次为唯一条目
+  const items: PullSummaryHistoryItem[] = history?.length
+    ? history
+    : [{ at: new Date().toISOString(), entries, truncated, stat }];
+  let idx = 0;                       // 当前展示的历史条目（0 = 最新）
+  let sortKey: SortKey = 'file';
+  let sortDir: 1 | -1 = 1;
 
   const fmt = (iso: string) => formatTime(iso, S.config.dateFormat === 'iso' ? 'iso' : 'datetime', S.t);
+  const { box, body, close } = openModal('');
+  box.classList.add('gg-psum-modal');
+  const titleEl = box.firstElementChild as HTMLElement;
 
-  // 作者 → (文件 → 涉及提交)（entries 日期倒序：作者首现即其最新提交，作者块天然按最新在前）
-  const byAuthor = new Map<string, { entries: PullSummaryEntry[]; files: Map<string, { latest: PullSummaryEntry; all: PullSummaryEntry[] }> }>();
-  for (const e of entries) {
-    let a = byAuthor.get(e.author);
-    if (!a) { a = { entries: [], files: new Map() }; byAuthor.set(e.author, a); }
-    a.entries.push(e);
-    for (const f of e.files) {
-      const cur = a.files.get(f);
-      if (cur) cur.all.push(e);
-      else a.files.set(f, { latest: e, all: [e] });
+  // 顶部工具行：历史下拉（多条目才有意义）+ 排序状态由表头承载
+  const bar = el('div', 'gg-psum-bar');
+  const histWrap = el('label', 'gg-psum-hist');
+  const histSel = el('select', 'gg-psum-hist-sel') as HTMLSelectElement;
+  const refreshHist = () => {
+    histWrap.classList.toggle('hidden', items.length < 2);
+    histSel.textContent = '';
+    items.forEach((h, i) => {
+      const opt = el('option', undefined, `${i === 0 ? S.t('pullHistoryLatest') : `#${i + 1}`} · ${fmt(h.at)} · ${h.entries.length}`) as HTMLOptionElement;
+      opt.value = String(i);
+      histSel.appendChild(opt);
+    });
+    histSel.value = String(idx);
+  };
+  histSel.addEventListener('change', () => {
+    idx = Number(histSel.value) || 0;
+    render();
+  });
+  histWrap.append(el('span', 'gg-psum-hist-label', S.t('pullHistoryLabel')), histSel);
+  bar.appendChild(histWrap);
+
+  const grid = el('div', 'gg-psum-table');
+  const tableBox = el('div', 'gg-psum-list');
+
+  /** 排序后的目录组内文件列表（组内排序，目录分组不受影响） */
+  const sortFiles = (files: string[]): string[] => {
+    const st = items[idx].stat;
+    const arr = [...files];
+    arr.sort((x, y) => {
+      if (sortKey === 'file') return sortDir * newPathOf(x).localeCompare(newPathOf(y));
+      const a = st?.[newPathOf(x)];
+      const b = st?.[newPathOf(y)];
+      // 缺失/已删除（null）恒排末尾，与方向无关
+      if (!a || !b) return a === b ? 0 : a ? -1 : 1;
+      const d = sortKey === 'size' ? a.size - b.size : Date.parse(a.mtime) - Date.parse(b.mtime);
+      return sortDir * d;
+    });
+    return arr;
+  };
+
+  /** 表头：可点击排序（同列切换方向），当前排序列显示方向箭头 */
+  function renderHead(): void {
+    const head = el('div', 'gg-psum-thead');
+    const mkHead = (key: SortKey, label: string): HTMLElement => {
+      const h = el('div', 'gg-psum-th');
+      const text = el('span', undefined, label);
+      h.appendChild(text);
+      if (sortKey === key) {
+        h.classList.add('sorted');
+        h.appendChild(el('span', 'gg-psum-sort-arrow', sortDir === 1 ? '↑' : '↓'));
+      }
+      h.title = S.t('pullSummarySortHint', { dir: S.t(sortDir === 1 ? 'pullSummarySortAsc' : 'pullSummarySortDesc') });
+      h.addEventListener('click', () => {
+        if (sortKey === key) sortDir = sortDir === 1 ? -1 : 1;
+        else { sortKey = key; sortDir = 1; }
+        render();
+      });
+      return h;
+    };
+    head.append(
+      mkHead('file', S.t('pullSummaryColFile')),
+      mkHead('size', S.t('pullSummaryColSize')),
+      mkHead('time', S.t('pullSummaryColTime')),
+      el('div', 'gg-psum-th'),
+    );
+    grid.appendChild(head);
+  }
+
+  function render(): void {
+    const cur = items[idx];
+    titleEl.textContent = S.t('pullSummaryTitle', { n: String(cur.entries.length) });
+    refreshHist();
+    grid.textContent = '';
+    tableBox.textContent = '';
+    renderHead();
+
+    const { entries, truncated: trunc, stat } = cur;
+    // 作者 → (文件 → 涉及提交)（entries 日期倒序：作者首现即其最新提交，作者块天然按最新在前）
+    const byAuthor = new Map<string, { entries: PullSummaryEntry[]; files: Map<string, { latest: PullSummaryEntry; all: PullSummaryEntry[] }> }>();
+    for (const e of entries) {
+      let a = byAuthor.get(e.author);
+      if (!a) { a = { entries: [], files: new Map() }; byAuthor.set(e.author, a); }
+      a.entries.push(e);
+      for (const f of e.files) {
+        const c = a.files.get(f);
+        if (c) c.all.push(e);
+        else a.files.set(f, { latest: e, all: [e] });
+      }
     }
-  }
 
-  // 汇总行：提交 / 作者 / 文件（全局唯一）
-  const uniqFiles = new Set(entries.flatMap(e => e.files.map(newPathOf)));
-  body.appendChild(el('div', 'gg-psum-sum', S.t('pullSummaryCounts', {
-    c: String(entries.length), a: String(byAuthor.size), f: String(uniqFiles.size),
-  })));
-
-  // Issue #29 P2：同批拉到的提交里后续又删除/移动的文件给出计数提示
-  //（#31 起摘要仅在 Pull 合并完成触发，文件均已合并，缺失只剩"后续提交已删除"）
-  const goneCount = [...uniqFiles].filter(p => stat?.[p] === null).length;
-  if (goneCount > 0) {
-    body.appendChild(el('div', 'gg-psum-note', S.t('pullSummaryGone', { n: String(goneCount) })));
-  }
-
-  const repoRoot = S.repos.find(r => r.id === S.repoId)?.root;
-  const listBox = el('div', 'gg-psum-list');
-
-  for (const [author, a] of byAuthor) {
-    const head = el('div', 'gg-psum-author');
-    head.appendChild(el('span', 'gg-psum-author-name', author));
-    head.appendChild(el('span', 'gg-psum-author-sub', S.t('pullSummaryAuthorCounts', {
-      c: String(a.entries.length), f: String(a.files.size),
+    // 汇总行：提交 / 作者 / 文件（全局唯一）
+    const uniqFiles = new Set(entries.flatMap(e => e.files.map(newPathOf)));
+    grid.appendChild(fullRow('gg-psum-sum', S.t('pullSummaryCounts', {
+      c: String(entries.length), a: String(byAuthor.size), f: String(uniqFiles.size),
     })));
-    listBox.appendChild(head);
 
-    // #49：无文件变更的提交（如 --allow-empty）也可见——作者块内直接列提交行（subject + 短SHA）
-    if (!a.files.size) {
-      for (const e of a.entries) {
-        const row = el('div', 'gg-psum-row gg-psum-nofile');
-        row.title = e.subject;
-        row.append(
-          el('span', 'gg-psum-name', e.subject),
-          el('span', 'gg-psum-meta', e.shortSha),
-        );
-        listBox.appendChild(row);
-      }
-      continue;
+    // Issue #29 P2：同批拉到的提交里后续又删除/移动的文件给出计数提示
+    //（#31 起摘要仅在 Pull 合并完成触发，文件均已合并，缺失只剩"后续提交已删除"）
+    const goneCount = [...uniqFiles].filter(p => stat?.[p] === null).length;
+    if (goneCount > 0) {
+      grid.appendChild(fullRow('gg-psum-note', S.t('pullSummaryGone', { n: String(goneCount) })));
     }
-    // 作者内目录分组（#46 收敛为 util.groupPaths：localeCompare、根目录置顶、根组显仓库绝对路径）
-    for (const g of groupPaths([...a.files.keys()], f => newPathOf(f), repoRoot)) {
-      const dirHead = el('div', 'gg-psum-dir', g.head);
-      dirHead.title = g.head;   // 路径过长时省略号，悬停看全
-      listBox.appendChild(dirHead);
-      for (const f of g.items.sort((x, y) => newPathOf(x).localeCompare(newPathOf(y)))) {
-        listBox.appendChild(sumRow(f, a.files.get(f)!, stat, fmt, app));
+
+    const repoRoot = S.repos.find(r => r.id === S.repoId)?.root;
+
+    for (const [author, a] of byAuthor) {
+      const head = el('div', 'gg-psum-author');
+      head.appendChild(el('span', 'gg-psum-author-name', author));
+      head.appendChild(el('span', 'gg-psum-author-sub', S.t('pullSummaryAuthorCounts', {
+        c: String(a.entries.length), f: String(a.files.size),
+      })));
+      grid.appendChild(head);
+
+      // #49：无文件变更的提交（如 --allow-empty）也可见——作者块内直接列提交行（subject + 短SHA）
+      if (!a.files.size) {
+        for (const e of a.entries) {
+          const row = el('div', 'gg-psum-row gg-psum-nofile');
+          row.title = e.subject;
+          row.append(
+            el('span', 'gg-psum-name', e.subject),
+            el('span', 'gg-psum-meta', e.shortSha),
+          );
+          grid.appendChild(row);
+        }
+        continue;
+      }
+      // 作者内目录分组（#46 收敛为 util.groupPaths：localeCompare、根目录置顶、根组显仓库绝对路径）
+      for (const g of groupPaths([...a.files.keys()], f => newPathOf(f), repoRoot)) {
+        const dirHead = el('div', 'gg-psum-dir', g.head);
+        dirHead.title = g.head;   // 路径过长时省略号，悬停看全
+        grid.appendChild(dirHead);
+        for (const f of sortFiles(g.items)) {
+          grid.appendChild(sumRow(f, a.files.get(f)!, stat, fmt, app));
+        }
       }
     }
+
+    if (entries.some(e => e.filesTruncated)) {
+      grid.appendChild(fullRow('gg-psum-more', S.t('pullSummaryMoreFiles')));
+    }
+    if (trunc) {
+      grid.appendChild(fullRow('gg-psum-more', S.t('pullSummaryTruncated', { n: String(entries.length) })));
+    }
+    tableBox.appendChild(grid);
   }
 
-  if (entries.some(e => e.filesTruncated)) {
-    listBox.appendChild(el('div', 'gg-psum-more', S.t('pullSummaryMoreFiles')));
+  /** 跨全宽行（汇总/作者/目录/提示）——grid-column 由 CSS 类统一 */
+  function fullRow(cls: string, text: string): HTMLElement {
+    return el('div', cls, text);
   }
-  if (truncated) {
-    listBox.appendChild(el('div', 'gg-psum-more', S.t('pullSummaryTruncated', { n: String(entries.length) })));
-  }
-  body.appendChild(listBox);
+
+  render();
+  body.append(bar, tableBox);
 
   const btns = el('div', 'gg-modal-btns');
   const ok = el('button', 'gg-btn primary', S.t('close'));
@@ -107,7 +205,7 @@ export function showPullSummary(
   ok.focus();
 }
 
-/** 单个文件行：文件名 | 大小 | 修改时间 | ×N | 打开/定位按钮（作用于工作区新路径） */
+/** 单个文件表格行：文件名 | 大小 | 修改时间（+×N）| 打开/定位按钮（作用于工作区新路径） */
 function sumRow(
   f: string,
   info: { latest: PullSummaryEntry; all: PullSummaryEntry[] },
@@ -130,12 +228,13 @@ function sumRow(
   tip.push(...info.all.map(e => `${fmt(e.date)}  ${e.author}  ${e.subject} (${e.shortSha})`));
   row.title = tip.join('\n');
 
-  row.appendChild(el('span', 'gg-psum-name', nameText));   // 完整显示：不省略号，过长换行
-  const meta = el('span', 'gg-psum-meta');
-  meta.appendChild(el('span', 'gg-psum-size', st ? fmtSize(st.size) : '—'));
-  meta.appendChild(el('span', 'gg-psum-time', st ? fmt(st.mtime) : '—'));
-  if (info.all.length > 1) meta.appendChild(el('span', 'gg-psum-n', `×${info.all.length}`));
-  row.appendChild(meta);
+  const name = el('span', 'gg-psum-name', nameText);   // 完整显示：不省略号，过长换行
+  row.appendChild(name);
+  const size = el('span', 'gg-psum-cell gg-psum-size', st ? fmtSize(st.size) : '—');
+  const time = el('span', 'gg-psum-cell gg-psum-time');
+  time.textContent = st ? fmt(st.mtime) : '—';
+  if (info.all.length > 1) time.appendChild(el('span', 'gg-psum-n', ` ×${info.all.length}`));
+  row.append(size, time);
 
   const acts = el('span', 'gg-psum-acts');
   const mkAct = (icon: IconName, title: string, run: () => void): HTMLButtonElement => {

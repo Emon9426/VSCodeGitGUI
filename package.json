@@ -81,6 +81,10 @@
         "title": "%cmd.checkoutBranch%"
       },
       {
+        "command": "gitboard.pullHistory",
+        "title": "%cmd.pullHistory%"
+      },
+      {
         "command": "gitboard.setLanguage",
         "title": "%cmd.setLanguage%"
       },
