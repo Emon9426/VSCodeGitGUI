@@ -38,6 +38,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('gitboard.checkoutBranch', () => {
       GraphPanel.show(context).openCheckoutPicker();
     }),
+    // Pull 摘要历史回看（Issue #51）：命令面板弹最近 5 次拉取摘要窗
+    vscode.commands.registerCommand('gitboard.pullHistory', () => {
+      GraphPanel.show(context).showPullHistory();
+    }),
     // 文件历史页（v0.14）：资源管理器右键直达（定位该文件并显示历史）
     vscode.commands.registerCommand('gitboard.showFileHistory', (uri?: vscode.Uri) => {
       if (!uri || !uri.fsPath) return;

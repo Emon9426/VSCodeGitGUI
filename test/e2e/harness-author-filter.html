@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<!-- mock VS Code API：必须先于 webview.js 定义 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * Issue #52 复现 harness：作者过滤后提交图大片空白。
+ * 场景：全量 200 条连续拓扑 → 作者过滤后 500 条「父子断裂」提交（父不在列表内，
+ * 与 git log --author 真实输出一致）→ 断言图形列宽不爆炸、行文本仍可见。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', colWidths: undefined, selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  const sha = (i, p) => (p ?? 'a') + String(i).padStart(4, '0') + 'f'.repeat(40 - 1 - String(i).length);
+  const mk = (i, parents, name) => ({
+    sha: sha(i), shortSha: sha(i).slice(0, 7),
+    parents,
+    author: { name: name ?? 'e2e', email: 'e2e@test', date: '2026-08-21T10:00:00+08:00' },
+    committer: { name: name ?? 'e2e', email: 'e2e@test', date: '2026-08-21T10:00:00+08:00' },
+    subject: `c-${i}`, body: '', refs: [],
+  });
+
+  // 全量 200 条：主线连续（i 的第一父 = i+1），每 50 条一条侧支（断裂前正常拓扑）
+  const full = [];
+  for (let i = 0; i < 200; i++) full.push(mk(i, i === 199 ? [] : [sha(i + 1)]));
+
+  const stateOf = (commits, authors, ver) => ({
+    repoId: 'r1',
+    head: { sha: commits[0].sha, branch: 'main', detached: false },
+    branches: [{ name: 'main', fullName: 'refs/heads/main', sha: commits[0].sha, isHead: true }],
+    remotes: [], tags: [],
+    status: { dirtyCount: 0 },
+    filterRef: null, logFilter: { authors, since: '', until: '', noMerges: false },
+    commits, commitsLoaded: commits.length, hasMore: false, stateVersion: ver,
+  });
+
+  window.__send({ t: 'repoState', state: stateOf(full, [], 1) });
+  await twoFrames(); await sleep(150);
+  const graphWBefore = graphColWidth();
+  const rowsBefore = visibleRows();
+
+  // 作者过滤：500 条匹配提交，父一律指向「不在列表中的提交」（真实 --author 输出形态：
+  // 匹配提交之间的未匹配提交被剔除，父子链断裂）
+  const filtered = [];
+  for (let i = 0; i < 500; i++) {
+    const parent = i % 3 === 0 ? [] : [sha(10_000 + i)];   // 1/3 为根（首提交），其余父不可见
+    filtered.push(mk(5_000 + i, parent, 'liuchur'));
+  }
+  window.__send({ t: 'repoState', state: stateOf(filtered, ['liuchur'], 2) });
+  await twoFrames(); await sleep(200);
+
+  const graphWAfter = graphColWidth();
+  const rowsAfter = visibleRows();
+  const subj = firstVisibleSubjectRect();
+  const vw = window.innerWidth;
+  const emptyShown = !!document.querySelector('.gg-empty.show');
+
+  // 修复后预期：图形列宽回落（断裂不再各占一 lane）；行文本列仍在视口内可见
+  const ok = rowsBefore > 0 && rowsAfter > 0 && !emptyShown
+    && graphWAfter < 300
+    && subj && subj.x + Math.min(subj.width, 80) < vw;
+
+  finish(ok ? 'PASS'
+    : `FAIL before{rows=${rowsBefore},gw=${graphWBefore}} after{rows=${rowsAfter},gw=${graphWAfter},empty=${emptyShown},subj=${subj ? Math.round(subj.x) : 'none'},vw=${vw}}`);
+
+  function graphColWidth() {
+    const wrap = document.querySelector('.gg-list-wrap');
+    return wrap ? Number((getComputedStyle(wrap).getPropertyValue('--c-graph') || '').replace('px', '')) || -1 : -1;
+  }
+  function visibleRows() {
+    return [...document.querySelectorAll('.gg-list .gg-row')].filter(r => r.style.display !== 'none').length;
+  }
+  function firstVisibleSubjectRect() {
+    const rows = [...document.querySelectorAll('.gg-list .gg-row')].filter(r => r.style.display !== 'none');
+    for (const r of rows) {
+      const s = r.querySelector('.gg-subject');
+      if (s && s.textContent) return s.getBoundingClientRect();
+    }
+    return null;
+  }
+  function finish(result) {
+    window.__result = result;
+    document.title = 'e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>

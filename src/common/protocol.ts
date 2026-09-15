@@ -3,7 +3,7 @@
  * 请求-响应：Webview 生成自增 id，扩展侧回 res 携带同 id。
  * 事件：扩展侧主动推送。
  */
-import type { GraphScope, ProjectInfo, PullSummaryEntry, PullFileStatMap, RepoMeta, RepoState, Commit, CommitDetail, DiffPayload, WorkState, MoveDetect } from './models';
+import type { GraphScope, ProjectInfo, PullSummaryEntry, PullSummaryHistoryItem, PullFileStatMap, RepoMeta, RepoState, Commit, CommitDetail, DiffPayload, WorkState, MoveDetect } from './models';
 
 export interface ConfigDto {
   language: 'auto' | 'zh-CN' | 'en';
@@ -141,8 +141,9 @@ export type ExtEvent =
   | { t: 'showWork' }
   // Pull 摘要（v0.13；#31 起仅 Pull 合并完成触发——fetch 静默更新徽标/提交图不弹摘要）；
   // stat 为文件工作区现状（键=文件路径，重命名取新路径；Issue #29 三态：
-  // 值=存在、null=已探测不存在（已被后续提交删除）、键缺失=未采集超上限）
-  | { t: 'pullSummary'; repoId: string; kind: 'pull'; entries: PullSummaryEntry[]; truncated: boolean; stat: PullFileStatMap }
+  // 值=存在、null=已探测不存在（已被后续提交删除）、键缺失=未采集超上限）；
+  // history（Issue #51）：最近数次 pull 摘要快照（最新在前，含本次），供弹窗内回看
+  | { t: 'pullSummary'; repoId: string; kind: 'pull'; entries: PullSummaryEntry[]; truncated: boolean; stat: PullFileStatMap; history?: PullSummaryHistoryItem[] }
   | { t: 'aiChunk'; text: string }
   | { t: 'aiDone'; model: string; instructions: number; fallback?: boolean }
   | { t: 'aiError'; code: 'noModel' | 'auth' | 'quota' | 'canceled' | 'error'; message?: string }
@@ -153,7 +154,9 @@ export type ExtEvent =
   // 文件历史页（v0.14）：explorer 右键「查看文件历史」→ 打开面板切文件视图并定位路径
   | { t: 'filesReveal'; path: string }
   // 检出分支（Issue #24）：命令面板 gitboard.checkoutBranch → webview 弹检出选择器
-  | { t: 'showCheckout' };
+  | { t: 'showCheckout' }
+  // Pull 历史回看（Issue #51）：命令面板 gitboard.pullHistory → webview 弹摘要窗（历史下拉可选）
+  | { t: 'pullSummaryShow'; history: PullSummaryHistoryItem[] };
 
 export interface WVRequest {
   id: number;

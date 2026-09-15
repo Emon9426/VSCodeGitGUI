@@ -105,4 +105,64 @@ describe('computeLanes', () => {
     // 节点段色连续性：主支全部 seg0
     expect([cs[0].seg, cs[1].seg, cs[3].seg, cs[6].seg]).toEqual([0, 0, 0, 0]);
   });
+
+  // ---------- Issue #52：过滤视图孤儿根语义 ----------
+
+  it('orphanRoots=false（默认）：父不可见的提交各占一 lane 且永不回收（泄漏，回归锚定）', () => {
+    // 模拟 git log --author 输出：匹配提交的父不在列表（未匹配被剔除）
+    const cs = [
+      mk('a3', ['ghost3']),
+      mk('a2', ['ghost2']),
+      mk('a1', ['ghost1']),
+    ];
+    const g = computeLanes(cs);
+    expect(lanesOf(cs)).toEqual([0, 1, 2]);       // 各开新 lane：期待中的父永不出现
+    expect(g.laneCount).toBe(3);
+    expect(g.activeBelow[0]).toHaveLength(1);      // lane0 泄漏（期待 ghost3）
+    expect(g.activeBelow[2]).toHaveLength(3);      // 行行累积：三条泄漏 lane
+  });
+
+  it('orphanRoots=true：父不可见 → lane 立即释放，不泄漏、laneCount 不随匹配数膨胀', () => {
+    const cs = [
+      mk('a3', ['ghost3']),
+      mk('a2', ['ghost2']),
+      mk('a1', ['ghost1']),
+    ];
+    const g = computeLanes(cs, true);
+    expect(lanesOf(cs)).toEqual([0, 0, 0]);        // 槽位复用：孤儿提交不各占一 lane
+    expect(g.laneCount).toBe(1);
+    for (const act of g.activeBelow) expect(act).toEqual([]);   // 无泄漏竖线
+  });
+
+  it('orphanRoots=true：可见连通段仍正常连线，不可见第二父不开支线', () => {
+    // b2-b1 连通段 + 孤儿 o；m 的第一父 b2 可见（延续 lane0）、第二父 ghost 不可见（不 fork）
+    const cs = [
+      mk('m', ['b2', 'ghost']),
+      mk('o', ['ghost2']),
+      mk('b2', ['b1']),
+      mk('b1', []),
+    ];
+    const g = computeLanes(cs, true);
+    // 孤儿 o 与 m→b2 连通段并行，临时占 lane1（用后即释放，后续孤儿可复用该槽）
+    expect(lanesOf(cs)).toEqual([0, 1, 0, 0]);
+    expect(g.laneCount).toBe(2);
+    expect(g.curves).toEqual([]);                  // 第二父不可见：无 fork 曲线
+    // 连通段竖线保留（m→b2→b1）
+    expect(g.activeBelow[0]).toEqual([{ lane: 0, seg: 0 }]);
+    expect(g.activeBelow[2]).toEqual([{ lane: 0, seg: 0 }]);
+    expect(g.activeBelow[3]).toEqual([]);
+  });
+
+  it('orphanRoots=true：可见第二父正常 fork/merge（语义不回退）', () => {
+    const cs = [
+      mk('m', ['a2', 'b1']),
+      mk('a2', ['a1']),
+      mk('b1', ['a1']),
+      mk('a1', []),
+    ];
+    const g = computeLanes(cs, true);
+    expect(g.laneCount).toBe(2);
+    expect(g.curves).toContainEqual({ row: 0, fromLane: 0, toLane: 1, kind: 'fork', seg: 1 });
+    expect(g.curves).toContainEqual({ row: 3, fromLane: 1, toLane: 0, kind: 'mergeIn', seg: 1 });
+  });
 });

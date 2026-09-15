@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * Issue #53 验证 harness：长分支 ref 徽标不再硬剪无提示。
+ * 断言：文本包 .gg-chip-text 承接 ellipsis（超宽截断显式省略号）、title=全名、
+ * 中等长度名（≤240px）完整显示不截断。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'github',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', colWidths: undefined, selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  const LONG = 'origin/dev/26R11_HCAS_26_RL05_release_branch';   // 远超 240px 必截断
+  const MID = 'origin/dev/26R11_HCAS_26_RL05';                   // Issue 示例名（~180px，应完整）
+  const mk = (sha, refs, subject) => ({
+    sha, shortSha: sha.slice(0, 7), parents: [],
+    author: { name: 'e2e', email: 'e@t', date: '2026-09-14T14:51:00+08:00' },
+    committer: { name: 'e2e', email: 'e@t', date: '2026-09-14T14:51:00+08:00' },
+    subject, body: '', refs,
+  });
+  const commits = [
+    mk('a' + '0'.repeat(39), [
+      { kind: 'remote', name: LONG, isHead: false },
+      { kind: 'remote', name: MID, isHead: false },
+    ], 'two long remote refs'),
+    mk('b' + '0'.repeat(39), [], 'plain'),
+  ];
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: commits[0].sha, branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: commits[0].sha, isHead: true }],
+      remotes: [{ name: 'origin', branches: [{ name: LONG, fullName: 'refs/remotes/origin/' + LONG, sha: commits[0].sha }] }],
+      tags: [],
+      status: { dirtyCount: 0 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits, commitsLoaded: 2, hasMore: false, stateVersion: 1,
+    },
+  });
+  await twoFrames(); await sleep(150);
+
+  const chips = [...document.querySelectorAll('.gg-list .gg-row .gg-chip')];
+  const longChip = chips.find(c => c.title === LONG);
+  const midChip = chips.find(c => c.title === MID);
+
+  const errs = [];
+  if (!longChip || !midChip) { finish('FAIL chips=' + chips.length); return; }
+
+  // 1) 文本节点承接 ellipsis：内部 .gg-chip-text 存在且样式生效
+  for (const [chip, name] of [[longChip, 'long'], [midChip, 'mid']]) {
+    const txt = chip.querySelector('.gg-chip-text');
+    if (!txt) { errs.push(name + ':no-text-span'); continue; }
+    const cs = getComputedStyle(txt);
+    if (cs.textOverflow !== 'ellipsis') errs.push(name + ':no-ellipsis-style');
+    if (txt.textContent !== (chip.textContent)) errs.push(name + ':text-mismatch');
+  }
+  // 2) 超长名：确被截断（scrollWidth>clientWidth）且 chip 宽被钳制（≤240px 内容边界）
+  const longTxt = longChip.querySelector('.gg-chip-text');
+  if (longTxt.scrollWidth <= longTxt.clientWidth) errs.push('long:not-truncated');
+  if (longChip.getBoundingClientRect().width > 242) errs.push('long:chip-overflow');
+  // 3) 中等名（Issue 示例 28 字符）单独占行时应完整显示（此前同行超长徽标的收缩属预期 ellipsis 行为）
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: 'c' + '0'.repeat(39), branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'c' + '0'.repeat(39), isHead: true }],
+      remotes: [], tags: [], status: { dirtyCount: 0 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits: [mk('c' + '0'.repeat(39), [{ kind: 'remote', name: MID, isHead: false }], 'solo'), mk('b' + '0'.repeat(39), [], 'plain')],
+      commitsLoaded: 2, hasMore: false, stateVersion: 2,
+    },
+  });
+  await twoFrames(); await sleep(150);
+  const soloChip = [...document.querySelectorAll('.gg-list .gg-row .gg-chip')].find(c => c.title === MID);
+  if (!soloChip) errs.push('mid:no-solo-chip');
+  else {
+    const soloTxt = soloChip.querySelector('.gg-chip-text');
+    if (soloTxt.scrollWidth > soloTxt.clientWidth) errs.push('mid:truncated-but-should-fit');
+  }
+  // 4) title 全名可达
+  if (longChip.title !== LONG) errs.push('long:no-title');
+
+  finish(errs.length ? 'FAIL ' + errs.join(',') : 'PASS');
+
+  function finish(result) {
+    window.__result = result;
+    document.title = 'e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>

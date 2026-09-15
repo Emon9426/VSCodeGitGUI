@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * Issue #51 验证 harness：Pull 摘要表格化 + 排序 + 历史回看。
+ * 断言：四列表头存在、文件行三列跨行对齐（x 坐标一致）、size 表头点击排序生效、
+ * 历史下拉多条目可切换且汇总行随条目变化、gone 文件行禁用操作。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'github',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', colWidths: undefined, selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  const e1 = { sha: 'a'.repeat(40), shortSha: 'aaaaaaa', author: 'alice', date: '2026-09-14T14:51:00+08:00', subject: 'feat one', files: ['src/big.bin', 'src/small.ts', 'docs/gone.md'], filesTruncated: false };
+  const e2 = { sha: 'b'.repeat(40), shortSha: 'bbbbbbb', author: 'bob', date: '2026-09-13T10:00:00+08:00', subject: 'fix two', files: ['src/small.ts'], filesTruncated: false };
+  const e3 = { sha: 'c'.repeat(40), shortSha: 'ccccccc', author: 'alice', date: '2026-09-12T09:00:00+08:00', subject: 'chore three', files: [], filesTruncated: false };
+
+  const mkItem = (at, entries) => ({
+    at,
+    entries,
+    truncated: false,
+    stat: {
+      'src/big.bin': { size: 153600, mtime: '2026-09-14T14:51:00+08:00' },
+      'src/small.ts': { size: 1024, mtime: '2026-09-13T09:00:00+08:00' },
+      'docs/gone.md': null,
+    },
+  });
+  // 历史 3 条（最新在前）：h0=2 提交 / h1=1 提交 / h2=1 空文件提交
+  const history = [
+    mkItem('2026-09-14T14:52:00+08:00', [e1, e2]),
+    mkItem('2026-09-13T10:01:00+08:00', [e2]),
+    mkItem('2026-09-12T09:01:00+08:00', [e3]),
+  ];
+
+  window.__send({ t: 'pullSummary', repoId: 'r1', kind: 'pull', entries: history[0].entries, truncated: false, stat: history[0].stat, history });
+  await twoFrames(); await sleep(150);
+
+  const errs = [];
+  const modal = document.querySelector('.gg-psum-modal');
+  if (!modal) { finish('FAIL no-modal'); return; }
+
+  // 1) 表头四列
+  const ths = [...modal.querySelectorAll('.gg-psum-th')];
+  if (ths.length !== 4) errs.push('th=' + ths.length);
+  // 2) 文件行：name/size/time 列跨行对齐（x 差 ≤1px）
+  const rows = [...modal.querySelectorAll('.gg-psum-table .gg-psum-row')].filter(r => !r.classList.contains('gg-psum-nofile'));
+  if (rows.length < 3) errs.push('rows=' + rows.length);
+  if (rows.length >= 2) {
+    const xs = rows.map(r => {
+      const n = r.querySelector('.gg-psum-name');
+      const s = r.querySelector('.gg-psum-size');
+      const t = r.querySelector('.gg-psum-time');
+      return [n, s, t].map(e => Math.round(e.getBoundingClientRect().x));
+    });
+    for (let c = 0; c < 3; c++) {
+      if (Math.max(...xs.map(x => x[c])) - Math.min(...xs.map(x => x[c])) > 1) { errs.push('col' + c + '-misaligned'); break; }
+    }
+  }
+  // 3) gone 行禁用操作
+  const goneRow = rows.find(r => r.classList.contains('gg-psum-gone'));
+  if (!goneRow) errs.push('no-gone-row');
+  else if (![...goneRow.querySelectorAll('button')].every(b => b.disabled)) errs.push('gone-not-disabled');
+  // 4) 历史下拉（3 条目）切换到 #3 → 汇总行计数变化（2 提交 → 1 提交）
+  const sel = modal.querySelector('.gg-psum-hist-sel');
+  if (!sel) errs.push('no-hist-sel');
+  else {
+    if (sel.options.length !== 3) errs.push('opts=' + sel.options.length);
+    const sumBefore = modal.querySelector('.gg-psum-sum').textContent;
+    sel.value = '2';
+    sel.dispatchEvent(new Event('change'));
+    await twoFrames(); await sleep(80);
+    const sumAfter = modal.querySelector('.gg-psum-sum').textContent;
+    if (sumBefore === sumAfter) errs.push('hist-switch-noop');
+  }
+  // 5) size 表头点击排序（组内生效）：首次=升序（small.ts 1024B < big.bin 150KB），
+  //    断言 alice 的 src 组内两行相对顺序；再点=降序反转
+  const sizeTh = [...modal.querySelectorAll('.gg-psum-th')].find(t => t.textContent.includes('大小') || t.textContent.includes('Size'));
+  if (!sizeTh) errs.push('no-size-th');
+  else {
+    sel.value = '0'; sel.dispatchEvent(new Event('change'));
+    await twoFrames();
+    const namesOf = () => [...modal.querySelectorAll('.gg-psum-table .gg-psum-row')]
+      .filter(r => !r.classList.contains('gg-psum-nofile'))
+      .map(r => r.querySelector('.gg-psum-name').textContent);
+    sizeTh.dispatchEvent(new Event('click'));
+    await twoFrames(); await sleep(80);
+    let names = namesOf();
+    // alice src 组内：small.ts（首次出现）与 big.bin 的相对位置
+    if (names.indexOf('small.ts') > names.indexOf('big.bin')) errs.push('sort-asc-fail:' + names.join(','));
+    sizeTh.dispatchEvent(new Event('click'));
+    await twoFrames(); await sleep(80);
+    names = namesOf();
+    if (names.indexOf('big.bin') > names.indexOf('small.ts')) errs.push('sort-desc-fail:' + names.join(','));
+  }
+
+  finish(errs.length ? 'FAIL ' + errs.join(',') : 'PASS');
+
+  function finish(result) {
+    window.__result = result;
+    document.title = 'e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>
