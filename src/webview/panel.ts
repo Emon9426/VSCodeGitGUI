@@ -1378,6 +1378,14 @@ export class GraphPanel {
         } else if (outcome.stalled) {
           // F2（Issue #6）：无输出看门狗触发——连接停滞快速失败并明示原因，重试即新连接
           message = this.t('netStalled');
+        } else if (kind === 'pull' && refsBefore) {
+          // Issue #21 半完成态：pull=fetch→merge 两阶段，fetch 成功即写盘 refs（图/领先徽标
+          // 先行更新）而 merge 失败时，用户感知「只拉到一部分提交」——此处明示合并未完成，
+          // 消除困惑（处理本地修改/冲突后重拉或完成合并即完整到手）
+          try {
+            const after = await this.service!.refsOf(root);
+            if (after.some(r => refsBefore.get(r.fullName) !== r.sha)) message = this.t('pullPartialMerge');
+          } catch { /* fail-open：保留默认消息 */ }
         }
         this.post({
           t: 'opResult', opId, kind, ok: outcome.ok,
@@ -1394,6 +1402,9 @@ export class GraphPanel {
           }
         } else if (kind === 'pull') {
           // pull 失败（含冲突：git 以非零退出）也刷工作副本——前端据此弹冲突横幅引导（R3）
+          // Issue #21：失败 ≠ index 未动——--autostash 的 merge 可已完成而仅 stash pop 冲突
+          // （或冲突阶段已写入 stage 条目），文件页 HEAD 快照缓存须失效否则列表停留旧内容
+          this.files?.invalidateTree(root);
           void this.workStateNow().catch(() => undefined);
         }
         return outcome;
