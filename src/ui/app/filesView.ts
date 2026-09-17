@@ -406,6 +406,7 @@ export function createFilesView(app: App, hooks?: { onSelection?: () => void }) 
     S.files.items = [];
     S.files.sel = [];
     S.files.filter = '';
+    S.files.visited = false;   // #64：换仓库后文件页回到未加载态，待下次进入重新拉取
     fltInput.value = '';
     update();
   }
