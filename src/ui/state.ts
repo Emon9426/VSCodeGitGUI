@@ -206,6 +206,10 @@ export const S = {
     /** 选中行：path + 所在分组（决定 optimistic 勾选语义） */
     selectedPath: undefined as string | undefined,
     selectedStaged: false,
+    /** #9 多选：批量操作（暂存/取消暂存/放弃更改/删除）的文件集合（顺序即选择序）；
+     *  Ctrl 单个切换 / Shift 范围，冲突文件不参与（冲突须走解决流程） */
+    sel: [] as string[],
+    anchor: undefined as string | undefined,
     diff: undefined as DiffPayload | undefined,
     diffLoading: undefined as string | undefined,
     filter: '',

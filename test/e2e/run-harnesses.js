@@ -15,7 +15,8 @@ const path = require('path');
     // Issue #55：工作副本目录头 Checkbox 文件夹级全选
     // Issue #59/#60/#61：工具栏 PR/历史按钮 + 文件页双击回退
     // Issue #11/#12：日期筛选空页熔断 + 继续扫描入口
-    'harness-psum-table.html', 'harness-author-filter.html', 'harness-chip-ellipsis.html', 'harness-work-dircheck.html', 'harness-prbtn-hist-dblclick.html', 'harness-scanfuse.html'];
+    // Issue #9：工作副本多选批量操作（暂存/取消暂存/放弃/删除）
+    'harness-psum-table.html', 'harness-author-filter.html', 'harness-chip-ellipsis.html', 'harness-work-dircheck.html', 'harness-prbtn-hist-dblclick.html', 'harness-scanfuse.html', 'harness-work-multi.html'];
   let fails = 0;
   for (const h of list) {
     try {

@@ -1025,6 +1025,13 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 }
 .gg-work-ftitle { font-weight: 600; color: var(--vscode-foreground); font-size: 12px; }
 .gg-work-fbtns { margin-left: auto; display: flex; gap: 2px; }
+/* #9 多选批量操作条：staged/unstaged 文件 Ctrl/Shift 多选（≥2）时出现于过滤框下 */
+.gg-work-batchbar { display: flex; align-items: center; gap: 5px; flex: none; margin: 4px 8px 6px; padding: 4px 8px; font-size: 11px; border: 1px solid var(--vscode-inputBorder, var(--vscode-input-border, transparent)); border-radius: var(--gg-r-m); background: var(--vscode-list-hoverBackground); }
+.gg-work-batchbar.hidden { display: none; }
+.gg-work-batch-cnt { color: var(--gg-t2); flex: none; }
+.gg-work-batch-sp { flex: 1; }
+.gg-work-batchbar .gg-icon-btn { width: 20px; height: 20px; }
+
 .gg-work-search {
   flex: none; margin: 7px 8px 4px; height: 24px; padding: 2px 8px; font-size: 11px;
   background: var(--vscode-input-background); color: var(--vscode-input-foreground);

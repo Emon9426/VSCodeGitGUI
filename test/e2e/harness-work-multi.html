@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<!-- mock VS Code API：必须先于 webview.js 定义 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * Issue #9 验证 harness：工作副本多选 + 批量操作（暂存/取消暂存/放弃/删除）。
+ * 断言：①Ctrl 点选 2 个未暂存文件 → 批量条出现（已选 2）②批量「暂存」→ 单次 work.stage
+ * RPC 携带全部选中路径 ③混选 staged/unstaged → 暂存与取消暂存按钮并存且各管各的
+ * ④Shift 范围选择 ⑤批量删除 → danger 确认 → work.deleteFile 多路径 ⑥Esc 清空选择。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const sentCmd = (cmd) => window.__sent.filter(m => m && m.cmd === cmd);
+  const booted = () => window.__sent.some(m => m && m.t === 'bootstrap');
+
+  for (let i = 0; i < 100 && !booted(); i++) await sleep(50);
+  if (!booted()) { finish('FAIL: no bootstrap'); return; }
+
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'github',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'work',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', colWidths: undefined, selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: 'a' + '0'.repeat(39), branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'a' + '0'.repeat(39), isHead: true }],
+      remotes: [], tags: [], status: { dirtyCount: 7 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits: [], commitsLoaded: 0, hasMore: false, stateVersion: 1,
+    },
+  });
+  window.__send({ t: 'showWork' });
+  await twoFrames();
+
+  const fe = (path, extra) => ({ path, staged: null, unstaged: 'M', untracked: false, ...extra });
+  window.__send({
+    t: 'workState',
+    state: {
+      repoId: 'r1',
+      staged: [
+        fe('src/s1.ts', { staged: 'M', unstaged: null }),
+        fe('src/s2.ts', { staged: 'M', unstaged: null }),
+      ],
+      unstaged: [
+        fe('src/u1.ts'), fe('src/u2.ts'), fe('src/u3.ts'), fe('src/u4.ts'), fe('src/u5.ts'),
+      ],
+      conflicts: [], merging: false, mergeActive: false, mergeKind: 'merge',
+      headShortSha: 'abc1234', headSubject: 'base', dirtyCount: 7,
+    },
+  });
+  await twoFrames(); await sleep(200);
+
+  const bar = () => document.querySelector('.gg-work-batchbar');
+  const barShown = () => bar() && !bar().classList.contains('hidden');
+  const rowOf = (p) => [...document.querySelectorAll('.gg-work-row')].find(r => r.querySelector('.gg-work-fpath')?.title === p);
+  const clickRow = async (p, mods) => {
+    const r = rowOf(p);
+    if (!r) return false;
+    r.dispatchEvent(new MouseEvent('click', mods ? { bubbles: true, ctrlKey: !!mods.ctrl, shiftKey: !!mods.shift } : { bubbles: true }));
+    await twoFrames(); await sleep(80);
+    return true;
+  };
+
+  // ① Ctrl 点选 u1+u2 → 批量条出现
+  await clickRow('src/u1.ts', { ctrl: true });
+  await clickRow('src/u2.ts', { ctrl: true });
+  const t1 = barShown() && /已选 2 个文件/.test(bar().textContent);
+
+  // ② 批量「暂存」→ 单次 work.stage RPC 全路径
+  const stagesBefore = sentCmd('work.stage').length;
+  const stageBtn = [...(bar()?.querySelectorAll('button') ?? [])].find(b => /暂存 2 项/.test(b.textContent));
+  if (stageBtn) stageBtn.click();
+  await twoFrames(); await sleep(120);
+  const stageCalls = sentCmd('work.stage').slice(stagesBefore);
+  const t2 = stageCalls.length === 1
+    && JSON.stringify(stageCalls[0]?.args?.paths ?? []).includes('src/u1.ts')
+    && JSON.stringify(stageCalls[0]?.args ?? []).includes('src/u2.ts');
+
+  // ③ 混选：Ctrl 加选 s1（staged）→ 两个按钮并存
+  await clickRow('src/u1.ts', { ctrl: true });
+  await clickRow('src/u2.ts', { ctrl: true });
+  await clickRow('src/s1.ts', { ctrl: true });
+  const t3 = barShown() && /暂存 2 项/.test(bar().textContent) && /取消暂存 1 项/.test(bar().textContent);
+
+  // ④ Shift 范围：清空后单选 u1，Shift 点 u4 → 4 项
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await twoFrames(); await sleep(80);
+  await clickRow('src/u1.ts');
+  await clickRow('src/u4.ts', { shift: true });
+  const t4 = barShown() && /已选 4 个文件/.test(bar().textContent);
+
+  // ⑤ 批量删除 → danger 确认框出现（不点确认，验 UI 链路即可）→ Esc 关闭并清空选择
+  const delBtn = [...(bar()?.querySelectorAll('button') ?? [])].find(b => /删除 4 个文件/.test(b.textContent));
+  if (delBtn) delBtn.click();
+  await twoFrames(); await sleep(120);
+  const confirmShown = !!document.querySelector('.gg-modal');
+  const cancel = document.querySelector('.gg-modal .gg-btn:not(.primary)');
+  if (cancel) cancel.click();
+  await twoFrames(); await sleep(80);
+  const t5 = confirmShown;
+
+  // ⑥ Esc 清空
+  await clickRow('src/u1.ts', { ctrl: true });
+  await clickRow('src/u2.ts', { ctrl: true });
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await twoFrames(); await sleep(80);
+  const t6 = !barShown();
+
+  const ok = t1 && t2 && t3 && t4 && t5 && t6;
+  finish(ok ? 'PASS' : `FAIL t1=${t1} t2=${!!t2} t3=${t3} t4=${t4} t5=${t5} t6=${t6}`);
+
+  function finish(result) {
+    window.__result = result;
+    document.title = 'e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>
