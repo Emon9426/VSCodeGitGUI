@@ -83,7 +83,7 @@ export interface App {
   projectOpen(id: string, newWindow: boolean): void;
   // 文件历史页（v0.14）
   /** 地址栏/面包屑导航到目录（拉取该目录直接子项）；opts.select=导航后选中定位（explorer 直达） */
-  filesNavigate(dir: string, opts?: { select?: string }): void;
+  filesNavigate(dir: string, opts?: { select?: string; fallback?: boolean }): void;
   /** 选中文件/目录 → 拉取历史（files.log / files.dirLog）联动右区 */
   filesSelect(path: string, isDir: boolean): void;
   /** 详情就地展开：该文件在此提交的变化 */
@@ -168,6 +168,12 @@ export const S = {
     cwd: '',
     items: [] as FileItem[],
     lsLoading: false,
+    /** #64：列表导航代数——同 cwd 重发（HEAD 变化自动刷新）时作废在途旧响应，防旧数据后到覆盖 */
+    navSeq: 0,
+    /** #64：曾成功加载过列表（空目录也是合法浏览态，不能以 items.length 判断） */
+    visited: false,
+    /** #64：历史拉取代数——同 path 重拉（HEAD 变化）时作废在途旧响应 */
+    histSeq: 0,
     view: 'det' as 'det' | 'tile',          // 详细信息（默认）| 文件夹（平铺）
     filter: '',
     sel: [] as string[],                     // 多选 path 列表（顺序即选择序）

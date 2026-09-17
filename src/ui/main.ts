@@ -426,12 +426,14 @@ const app: App = {
   filesNavigate(dir, opts) {
     S.files.cwd = dir;
     S.files.lsLoading = true;
+    const seq = ++S.files.navSeq;   // #64：导航代数——HEAD 变化等场景同 cwd 重发时作废在途旧响应
     filesview.update();
     void rpc('files.ls', { dir })
       .then(r => {
-        if (S.files.cwd !== dir) return;   // 已导航他处：丢弃过期响应
+        if (S.files.cwd !== dir || S.files.navSeq !== seq) return;   // 已导航他处/已被重发：丢弃过期响应
         S.files.lsLoading = false;
         if (r?.kind === 'dir') {
+          S.files.visited = true;
           S.files.items = Array.isArray(r.items) ? r.items : [];
           S.files.sel = [];
           if (opts?.select && S.files.items.some(x => x.path === opts.select)) {
@@ -444,6 +446,9 @@ const app: App = {
           // 防御：目录参数实为文件（地址栏场景已在组件内预处理）
           const parent = dir.includes('/') ? dir.slice(0, dir.lastIndexOf('/')) : '';
           if (parent !== dir) app.filesNavigate(parent, { select: dir });
+        } else if (opts?.fallback && dir) {
+          // #64：目录在新分支已不存在（切分支后自动刷新）→ 逐级回退父目录，不打扰用户
+          app.filesNavigate(dir.includes('/') ? dir.slice(0, dir.lastIndexOf('/')) : '', { fallback: true });
         } else {
           toast('warn', S.t('filesAddrNone', { p: dir }));
         }
@@ -461,17 +466,18 @@ const app: App = {
     S.files.diffPair = undefined;
     filepanel.update();
     const followWanted = S.files.follow;
+    const hseq = ++S.files.histSeq;   // #64：历史代数——HEAD 变化同 path 重拉时作废在途旧响应
     const cmd = isDir ? 'files.dirLog' : 'files.log';
     const payload = isDir ? { dir: path, follow: followWanted } : { path };
     void rpc(cmd, payload)
       .then(r => {
-        if (S.files.histFor !== path || S.files.follow !== followWanted) return;   // 过期响应
+        if (S.files.histFor !== path || S.files.follow !== followWanted || S.files.histSeq !== hseq) return;   // 过期响应
         S.files.histLoading = false;
         S.files.history = r ?? undefined;
         filepanel.update();
       })
       .catch(e => {
-        if (S.files.histFor === path && S.files.follow === followWanted) {
+        if (S.files.histFor === path && S.files.follow === followWanted && S.files.histSeq === hseq) {
           S.files.histLoading = false;
           filepanel.update();
         }
@@ -910,6 +916,8 @@ window.addEventListener('message', e => {
       const st = m.state;
       S.reposPending = false;   // 首个仓库状态到达 ⇒ 启动加载态结束（兜底，正常已由 reposChanged 解除）
       const repoChanged = st.repoId !== S.repoId;
+      // #64：同仓库 HEAD 变化（切分支/提交/重置/pull 等）→ 文件页需跟随当前分支（宿主已失效目录缓存并重推）
+      const headChanged = !repoChanged && !!S.state && S.state.head.sha !== st.head.sha;
       if (repoChanged) {
         S.repoId = st.repoId;
         S.selectedSha = undefined;
@@ -946,6 +954,11 @@ window.addEventListener('message', e => {
       // 列表已整体重建：作废在途分页请求（其页属旧快照，拼接必错位）
       pendingLoad = undefined;
       if (repoChanged) list.reset(); else list.refresh();
+      // #64：文件页跟随 HEAD——列表按当前分支重载（浏览目录缺失时逐级回退），选中项历史重拉
+      if (headChanged) {
+        if (S.files.visited) app.filesNavigate(S.files.cwd, { fallback: true });
+        if (S.files.histFor) app.filesSelect(S.files.histFor, S.files.histIsDir);
+      }
       sidebar.update();
       toolbar.update();
       commitBar.autoHidePushq();   // 已无待推送（如从其他入口推送完成）→ 推送询问条让位
