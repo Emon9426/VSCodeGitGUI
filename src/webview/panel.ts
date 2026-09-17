@@ -241,6 +241,13 @@ export class GraphPanel {
         new DiffContentProvider(() => this.service, this.roots),
       ),
       vscode.window.onDidChangeActiveColorTheme(() => this.post({ t: 'themeChanged' })),
+      // Issue #9 实时刷新：编辑器保存 / 资源管理器增删改名文件不落 .git（refs/index watcher
+      // 侦听不到）——工作副本矩阵陈旧是「显示混乱/不实时」的主因。订阅工作区事件去抖补刷
+      // （workStateNow 自带 JSON 比对去重，无变化不推送）
+      vscode.workspace.onDidSaveTextDocument(doc => this.scheduleWorkRefresh(doc.uri.fsPath)),
+      vscode.workspace.onDidCreateFiles(e => this.scheduleWorkRefresh(e.files[0]?.fsPath)),
+      vscode.workspace.onDidDeleteFiles(e => this.scheduleWorkRefresh(e.files[0]?.fsPath)),
+      vscode.workspace.onDidRenameFiles(e => this.scheduleWorkRefresh(e.files[0]?.newUri.fsPath)),
       vscode.workspace.onDidChangeConfiguration(e => {
         if (!e.affectsConfiguration('gitboard')) return;
         this.config = readConfig();
@@ -256,8 +263,25 @@ export class GraphPanel {
     this.panel.webview.onDidReceiveMessage(m => this.onMessage(m));
   }
 
+  /** Issue #9：工作区文件事件（保存/增删改名）→ 300ms 去抖补刷工作副本；
+   *  仅当前仓库内路径触发（他仓库/仓库外文件不误刷），面板存活且就绪时有效 */
+  private workRefreshTimer: NodeJS.Timeout | undefined;
+  private scheduleWorkRefresh(fsPath: string | undefined): void {
+    if (this.disposed || !this.bootstrapped || !this.currentRepoId) return;
+    const root = this.roots.get(this.currentRepoId);
+    if (!root || !fsPath) return;
+    const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+    if (norm(fsPath) !== norm(root) && !norm(fsPath).startsWith(norm(root) + '/')) return;
+    if (this.workRefreshTimer) clearTimeout(this.workRefreshTimer);
+    this.workRefreshTimer = setTimeout(() => {
+      this.workRefreshTimer = undefined;
+      void this.workStateNow().catch(() => undefined);
+    }, 300);
+  }
+
   private dispose(): void {
     this.disposed = true;
+    if (this.workRefreshTimer) { clearTimeout(this.workRefreshTimer); this.workRefreshTimer = undefined; }
     this.aiCts?.cancel();
     this.aiCts?.dispose();
     this.diagCts?.cancel();

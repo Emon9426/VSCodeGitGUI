@@ -41,6 +41,22 @@ export function createWorkView(app: App): WorkView {
   setIcon(stageAllBtn, 'checklist');
   setIcon(unstageAllBtn, 'checklistEmpty');
   const fsearch = el('input', 'gg-work-search') as HTMLInputElement;
+  // #9 批量操作条：多选（≥2）文件时出现——暂存/取消暂存/放弃更改/删除 作用于整个选择集
+  const batchbar = el('div', 'gg-work-batchbar hidden');
+  const batchCnt = el('span', 'gg-work-batch-cnt');
+  const batchStageBtn = el('button', 'gg-btn tiny has-ic');
+  const batchUnstageBtn = el('button', 'gg-btn tiny has-ic');
+  const batchDiscardBtn = el('button', 'gg-btn tiny danger');
+  const batchDeleteBtn = el('button', 'gg-btn tiny danger has-ic');
+  const batchClearBtn = el('button', 'gg-icon-btn');
+  setIcon(batchStageBtn, 'checklist');
+  batchStageBtn.appendChild(el('span'));
+  setIcon(batchUnstageBtn, 'checklistEmpty');
+  batchUnstageBtn.appendChild(el('span'));
+  setIcon(batchDeleteBtn, 'trash');
+  batchDeleteBtn.appendChild(el('span'));
+  setIcon(batchClearBtn, 'errorX');
+  batchbar.append(batchCnt, batchStageBtn, batchUnstageBtn, batchDiscardBtn, batchDeleteBtn, el('span', 'gg-work-batch-sp'), batchClearBtn);
   const groups = el('div', 'gg-work-groups');
   const conflictHead = mkGroupHead(true);
   const conflictBox = el('div', 'gg-work-rows');
@@ -51,7 +67,7 @@ export function createWorkView(app: App): WorkView {
   fbtns.append(refreshBtn, cleanTempBtn, unstageAllBtn, stageAllBtn);
   fhead.append(ftitle, fbtns);
   groups.append(conflictHead.el, conflictBox, stagedHead.el, stagedBox, unstagedHead.el, unstagedBox);
-  files.append(fhead, fsearch, groups);
+  files.append(fhead, fsearch, batchbar, groups);
 
   // 冲突组批量按钮（组头右侧）：全部用我的 / 全部用对方的
   const conflictBtns = el('div', 'gg-work-cbtns');
@@ -240,9 +256,86 @@ export function createWorkView(app: App): WorkView {
     S.work.selectedPath = e.path;
     S.work.selectedStaged = !!e.staged;
     S.work.diff = undefined;
+    S.work.anchor = e.path;
     app.requestWorkDiff(e.path);
     update();
   }
+
+  // ---------- #9 多选（Ctrl/Shift，仅 staged/unstaged 文件；冲突行保持单选语义） ----------
+  function toggleSel(path: string): void {
+    const i = S.work.sel.indexOf(path);
+    if (i >= 0) S.work.sel.splice(i, 1);
+    else S.work.sel.push(path);
+    S.work.anchor = path;
+  }
+
+  function rangeSel(path: string): void {
+    const arr = visibleEntries().filter(x => !x.conflictCode).map(x => x.path);
+    const a = arr.indexOf(S.work.anchor!);
+    const b = arr.indexOf(path);
+    if (a < 0 || b < 0) { toggleSel(path); return; }
+    S.work.sel = arr.slice(Math.min(a, b), Math.max(a, b) + 1);
+  }
+
+  /** 批量操作条：多选 ≥2 时出现，按钮按集合构成显隐（staged/unstaged 混选各管各的） */
+  function updateBatchbar(): void {
+    const st = S.work.state;
+    // workState 到达后选择集只保留仍存在的路径（放弃/删除/重命名后自动收敛）
+    if (st) S.work.sel = S.work.sel.filter(p =>
+      st.staged.some(e => e.path === p) || st.unstaged.some(e => e.path === p));
+    const sel = S.work.sel;
+    batchbar.classList.toggle('hidden', sel.length < 2);
+    if (sel.length < 2) return;
+    const stagedSet = new Set(st?.staged.map(e => e.path) ?? []);
+    const unstaged = sel.filter(p => !stagedSet.has(p));
+    const staged = sel.filter(p => stagedSet.has(p));
+    batchCnt.textContent = S.t('workSelN', { n: String(sel.length) });
+    batchStageBtn.classList.toggle('hidden', !unstaged.length);
+    if (unstaged.length) {
+      batchStageBtn.title = S.t('workBatchStage', { n: String(unstaged.length) });
+      batchStageBtn.querySelector('span')!.textContent = S.t('workBatchStage', { n: String(unstaged.length) });
+    }
+    batchUnstageBtn.classList.toggle('hidden', !staged.length);
+    if (staged.length) {
+      batchUnstageBtn.title = S.t('workBatchUnstage', { n: String(staged.length) });
+      batchUnstageBtn.querySelector('span')!.textContent = S.t('workBatchUnstage', { n: String(staged.length) });
+    }
+    batchDiscardBtn.classList.toggle('hidden', !unstaged.length);
+    if (unstaged.length) batchDiscardBtn.textContent = S.t('workBatchDiscard', { n: String(unstaged.length) });
+    batchDeleteBtn.title = S.t('workBatchDelete', { n: String(sel.length) });
+    batchDeleteBtn.querySelector('span')!.textContent = S.t('workBatchDelete', { n: String(sel.length) });
+    batchClearBtn.title = S.t('workClearSel');
+  }
+
+  const batchRun = (fn: (paths: string[]) => void): void => {
+    const paths = [...S.work.sel];
+    if (!paths.length) return;
+    fn(paths);
+    S.work.sel = [];
+    update();
+  };
+  batchStageBtn.addEventListener('click', () => batchRun(paths => {
+    const stagedSet = new Set(S.work.state?.staged.map(e => e.path) ?? []);
+    app.workStage(paths.filter(p => !stagedSet.has(p)), true);
+  }));
+  batchUnstageBtn.addEventListener('click', () => batchRun(paths => {
+    const stagedSet = new Set(S.work.state?.staged.map(e => e.path) ?? []);
+    app.workStage(paths.filter(p => stagedSet.has(p)), false);
+  }));
+  batchDiscardBtn.addEventListener('click', () => batchRun(paths => {
+    const stagedSet = new Set(S.work.state?.staged.map(e => e.path) ?? []);
+    askDiscard(paths.filter(p => !stagedSet.has(p)));
+  }));
+  batchDeleteBtn.addEventListener('click', () => batchRun(paths => askDelete(paths)));
+  batchClearBtn.addEventListener('click', () => { S.work.sel = []; update(); });
+  // Esc 清空多选（work 视图激活且非输入框时）
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || S.view !== 'work' || !S.work.sel.length) return;
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    S.work.sel = [];
+    update();
+  });
 
   // ---------- 渲染 ----------
 
@@ -391,6 +484,7 @@ export function createWorkView(app: App): WorkView {
       w.selectedPath = undefined;
       w.diff = undefined;
     }
+    updateBatchbar();   // #9：选择集收敛（消失路径剔除）+ 批量条显隐
     if (!w.selectedPath) {
       const first = visibleEntries()[0];
       if (first) { selectEntry(first); return; }
@@ -443,7 +537,7 @@ export function createWorkView(app: App): WorkView {
   }
 
   function row(e: FileEntry, inStagedGroup: boolean): HTMLElement {
-    const r = el('div', 'gg-work-row' + (e.path === S.work.selectedPath ? ' selected' : ''));
+    const r = el('div', 'gg-work-row' + (S.work.sel.includes(e.path) || e.path === S.work.selectedPath ? ' selected' : ''));
     const cb = el('input') as HTMLInputElement;
     cb.type = 'checkbox';
     cb.checked = inStagedGroup;
@@ -490,18 +584,33 @@ export function createWorkView(app: App): WorkView {
     );
     r.appendChild(acts);
 
-    r.addEventListener('click', () => selectEntry(e));
+    // #9 多选：Ctrl 单个切换 / Shift 范围（visibleEntries 序，锚点=上次单选/切换项）；单击恢复单选并联动 diff
+    r.addEventListener('click', ev => {
+      const multi = ev.ctrlKey || ev.metaKey;
+      if (multi) { toggleSel(e.path); update(); return; }
+      if (ev.shiftKey && S.work.anchor) { rangeSel(e.path); update(); return; }
+      S.work.sel = [];
+      selectEntry(e);
+    });
     r.addEventListener('contextmenu', ev => {
       ev.preventDefault();
-      const items: Parameters<typeof showContextMenu>[0] = [
-        { label: inStagedGroup ? S.t('unstage') : S.t('stage'), run: () => app.workStage([e.path], !inStagedGroup) },
-      ];
-      if (!inStagedGroup) {
-        items.push({ sep: true }, { label: `${S.t('discard')}…`, danger: true, run: () => askDiscard([e.path]) });
+      // #9：右键命中已多选的行 → 菜单作用于整个选择集（N 项批量）
+      const selPaths = S.work.sel.length > 1 && S.work.sel.includes(e.path) ? [...S.work.sel] : [e.path];
+      const n = selPaths.length;
+      const stagedSet = new Set(S.work.state?.staged.map(s => s.path) ?? []);
+      const hasUnstaged = selPaths.some(p => !stagedSet.has(p));
+      const hasStaged = selPaths.some(p => stagedSet.has(p));
+      const items: Parameters<typeof showContextMenu>[0] = [];
+      if (hasUnstaged) items.push({ label: S.t('workBatchStage', { n: String(n) }), run: () => app.workStage(selPaths.filter(p => !stagedSet.has(p)), true) });
+      if (hasStaged) items.push({ label: S.t('workBatchUnstage', { n: String(n) }), run: () => app.workStage(selPaths.filter(p => stagedSet.has(p)), false) });
+      if (hasUnstaged) {
+        items.push({ sep: true }, { label: `${S.t('workBatchDiscard', { n: String(n) })}…`, danger: true, run: () => askDiscard(selPaths.filter(p => !stagedSet.has(p))) });
       }
       items.push(
         { sep: true },
-        { label: `${S.t('deleteFile')}…`, danger: true, run: () => askDelete([e.path]) },
+        { label: `${S.t('workBatchDelete', { n: String(n) })}…`, danger: true, run: () => askDelete(selPaths) },
+      );
+      if (n === 1) items.push(
         { label: S.t('openFile'), run: () => app.openFile(e.path) },
         { label: S.t('revealInFM'), run: () => app.revealInFM(e.path) },
         { label: S.t('copyFileName'), run: () => app.copy(baseOf(e.path)) },
