@@ -127,7 +127,9 @@ export class GitExecutor {
         if (settled) return;
         if (code === 0) {
           finish(undefined, { stdout, stderr, exitCode: 0, truncated });
-        } else if (code === null && truncated) {
+        } else if (truncated) {
+          // Issue #15：截断是本方主动 kill（Windows 上 close 码竞态，未必是 null）——
+          // 统一按「截断成功」返回，让调用方以 truncated 标志区分，不误报为 git 失败
           finish(undefined, { stdout, stderr, exitCode: 0, truncated: true });
         } else {
           const tail = stderr.split('\n').slice(-8).join('\n').trim();

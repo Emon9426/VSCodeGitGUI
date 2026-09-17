@@ -46,6 +46,28 @@ export function safeAuthorName(s: string): string | null {
 /** 带日期窗口时的补扫上限（panel.commitsFill 用；防 0 命中窗口无界扫描，到达后如实报 hasMore 供续扫） */
 export const SCAN_CAP = 20_000;
 
+/** 凑页补扫编排（Issue #5 引入、#12 抽纯函数）：日期窗口过滤后单页产出可能不足 limit，
+ *  循环续扫直到 凑满 / 扫尽 / 达 cap。产出可超额（末轮整页并入，≤ 2×limit−1）；
+ *  游标取每轮页返回的 scanned（单调），空页扫尽（hasMore=false）与 CAP 截断均如实外传。 */
+export async function fillScan<T>(
+  fetchPage: (scan: number) => Promise<{ commits: T[]; hasMore: boolean; scanned: number }>,
+  scanOffset: number, limit: number, cap: number,
+): Promise<{ commits: T[]; hasMore: boolean; scanned: number }> {
+  const collected: T[] = [];
+  let scan = scanOffset;
+  let hasMore = true;
+  while (true) {
+    const page = await fetchPage(scan);
+    scan = page.scanned;
+    collected.push(...page.commits);
+    hasMore = page.hasMore;
+    if (!hasMore) break;                          // 历史扫尽
+    if (collected.length >= limit) break;         // 凑满一页产出
+    if (scan - scanOffset >= cap) break;          // 补扫上限（#11：前端熔断 + 继续扫描入口续扫）
+  }
+  return { commits: collected, hasMore, scanned: scan };
+}
+
 /** 作者日期窗口（本地时区日界）——与列表显示的 %ad 同口径 */
 export interface AuthorDateWindow {
   contains(c: Commit): boolean;

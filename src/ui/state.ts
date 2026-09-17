@@ -14,6 +14,8 @@ export interface App {
   setLogFilter(f: { authors: string[]; since: string; until: string; noMerges?: boolean }): void;
   selectCommit(sha: string): void;
   loadMore(): void;
+  /** Issue #11：连续空页熔断后的手动续扫——复位熔断态并恢复自动加载节奏 */
+  resumeScan(): void;
   runFetch(remote?: string): void;
   runPull(): void;
   runPush(): void;
@@ -196,6 +198,9 @@ export const S = {
   // ---------- 工作副本（Commit 功能） ----------
   /** 当前主视图：graph 提交图 | pure 纯提交列表 | work 工作副本 | files 文件历史（display 切换，DOM 不销毁） */
   view: 'graph' as 'graph' | 'pure' | 'work' | 'files',
+  /** Issue #11：日期筛选补扫连续 ≥2 空页熔断（前端置 hasMore=false 止住自动加载）——
+   *  true 时 footer 显示「继续扫描」入口；repoState/筛选变化复位（区别于宿主的真扫尽） */
+  listCapped: false,
   work: {
     state: undefined as WorkState | undefined,
     /** 选中行：path + 所在分组（决定 optimistic 勾选语义） */
@@ -231,3 +236,15 @@ export const S = {
 };
 
 export type UiState = typeof S;
+
+/** #14：推送目标——上游存在时显式推 HEAD:<上游分支名>（本地名≠上游名时，HEAD/本地名
+ *  简写会静默推到远端同名分支，协作者按上游名拉取看不到提交）；无上游返回 undefined。
+ *  上游形态恒为 <remote>/<branch>（git 远端名不含斜杠），分支名可含斜杠（嵌套名如 feat/x）。
+ *  main.runPush 与 commitBar 推送询问条共用 */
+export function pushTarget(): { remote: string; branch: string } | undefined {
+  const upstream = S.state?.branches.find(b => b.isHead)?.upstream;
+  if (!upstream?.includes('/')) return undefined;
+  const remote = upstream.slice(0, upstream.indexOf('/'));
+  const upBranch = upstream.slice(remote.length + 1);
+  return remote && upBranch ? { remote, branch: `HEAD:${upBranch}` } : undefined;
+}

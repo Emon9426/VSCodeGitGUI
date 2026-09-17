@@ -2,7 +2,7 @@
  * 提交信息栏（设计方案 v1.3 §3.5–3.6）：单一多行输入框（首行=摘要）+
  * AI 生成（空闲/生成中/完成三态，流式填充）+ 提交 ▾ 下拉 + 修订模式。
  */
-import { S, type App } from '../state';
+import { S, pushTarget, type App } from '../state';
 import { el, debounce } from '../util';
 import { rpc } from '../rpc';
 import { showContextMenu, toast, mkBanner } from './overlays';
@@ -64,9 +64,11 @@ export function createCommitBar(app: App): CommitBar {
   // 不走 runPush 的落后引导（repoState 刷新竞态下陈旧 behind 会误入"拉取并推送"）
   const pushqDirect = (): void => {
     hidePushq();
-    const head = S.state?.branches.find(b => b.isHead);
-    const remote = head?.upstream?.split('/')[0] ?? 'origin';
-    void rpc('op:push', { remote, branch: S.state?.head.branch }).catch(() => undefined);
+    // #14：上游存在时显式推上游分支（pushTarget = HEAD:<上游名>），本地名≠上游名
+    // 不再静默推错远端同名分支；无上游兜底推 origin+本地名（建上游走 runPush 流程）
+    const target = pushTarget();
+    if (target) void rpc('op:push', { remote: target.remote, branch: target.branch }).catch(() => undefined);
+    else void rpc('op:push', { remote: 'origin', branch: S.state?.head.branch }).catch(() => undefined);
   };
   pushqBtn.addEventListener('click', pushqDirect);
   pushqSkip.addEventListener('click', hidePushq);

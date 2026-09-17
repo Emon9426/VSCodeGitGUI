@@ -49,6 +49,7 @@ describe('buildArgs（Issue #6 F1/F2）', () => {
 class FakeCore {
   readonly calls: string[][] = [];
   readonly killed: number[] = [];
+  readonly maxBytesSeen: number[] = [];
   private readonly settled = new Set<number>();
   private readonly resolvers: Array<((r: ExecResult) => void) | undefined> = [];
   private readonly stoppers: Array<(() => void) | undefined> = [];
@@ -57,6 +58,7 @@ class FakeCore {
     void root;
     const seq = this.calls.length;
     this.calls.push([...args]);
+    this.maxBytesSeen.push(opts.maxBytes ?? -1);
     return new Promise<ExecResult>((resolve, reject) => {
       this.resolvers.push(resolve);
       const stop = (): void => {
@@ -75,10 +77,10 @@ class FakeCore {
     });
   }
 
-  /** 手动放行第 seq 次调用（模拟命令正常完成） */
-  resolveCall(seq: number): void {
+  /** 手动放行第 seq 次调用（模拟命令正常完成；result 覆盖默认返回值） */
+  resolveCall(seq: number, result?: Partial<ExecResult>): void {
     const r = this.resolvers[seq];
-    if (r && !this.settled.has(seq)) { this.settled.add(seq); r({ stdout: '', stderr: '', exitCode: 0, truncated: false }); }
+    if (r && !this.settled.has(seq)) { this.settled.add(seq); r({ stdout: '', stderr: '', exitCode: 0, truncated: false, ...result }); }
   }
 }
 
@@ -142,6 +144,49 @@ describe('无输出看门狗（Issue #6 F2）', () => {
     expect(core.killed).toEqual([]);
     core.resolveCall(0);
     expect((await p).ok).toBe(true);
+  });
+});
+
+describe('输出截断语义（Issue #15）', () => {
+  // run 经微任务链才调 dispatch：resolveCall 前须让出事件循环，否则放行落空 promise 悬挂
+  const tick = () => new Promise(r => setTimeout(r, 30));
+
+  it('stdout 超上限被截断的成功：outputTruncated=true 可区分完整成功', async () => {
+    const core = new FakeCore();
+    const runner = new OpRunner(fakeExecutor(core, false), undefined, () => 0);
+    const p = runner.run('R', { kind: 'pull' }, 1, () => undefined, ok => ok ? 'done' : 'fail');
+    await tick();
+    core.resolveCall(0, { truncated: true, stdout: 'Fast-forward\n file | 5000 ++++' });
+    const out = await p;
+    expect(out.ok).toBe(true);
+    expect(out.outputTruncated).toBe(true);
+    expect(out.stdoutTail).toContain('Fast-forward');
+  });
+
+  it('正常完成：outputTruncated 为 undefined', async () => {
+    const core = new FakeCore();
+    const runner = new OpRunner(fakeExecutor(core, false), undefined, () => 0);
+    const p = runner.run('R', { kind: 'pull' }, 1, () => undefined, ok => ok ? 'done' : 'fail');
+    await tick();
+    core.resolveCall(0);
+    const out = await p;
+    expect(out.ok).toBe(true);
+    expect(out.outputTruncated).toBeUndefined();
+  });
+
+  it('网络道 maxBytes 放宽 16MB、本地道维持 4MB', async () => {
+    const core = new FakeCore();
+    const runner = new OpRunner(fakeExecutor(core, false), undefined, () => 0);
+    const pPull = runner.run('R', { kind: 'pull' }, 1, () => undefined, ok => ok ? 'done' : 'fail');
+    await tick();
+    core.resolveCall(0);
+    await pPull;
+    const pStage = runner.run('R', { kind: 'stage', all: true }, 2, () => undefined, ok => ok ? 'done' : 'fail');
+    await tick();
+    core.resolveCall(1);
+    await pStage;
+    expect(core.maxBytesSeen[0]).toBe(16 * 1024 * 1024);
+    expect(core.maxBytesSeen[1]).toBe(4 * 1024 * 1024);
   });
 });
 
