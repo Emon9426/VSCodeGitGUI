@@ -157,6 +157,8 @@ const zh: Record<string, string> = {
   viewOutput: '查看完整输出',
 
   pushNoUpstream: '当前分支没有上游分支。是否推送并在远程创建同名分支？',
+  pushPickRemoteTitle: '选择推送目标远端',
+  pushPickRemoteText: '当前分支没有上游分支，且仓库配置了多个远端。请选择推送目标（将建立该远端上的同名分支）：',
   pullNoUpstream: '当前分支没有上游分支，无法拉取。',
   pullDetached: '当前处于分离 HEAD 状态（不在任何分支上），无法拉取——请先检出分支。',
 
@@ -172,6 +174,8 @@ const zh: Record<string, string> = {
 
   loadMore: '继续加载更多',
   loadedCount: '已加载 {n} 条提交',
+  resumeScan: '继续扫描',
+  resumeScanTip: '日期筛选已连续两轮补扫未命中（自动加载已熔断）。点击继续向更深处扫描——匹配提交可能位于更早的历史中。',
   loadLimitReached: '已达到自动加载上限（{n}），点击下方按钮继续加载',
 
   detachedHead: '分离 HEAD',
@@ -426,6 +430,7 @@ const zh: Record<string, string> = {
   pullUpToDate: '拉取完成：已是最新的（无新提交）',
   pullUpToDateWith: '拉取完成：{ref} 已是最新（无新提交）',
   pullPartialMerge: '远端提交已取回本地引用（提交图与领先徽标已先行更新），但合并未完成——请按下方输出处理（解决冲突或保存本地修改）后完成合并。',
+  outputTruncatedNote: '输出过大已截断，结果细节可能不完整（仓库状态无损）',
   netStalled: '网络停滞：长时间无数据传输已自动中断，请检查网络后重试',
   verifyWarnPull: '校验警告：拉取后 {ref} 仍领先 {n} 个提交，本次拉取未完全合并——请重试拉取或检查分支上游配置',
   verifyWarnPush: '校验警告：推送后本地仍有 {n} 个提交未到达 {ref}——推送目标可能不是预期分支，请核对上游配置',
@@ -728,6 +733,8 @@ const en: Record<string, string> = {
   viewOutput: 'View full output',
 
   pushNoUpstream: 'The current branch has no upstream. Push and create the branch on the remote?',
+  pushPickRemoteTitle: 'Choose a remote to push to',
+  pushPickRemoteText: 'The current branch has no upstream and this repository has multiple remotes. Pick the push target (a same-name branch will be created there):',
   pullNoUpstream: 'The current branch has no upstream; cannot pull.',
   pullDetached: 'You are in detached HEAD state (not on any branch) — check out a branch before pulling.',
 
@@ -743,6 +750,8 @@ const en: Record<string, string> = {
 
   loadMore: 'Load more',
   loadedCount: '{n} commits loaded',
+  resumeScan: 'Keep scanning',
+  resumeScanTip: 'Date filtering scanned two consecutive empty pages (auto-loading tripped). Click to scan deeper into history — matches may sit further back.',
   loadLimitReached: 'Auto-load limit reached ({n}). Use the button below to continue.',
 
   detachedHead: 'Detached HEAD',
@@ -997,6 +1006,7 @@ const en: Record<string, string> = {
   pullUpToDate: 'Pull done: already up to date',
   pullUpToDateWith: 'Pull done: {ref} is already up to date',
   pullPartialMerge: 'Remote commits were fetched into local refs (the graph and ahead/behind badges already updated), but the merge did not complete — follow the git output below (resolve conflicts or save local changes) to finish the merge.',
+  outputTruncatedNote: 'Output exceeded the cap and was truncated; result details may be incomplete (repo state is intact)',
   netStalled: 'Network stalled: no data for a while, aborted. Check your connection and retry',
   verifyWarnPull: 'Verify warning: {ref} is still {n} commit(s) ahead after pulling — retry the pull or check the branch upstream config',
   verifyWarnPush: 'Verify warning: {n} local commit(s) did not reach {ref} after pushing — the push may have targeted an unexpected branch; check the upstream config',

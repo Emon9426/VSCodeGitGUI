@@ -134,6 +134,38 @@ export function promptDialog(title: string, label: string, value: string): Promi
   });
 }
 
+/** 单选列表对话框（Issue #14：无上游多远程推送的远端选择）：选中高亮、双击直达，取消返回 null */
+export function pickDialog(title: string, message: string, options: string[], okLabel?: string): Promise<string | null> {
+  return new Promise(resolve => {
+    let settled = false;
+    const done = (v: string | null) => { if (settled) return; settled = true; close(); resolve(v); };
+    const { box, body, close } = openModal(title, { onCancel: () => done(null) });
+    if (message) body.appendChild(el('div', 'gg-modal-text', message));
+    let selected: string | undefined;
+    const list = el('div', 'gg-pick-list');
+    for (const opt of options) {
+      const row = el('button', 'gg-pick-item') as HTMLButtonElement;
+      row.textContent = opt;
+      if (!selected) { selected = opt; row.classList.add('sel'); }
+      row.addEventListener('click', () => {
+        selected = opt;
+        list.querySelectorAll('.gg-pick-item').forEach(x => x.classList.remove('sel'));
+        row.classList.add('sel');
+      });
+      row.addEventListener('dblclick', () => done(opt));
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+    const btns = el('div', 'gg-modal-btns');
+    const cancel = el('button', 'gg-btn', S.t('cancel'));
+    const ok = el('button', 'gg-btn primary', okLabel || S.t('ok'));
+    cancel.addEventListener('click', () => done(null));
+    ok.addEventListener('click', () => done(selected ?? null));
+    btns.append(cancel, ok);
+    box.appendChild(btns);
+  });
+}
+
 export type ResetMode = 'soft' | 'mixed' | 'hard';
 
 /**

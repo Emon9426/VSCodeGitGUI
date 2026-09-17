@@ -702,6 +702,11 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-modal-warn-t { font-weight: 600; }
 .gg-modal-warn-s { color: var(--gg-t2); margin-top: 2px; font-size: 11px; }
 .gg-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+/* 单选列表（Issue #14 pickDialog：无上游多远程推送的远端选择） */
+.gg-pick-list { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow: auto; }
+.gg-pick-item { text-align: left; padding: 5px 10px; border-radius: var(--gg-r-m); background: transparent; border: 1px solid transparent; cursor: pointer; font-size: 12px; }
+.gg-pick-item:hover { background: var(--vscode-list-hoverBackground); }
+.gg-pick-item.sel { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
 
 /* Pull/Fetch 摘要弹窗（v0.13）：作者 → 目录 → 文件三层分组；行内 打开/定位 按钮 */
 /* ---------------- Banner（Issue #18 S3：页面内横幅统一组件） ----------------

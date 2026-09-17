@@ -6,7 +6,7 @@ import { computeLanes } from '../graph/lanes';
 import { createT, type Lang } from '../common/i18n';
 import type { ExtEvent } from '../common/protocol';
 import { handleResponse, postRaw, rpc } from './rpc';
-import { S, type App } from './state';
+import { S, pushTarget, type App } from './state';
 import { el } from './util';
 import { createCommitList } from './app/commitList';
 import { createDetailPanel } from './app/detailPanel';
@@ -21,7 +21,7 @@ import { createFilesView } from './app/filesView';
 import { createFilePanel } from './app/filePanel';
 import { showPullSummary } from './app/pullSummary';
 import { openBranchPicker } from './app/branchPicker';
-import { confirmDialog, promptDialog, resetDialog, toast, notify, openModal, bindNotifyWidthSave } from './app/overlays';
+import { confirmDialog, promptDialog, pickDialog, resetDialog, toast, notify, openModal, bindNotifyWidthSave } from './app/overlays';
 import { buildDiagPayload, diagActive, diagCancelStreaming, diagNoteFailure, diagOnChunk, diagOnDone, diagOnError, startDiagnosis } from './app/diagnose';
 import { fileIconSvg, iconSvg } from './icons';
 
@@ -90,6 +90,13 @@ const app: App = {
       .then(r => { if (!r) list.refresh(); })   // 页被宿主丢弃（refs 漂移）：复位加载状态，等 repoState 重建
       .catch(e => { showErr(e); list.refresh(); });
   },
+  resumeScan() {
+    // Issue #11：熔断续扫——复位空页计数与熔断标志、恢复 hasMore，重拾自动加载两轮熔断的节奏
+    emptyAppendStreak = 0;
+    S.listCapped = false;
+    if (S.state) S.state.hasMore = true;
+    app.loadMore();
+  },
   runFetch(remote) {
     if (netBusy()) { toast('warn', S.t('netOpBusy')); return; }
     void rpc('op:fetch', remote ? { all: false, remote } : { all: true, prune: S.config.fetchPrune }).catch(showErr);
@@ -117,23 +124,34 @@ const app: App = {
   },
   runPush() {
     if (netBusy()) { toast('warn', S.t('netOpBusy')); return; }
-    const head = S.state?.branches.find(b => b.isHead);
     const branch = S.state?.head.branch;
-    if (!head?.upstream) {
+    const target = pushTarget();
+    if (!target) {
+      const remotes = S.state?.remotes ?? [];
+      // #14：无上游——单远程保持原确认流；多远程（fork 工作流）remotes[0] 可能不是预期
+      // 目标，改为列表让用户显式选择（选择即确认），推 -u 建立上游（本地名=远端新分支名）
+      if (remotes.length > 1) {
+        void pickDialog(S.t('pushPickRemoteTitle'), S.t('pushPickRemoteText'), remotes.map(r => r.name), S.t('push')).then(remote => {
+          if (!remote) return;
+          void rpc('op:push', { remote, branch, setUpstream: true }).catch(showErr);
+        });
+        return;
+      }
       void confirmDialog(S.t('push'), S.t('pushNoUpstream'), S.t('push')).then(ok => {
         if (!ok) return;
-        const remote = S.state?.remotes[0]?.name ?? 'origin';
+        const remote = remotes[0]?.name ?? 'origin';
         void rpc('op:push', { remote, branch, setUpstream: true }).catch(showErr);
       });
       return;
     }
-    const remote = head.upstream.split('/')[0];
+    const remote = target.remote;
+    const head = S.state?.branches.find(b => b.isHead);   // target 已确保上游存在，head 必在
     // R3 事前拦截：本地落后远端 → 引导先拉取（拉取并推送 = pull 后无冲突自动续推）
-    if ((head.behind ?? 0) > 0) {
+    if ((head?.behind ?? 0) > 0) {
       // #49：拉取并推送非不可逆操作，确认框用常规级（原 danger 降级）
       void confirmDialog(
         S.t('pushBehindTitle'),
-        S.t('pushBehindText', { n: String(head.behind) }),
+        S.t('pushBehindText', { n: String(head?.behind ?? 0) }),
         S.t('pushPullAndPush'),
       ).then(ok => {
         if (!ok) return;
@@ -142,7 +160,8 @@ const app: App = {
       });
       return;
     }
-    void rpc('op:push', { remote, branch }).catch(showErr);
+    // #14：显式 refspec 推上游分支（target.branch = HEAD:<上游分支名>），本地名≠上游名不再静默推错
+    void rpc('op:push', { remote, branch: target.branch }).catch(showErr);
   },
   runRefresh() {
     // 成功反馈收敛（Issue #18 决议 2）：进度行绿闪 + 按钮闪绿足够，不再弹庆祝 toast
@@ -951,6 +970,7 @@ window.addEventListener('message', e => {
       computeTrunkSegs();
       if (!repoChanged) commitBar.checkAmendBase();   // B5：amend 期间 HEAD 前进 → 自动退出修订
       emptyAppendStreak = 0;   // 列表整体重建：空页熔断计数随新快照复位
+      S.listCapped = false;    // #11：新快照重置熔断态（真扫尽与否由宿主 hasMore 表达）
       // 列表已整体重建：作废在途分页请求（其页属旧快照，拼接必错位）
       pendingLoad = undefined;
       if (repoChanged) list.reset(); else list.refresh();
@@ -1002,6 +1022,8 @@ window.addEventListener('message', e => {
           // 补扫达 SCAN_CAP 的空页 hasMore=true——首次保留续扫通道，连续第二次空页熔断自动加载
           S.state.hasMore = m.commits.length ? m.hasMore : (emptyAppendStreak >= 2 ? false : m.hasMore);
           S.state.commitsLoaded = S.commits.length;
+          // Issue #11：熔断（宿主仍有更多但连续空页）→ 记标志供 footer 显示「继续扫描」入口
+          S.listCapped = !m.commits.length && !!m.hasMore && emptyAppendStreak >= 2;
         }
         list.appended();
       } else {

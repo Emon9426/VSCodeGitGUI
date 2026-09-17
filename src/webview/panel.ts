@@ -13,7 +13,7 @@ import { RENAME_SEP } from '../common/models';
 import type { ColWidths, ConfigDto, ExtEvent, ExtResponse, FixStepDto, OpKind, WVRequest } from '../common/protocol';
 import { GitError, GitExecutor, isGitError } from '../git/executor';
 import { discoverRepos, repoIdOf, sharedDetect } from '../git/discovery';
-import { GitService, EMPTY_TREE, SCAN_CAP, authorDateWindow, cleanAuthorName } from '../git/service';
+import { GitService, EMPTY_TREE, SCAN_CAP, authorDateWindow, cleanAuthorName, fillScan } from '../git/service';
 import { FilesService, safeRelPath } from '../git/files';
 import { PullSummaryService } from '../git/summary';
 import { buildCreatePrUrl } from '../git/prurl';
@@ -1060,28 +1060,20 @@ export class GraphPanel {
   }
 
   /**
-   * 凑页补扫（Issue #5）：时间段过滤在宿主侧按作者日期进行后，单次 commitsPage 的产出
-   * 可能不足 limit（窗口内提交稀疏），循环续扫直到凑满 / 扫尽 / 达 SCAN_CAP（上限截断时
-   * 如实返回 hasMore，前端下次 loadMore 从 scanCursors 续扫）。
+   * 凑页补扫（Issue #5；#12 起循环体为 service.fillScan 纯函数）：时间段过滤在宿主侧按
+   * 作者日期过滤后，单次 commitsPage 的产出可能不足 limit，循环续扫直到凑满 / 扫尽 /
+   * 达 SCAN_CAP（上限截断时如实返回 hasMore，前端下次 loadMore 从 scanCursors 续扫，
+   * 连续空页由前端熔断并经「继续扫描」入口恢复——Issue #11）。
    * 无日期窗口时单发即精确（git 侧过滤与 -n/--skip 同管道），直接走 commitsPage。
    */
   private async commitsFill(root: string, filter: LogFilter, scanOffset: number, limit: number, ctx: { localBranches: Set<string>; remoteBranches: Set<string> }, order: 'topo' | 'date', scopeRefs?: readonly string[] | null): Promise<{ commits: Commit[]; hasMore: boolean; scanned: number }> {
     if (!authorDateWindow(filter.since, filter.until)) {
       return this.service!.commitsPage(root, filter, scanOffset, limit, ctx, order, scopeRefs);
     }
-    const collected: Commit[] = [];
-    let scan = scanOffset;
-    let hasMore = true;
-    while (true) {
-      const page = await this.service!.commitsPage(root, filter, scan, limit, ctx, order, scopeRefs);
-      scan = page.scanned;
-      collected.push(...page.commits);
-      hasMore = page.hasMore;
-      if (!hasMore) break;                                   // 历史扫尽
-      if (collected.length >= limit) break;                  // 凑满一页产出
-      if (scan - scanOffset >= SCAN_CAP) break;              // 补扫上限
-    }
-    return { commits: collected, hasMore, scanned: scan };
+    return fillScan(
+      scan => this.service!.commitsPage(root, filter, scan, limit, ctx, order, scopeRefs),
+      scanOffset, limit, SCAN_CAP,
+    );
   }
 
   /** per-repo 初始筛选：范围档取自配置（Issue #24 D2：默认 local） */
@@ -1366,10 +1358,15 @@ export class GraphPanel {
             // 矛盾校验（上游领先却未合并）已由下方 OpVerifier 统一承载
             message = upstreamBefore ? this.t('pullUpToDateWith', { ref: upstreamBefore }) : this.t('pullUpToDate');
           } else if (kind === 'push') {
-            message = `${this.t('pushDone')}：${spec.branch ?? 'HEAD'} → ${spec.remote ?? 'origin'}`;
+            // #14：branch 可为 HEAD:<上游分支名> refspec——显示目标段（本地名≠上游名时可读）
+            const specBranch = spec.branch?.includes(':') ? spec.branch.split(':').pop()! : spec.branch;
+            message = `${this.t('pushDone')}：${specBranch ?? 'HEAD'} → ${spec.remote ?? 'origin'}`;
           } else if (kind === 'branchDelete') {
             message = this.t('branchDeleteDone', { name: spec.name ?? '' });
           }
+          // Issue #15：输出超上限被截断的成功——仓库状态无损，但结果细化依据（stdoutTail）
+          // 可能缺失，附注说明（warn 拼接同形态；verify warn 分支会覆盖，校验警示优先）
+          if (outcome.outputTruncated) message = `${message ?? ''} — ${this.t('outputTruncatedNote')}`;
           // 操作后快速校验（Issue #6 后续；#46 经 verifyOutcome）：退出码 0 后按意图核对仓库状态，
           // 假成功（拉错分支/推错分支/未合并/HEAD 未按预期变化）显式警示；探针 fail-open
           if (kind !== 'fetch') {

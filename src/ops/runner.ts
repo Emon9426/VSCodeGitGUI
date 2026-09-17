@@ -57,6 +57,8 @@ export interface OpOutcome {
   command?: string;
   /** 失败时的 git 退出码（Issue #8：AI 诊断上下文） */
   exitCode?: number;
+  /** 成功但 stdout 超上限被截断（Issue #15）：仓库状态无损，但 stdoutTail 可能缺失结果判定依据 */
+  outputTruncated?: boolean;
 }
 
 const PCT_RE = /(\d+)%/;
@@ -167,7 +169,9 @@ export class OpRunner {
       for (const args of cmds) {
         r = await this.execWithLockRetry(root, args, {
           timeoutMs: noTimeout ? 0 : undefined,
-          maxBytes: 4 * 1024 * 1024,
+          // Issue #15：网络道放宽 16MB——巨大 merge 的 diffstat 可超 4MB，截断会丢 stdout 尾部
+          // （pull 的 "Already up to date." 等结果判定依据恰在末尾）；本地道维持 4MB
+          maxBytes: netKind ? 16 * 1024 * 1024 : 4 * 1024 * 1024,
           env,
           registerChild: (c) => {
             this.children.set(opId, c);
@@ -190,7 +194,8 @@ export class OpRunner {
         .split('\n').map(s => s.trim()).filter(Boolean)
         .filter(l => !l.startsWith('remote:')).slice(0, 3).join(' ');
       const stdoutTail = r!.stdout.split('\n').map(s => s.trim()).filter(Boolean).slice(-6).join('\n');
-      return { ok: true, message: buildDone(true) + (warn ? ` — ${warn}` : ''), stdoutTail };
+      // Issue #15：截断成功可区分——仓库状态无损但输出不完整，调用方（panel）可附提示
+      return { ok: true, message: buildDone(true) + (warn ? ` — ${warn}` : ''), stdoutTail, outputTruncated: r!.truncated || undefined };
     } catch (e) {
       if (this.cancelled.delete(opId) || (e instanceof GitError && e.code === 'E_TIMEOUT')) {
         return { ok: false, message: 'cancelled' };

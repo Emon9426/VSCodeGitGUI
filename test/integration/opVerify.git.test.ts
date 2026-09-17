@@ -9,6 +9,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { GitExecutor } from '../../src/git/executor';
+import { OpRunner } from '../../src/ops/runner';
 import { OpVerifier } from '../../src/ops/verify';
 
 const enabled = !!process.env.GITGRAPH_SMOKE && spawnSync('git', ['--version']).status === 0;
@@ -117,6 +118,31 @@ describe.skipIf(!enabled)('操作后快速校验（Issue #6 后续）', () => {
     // tagPush/tagDeleteRemote/fetch：quick 档跳过
     expect((await verifier.verify(B, { kind: 'tagPush', name: 'v1' }, {}, 'quick')).verdict).toBe('skip');
     expect((await verifier.verify(B, { kind: 'fetch', all: true }, {}, 'quick')).verdict).toBe('skip');
+  }, 30_000);
+
+  it('#14 push 行为：HEAD:<上游名> refspec 精确推上游分支（同名旧远端分支不受污染）', async () => {
+    const { A, B } = await mkPair();
+    const runner = new OpRunner(exec);
+    // 本地分支改名 master（上游仍 origin/main，即 pushTarget 场景）；A 侧造远端同名旧 master
+    const g = (root: string, args: string[]) => {
+      const r = spawnSync('git', args, { cwd: root });
+      if (r.status !== 0) throw new Error(`git ${args.join(' ')} 失败: ${String(r.stderr)}`);
+    };
+    g(A, ['push', 'origin', 'main:refs/heads/master']);
+    g(B, ['branch', '-m', 'main', 'master']);
+    g(B, ['commit', '--allow-empty', '-m', 'b1']);
+    const out = await runner.run(
+      B, { kind: 'push', remote: 'origin', branch: 'HEAD:main' }, 1, () => undefined,
+      ok => (ok ? 'done' : 'fail'),
+    );
+    expect(out.ok).toBe(true);
+    // 远端 main 前进到本地 HEAD；远端 master（陈旧同名分支）保持原位未被污染
+    const mainSha = (await exec.exec(B, ['rev-parse', 'origin/main'])).stdout.trim();
+    expect(mainSha).toBe(await headOf(B));
+    const remoteMaster = (await exec.exec(B, ['ls-remote', '--heads', 'origin', 'refs/heads/master'])).stdout.trim();
+    expect(remoteMaster).not.toContain(mainSha);
+    // 校验器视角：对上游 origin/main 已同步（pass，而非推错同名分支时的 ahead warn）
+    expect((await verifier.verify(B, { kind: 'push' }, {}, 'quick')).verdict).toBe('pass');
   }, 30_000);
 
   it('deep：远端漂移 warn；并行推送（远端前进但包含本地）不误报', async () => {

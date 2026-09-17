@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  #app { height: 100%; }
+</style>
+<!-- mock VS Code API：必须先于 webview.js 定义 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * Issue #11/#12 熔断 harness：mock 驱动 commitsAppend 序列，验证
+ * ① 单轮空页（hasMore=true）不熔断（footer 仍「加载更多」）；
+ * ② 连续空页×2 → 熔断：hasMore 置 false + footer 出「继续扫描」按钮（与「已加载 N 条」并存）；
+ * ③ 点击「继续扫描」→ 复位熔断态并发起新一轮 loadMore RPC；
+ * ④ 非空页到达 → 计数清零（其后单轮空页不再熔断）；
+ * ⑤ repoState 到达 → 熔断态整体复位。
+ * 触发方式：maxAutoLoad 压到 25（< 30 条首屏）→ footer 恒显「加载更多」，点击发起 loadMore，
+ * 锚点校验（offset/anchor）随即可用注入的 commitsAppend 匹配。
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // RPC 请求形态 {id, cmd}（rpc.ts）；postRaw 事件形态 {t}（bootstrap）
+  const sent = (cmd) => window.__sent.filter(m => m && m.cmd === cmd);
+  const booted = () => window.__sent.some(m => m && m.t === 'bootstrap');
+  const footerBtnText = () => (document.querySelector('.gg-list-footer button')?.textContent ?? '');
+  const footerText = () => (document.querySelector('.gg-list-footer')?.textContent ?? '').trim();
+
+  for (let i = 0; i < 100 && !booted(); i++) await sleep(50);
+  if (!booted()) { finish('FAIL: no bootstrap'); return; }
+
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 25, fetchPrune: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', colWidths: undefined, selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  const mk = (i, p) => ({
+    sha: String(i).padStart(4, '0') + 'f'.repeat(36), shortSha: String(i).padStart(4, '0') + 'fffff',
+    parents: p ? [p] : [], author: { name: 'e2e', email: 'e@t.t', date: '2026-09-17T10:00:00+08:00' },
+    committer: { name: 'e2e', email: 'e@t.t', date: '2026-09-17T10:00:00+08:00' },
+    subject: `E2E-${i}`, body: '', refs: [],
+  });
+  const commits1 = Array.from({ length: 30 }, (_, i) => mk(i, i > 0 ? mk(i - 1).sha : undefined));
+  const state1 = {
+    repoId: 'r1',
+    head: { sha: commits1[0].sha, branch: 'main', detached: false },
+    branches: [{ name: 'main', fullName: 'refs/heads/main', sha: commits1[0].sha, isHead: true }],
+    remotes: [], tags: [], status: { dirtyCount: 0 },
+    filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+    commits: commits1, commitsLoaded: 30, hasMore: true, stateVersion: 1,
+  };
+  window.__send({ t: 'repoState', state: state1 });
+  await twoFrames(); await sleep(150);
+
+  const clickLoadMore = async () => {
+    document.querySelectorAll('.gg-list-footer button').forEach(b => { if (b.textContent.includes('加载')) b.click(); });
+    await twoFrames(); await sleep(120);
+  };
+
+  // 前置：n=30 ≥ maxAutoLoad=25 → footer 恒显「加载更多」
+  if (footerBtnText() !== '继续加载更多') { finish(`FAIL: no loadMore button ("${footerBtnText()}")`); return; }
+
+  // ① 单轮空页：不熔断
+  await clickLoadMore();
+  if (sent('loadMore').length === 0) { finish('FAIL: loadMore not sent'); return; }
+  window.__send({ t: 'commitsAppend', repoId: 'r1', offset: 30, commits: [], hasMore: true });
+  await twoFrames(); await sleep(150);
+  const noCapAfterOne = footerBtnText() !== '继续扫描';
+
+  // ② 第二轮空页：熔断 → 「继续扫描」+ 已加载 30 条
+  await clickLoadMore();
+  window.__send({ t: 'commitsAppend', repoId: 'r1', offset: 30, commits: [], hasMore: true });
+  await twoFrames(); await sleep(150);
+  const cappedBtn = footerBtnText() === '继续扫描';
+  const cappedCount = /已加载 30 条/.test(footerText());
+
+  // ③ 点「继续扫描」→ 复位并发起新一轮 loadMore
+  const loadsBefore = sent('loadMore').length;
+  if (cappedBtn) { document.querySelector('.gg-list-footer button').click(); }
+  await twoFrames(); await sleep(150);
+  const resumed = sent('loadMore').length > loadsBefore;
+
+  // ④ 非空页 → 计数清零；随后单轮空页不再熔断
+  const page2 = Array.from({ length: 5 }, (_, i) => mk(30 + i, mk(29 + i).sha));
+  window.__send({ t: 'commitsAppend', repoId: 'r1', offset: 30, commits: page2, hasMore: true });
+  await twoFrames(); await sleep(150);
+  await clickLoadMore();
+  window.__send({ t: 'commitsAppend', repoId: 'r1', offset: 35, commits: [], hasMore: true });
+  await twoFrames(); await sleep(150);
+  const oneEmptyNoCap = footerBtnText() !== '继续扫描';
+
+  // ⑤ 再一轮空页熔断后，repoState 到达 → 整体复位
+  await clickLoadMore();
+  window.__send({ t: 'commitsAppend', repoId: 'r1', offset: 35, commits: [], hasMore: true });
+  await twoFrames(); await sleep(150);
+  const capBeforeState = footerBtnText() === '继续扫描';
+  window.__send({ t: 'repoState', state: { ...state1, stateVersion: 2 } });
+  await twoFrames(); await sleep(150);
+  const capAfterState = footerBtnText() === '继续扫描';
+
+  // ⑥ 空态入口（#11 补充路径）：过滤 0 命中 + 宿主仍有更多 → 空态「继续扫描」→ 点击发 loadMore
+  const st0 = {
+    ...state1, stateVersion: 3, commits: [], commitsLoaded: 0, hasMore: true,
+    logFilter: { authors: [], since: '2020-01-01', until: '2020-01-02', noMerges: false },
+  };
+  window.__send({ t: 'repoState', state: st0 });
+  await twoFrames(); await sleep(150);
+  const emptyShown = document.querySelector('.gg-empty')?.classList.contains('show');
+  const emptyBtn = document.querySelector('.gg-empty .gg-empty-scan');
+  const emptyBtnShown = emptyBtn && emptyBtn.style.display !== 'none' && emptyBtn.textContent === '继续扫描';
+  let emptyResumed = false;
+  if (emptyBtnShown) {
+    const loadsBeforeEmpty = sent('loadMore').length;
+    emptyBtn.click();
+    await twoFrames(); await sleep(150);
+    emptyResumed = sent('loadMore').length > loadsBeforeEmpty;
+  }
+
+  const ok = noCapAfterOne && cappedBtn && cappedCount && resumed && oneEmptyNoCap && capBeforeState && !capAfterState
+    && emptyShown && emptyBtnShown && emptyResumed;
+  finish(ok ? 'PASS'
+    : `FAIL oneEmptyNoCap=${noCapAfterOne} capBtn=${cappedBtn} capCount=${cappedCount} resumed=${resumed} oneAfterNonEmpty=${oneEmptyNoCap} capBeforeState=${capBeforeState} capAfterState=${capAfterState} empty=${emptyShown} emptyBtn=${emptyBtnShown} emptyResumed=${emptyResumed}`);
+
+  function finish(result) {
+    window.__result = result;
+    document.title = 'e2e:' + result;
+  }
+})();
+</script>
+</body>
+</html>

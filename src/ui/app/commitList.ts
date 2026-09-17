@@ -65,7 +65,18 @@ export function createCommitList(app: App): CommitList {
   emptySpinner.style.display = 'none';
   const emptyTitle = el('div', 'gg-empty-title', S.t('noCommits'));
   const emptyHint = el('div', 'gg-empty-hint', S.t('noCommitsHint'));
-  empty.append(emptySpinner, emptyTitle, emptyHint);
+  // #11：过滤 0 命中但宿主仍有更多（命中可能在更深处）——空态直接给「继续扫描」入口
+  // （n=0 时 syncRows 早退不自动加载、footer 按钮条件不满足，此路径此前完全无入口）
+  const emptyScanBtn = el('button', 'gg-btn small gg-empty-scan') as HTMLButtonElement;
+  emptyScanBtn.style.display = 'none';
+  let scanPending = false;
+  emptyScanBtn.addEventListener('click', () => {
+    if (scanPending) return;
+    scanPending = true;
+    app.resumeScan();
+    refreshCommon();
+  });
+  empty.append(emptySpinner, emptyTitle, emptyHint, emptyScanBtn);
   scroll.append(sizer, footer);
   body.append(scroll, canvas.canvas, empty);
   wrap.append(loadbar, header, body);
@@ -178,6 +189,8 @@ export function createCommitList(app: App): CommitList {
     if (showEmpty) {
       let title: string;
       let hint: string | undefined;   // undefined = 隐藏副文案
+      // 区分"仓库无提交"与"筛选无结果"（canScan 也要用，提到块首）
+      const filtered = !!(S.state?.filterRef || S.logFilter.authors.length || S.logFilter.since || S.logFilter.until);
       if (scanning) {
         title = S.t('loadingRepos');
       } else if (loadingGit) {
@@ -186,8 +199,6 @@ export function createCommitList(app: App): CommitList {
         title = S.t('noRepos');
         hint = S.t('noReposHint');
       } else {
-        // 区分"仓库无提交"与"筛选无结果"
-        const filtered = !!(S.state?.filterRef || S.logFilter.authors.length || S.logFilter.since || S.logFilter.until);
         title = S.t(filtered ? 'noMatches' : 'noCommits');
         if (!filtered) hint = S.t('noCommitsHint');
       }
@@ -198,7 +209,14 @@ export function createCommitList(app: App): CommitList {
       } else {
         emptyHint.classList.add('hidden');
       }
-      emptySpinner.style.display = (scanning || loadingGit) ? '' : 'none';
+      // #11：筛选无结果且（宿主仍有更多 或 前端空页熔断）→ 空态「继续扫描」（文本随语言刷新，#35 同源）
+      const canScan = !!S.state && S.commits.length === 0 && (!!S.state.hasMore || S.listCapped) && !!filtered;
+      const btnLabel = S.t('resumeScan');
+      if (emptyScanBtn.textContent !== btnLabel) emptyScanBtn.textContent = btnLabel;
+      emptyScanBtn.title = S.t('resumeScanTip');
+      emptyScanBtn.style.display = canScan ? '' : 'none';
+      emptyScanBtn.disabled = scanPending;
+      emptySpinner.style.display = (scanning || loadingGit || (canScan && scanPending)) ? '' : 'none';
     }
   }
 
@@ -325,7 +343,7 @@ export function createCommitList(app: App): CommitList {
     footer.style.height = `${FOOTER_H}px`;
     // #46 流畅度：footer 只在状态签名变化时重填（此前每滚动帧清空重建 DOM）
     const showCount = !!S.state && !S.state.hasMore && n > 20;
-    const fkey = `${loadingMore}|${S.state?.hasMore}|${n >= S.config.maxAutoLoad}|${showCount}|${n}`;
+    const fkey = `${loadingMore}|${S.state?.hasMore}|${n >= S.config.maxAutoLoad}|${showCount}|${S.listCapped}|${n}`;
     if (fkey !== lastFooterKey) {
       lastFooterKey = fkey;
       footer.textContent = '';
@@ -338,6 +356,16 @@ export function createCommitList(app: App): CommitList {
           if (!loadingMore) { loadingMore = true; app.loadMore(); syncRows(); }
         });
         footer.appendChild(btn);
+      } else if (S.listCapped) {
+        // Issue #11：连续空页熔断（宿主仍有更多，深处的匹配提交不可达）——「继续扫描」
+        // 复位熔断态并续扫；与真扫尽的「已加载 N 条」文案区分
+        const btn = el('button', 'gg-btn small', S.t('resumeScan')) as HTMLButtonElement;
+        btn.title = S.t('resumeScanTip');
+        btn.addEventListener('click', () => {
+          if (!loadingMore) { loadingMore = true; app.resumeScan(); syncRows(); }
+        });
+        footer.appendChild(btn);
+        footer.appendChild(el('span', 'gg-footer-count', S.t('loadedCount', { n })));
       } else if (showCount) {
         footer.appendChild(el('span', 'gg-footer-count', S.t('loadedCount', { n })));
       }
@@ -390,9 +418,9 @@ export function createCommitList(app: App): CommitList {
 
   return {
     el: wrap,
-    reset() { scroll.scrollTop = 0; loadingMore = false; invalidateRows(); refreshCommon(); },
-    refresh() { loadingMore = false; invalidateRows(); refreshCommon(); },
-    appended() { loadingMore = false; refreshCommon(); },
+    reset() { scroll.scrollTop = 0; loadingMore = false; scanPending = false; invalidateRows(); refreshCommon(); },
+    refresh() { loadingMore = false; scanPending = false; invalidateRows(); refreshCommon(); },
+    appended() { loadingMore = false; scanPending = false; refreshCommon(); },
     selectionChanged() {
       for (const row of pool) {
         row.classList.toggle('selected', row.dataset.sha === S.selectedSha);
