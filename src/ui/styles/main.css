@@ -855,7 +855,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-notif-title { font-size: var(--gg-fs-m); font-weight: 600; min-width: 0; word-break: break-word; }
 .gg-notif-x { flex: none; margin-left: auto; min-width: 20px; padding: 0 4px; background: transparent; border: none; color: var(--gg-t2); font-size: 13px; line-height: 1; cursor: pointer; border-radius: var(--gg-r-s); }
 .gg-notif-x:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
-.gg-notif-body { padding: 3px 10px 8px 33px; color: var(--gg-t2); font-size: var(--gg-fs-m); word-break: break-word; }
+.gg-notif-body { padding: 3px 10px 8px 33px; color: var(--gg-t2); font-size: var(--gg-fs-m); word-break: break-word; white-space: pre-wrap; }
 .gg-notif-acts { display: flex; gap: 6px; padding: 0 10px 8px 33px; }
 .gg-notif-detail { margin: 0 10px 8px 33px; font-size: var(--gg-fs-s); }
 .gg-notif-detail summary { cursor: pointer; color: var(--gg-t2); user-select: none; }

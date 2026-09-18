@@ -23,6 +23,7 @@ import { showPullSummary } from './app/pullSummary';
 import { openBranchPicker } from './app/branchPicker';
 import { confirmDialog, promptDialog, pickDialog, resetDialog, toast, notify, openModal, bindNotifyWidthSave } from './app/overlays';
 import { buildDiagPayload, diagActive, diagCancelStreaming, diagNoteFailure, diagOnChunk, diagOnDone, diagOnError, startDiagnosis } from './app/diagnose';
+import { gitErrorHint, pushNeedsPull } from './app/pushTriage';
 import { fileIconSvg, iconSvg } from './icons';
 
 // ---------- App 实现 ----------
@@ -1055,7 +1056,7 @@ window.addEventListener('message', e => {
         // #45：取消是用户显式动作——轻量 info 提示即可，不进失败分诊（不诱导重试/不常驻报错）
         if (m.cancelled) {
           notify('info', { title: m.message || S.t('opCancelled') });
-        } else if (m.kind === 'push' && m.outputTail && /non-fast-forward|fetch first|rejected|failed to push/i.test(m.outputTail)) {
+        } else if (m.kind === 'push' && m.outputTail && pushNeedsPull(m.outputTail)) {
           void confirmDialog(
             S.t('pushRejectedTitle'),
             S.t('pushRejectedText'),
@@ -1088,7 +1089,9 @@ window.addEventListener('message', e => {
           }
           notify('error', {
             title: S.t('opFailedTitle', { op: S.t(m.kind) }),
-            body: m.message || undefined,
+            // 正文优先透出 git 真实错误行（服务端拒绝如大文件 GH001 逐文件一行），泛化文案兜底；
+            // 完整输出仍在折叠详情（detail），AI 诊断上下文亦带全量 outputTail
+            body: gitErrorHint(m.outputTail ?? '') ?? m.message,
             detail: m.outputTail || undefined,
             actions: actions.length ? actions : undefined,
           });
