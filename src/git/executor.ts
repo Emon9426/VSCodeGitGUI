@@ -132,7 +132,10 @@ export class GitExecutor {
           // 统一按「截断成功」返回，让调用方以 truncated 标志区分，不误报为 git 失败
           finish(undefined, { stdout, stderr, exitCode: 0, truncated: true });
         } else {
-          const tail = stderr.split('\n').slice(-8).join('\n').trim();
+          // 尾部 24 行：服务端拒绝的错误块在 stderr 前部且逐条一行（GitHub 大文件 GH001
+          // 概览+每个文件一行，另有 To/rejected/failed 收尾 3 行）——8 行窗口会把开头的
+          // 概览行截掉，24 行覆盖完整块（stderr 累积上限 64KB，截行只是取尾窗口）
+          const tail = stderr.split('\n').slice(-24).join('\n').trim();
           finish(new GitError('E_GIT_EXIT', `git ${args[0]} exited with ${code ?? 'signal'}: ${tail || 'no stderr'}`, code ?? undefined, `git ${args.join(' ')}`, tail));
         }
       });
