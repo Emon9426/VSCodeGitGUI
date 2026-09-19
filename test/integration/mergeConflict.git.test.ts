@@ -12,7 +12,7 @@ import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 import { GitExecutor } from '../../src/git/executor';
 import { GitService } from '../../src/git/service';
-import { classifyMergeSession } from '../../src/git/parse';
+import { classifyMergeSession, semanticToOurs } from '../../src/git/parse';
 import { OpRunner } from '../../src/ops/runner';
 
 const enabled = !!process.env.GITGRAPH_SMOKE && spawnSync('git', ['--version']).status === 0;
@@ -170,5 +170,53 @@ describe.skipIf(!enabled)('冲突解决全链路（文本/二进制/万行，Iss
     expect(parsed.chunks[0].theirsLines.some(l => l.includes("'FEATURE'"))).toBe(true);
     const total = parsed.segs.reduce((n, s) => n + (s.type === 'common' ? s.lines.length : 0), 0);
     expect(total).toBeGreaterThan(9000);   // 万行主体都在公共段
+  });
+
+  /** 一方删除 + 二进制（rename 后内容大改 → 检测失败成 delete/modify）：
+   *  本地删 A.png 换 B.png（内容全新），远端改 A.png → merge 停在 DU。
+   *  前端二进制特殊会话只渲染 theirs 卡片 + 删除按钮，「以他人为准」走 checkout --theirs。 */
+  it('DU（我删他改）二进制：分类删除侧=mine、--theirs 恢复远端版本并清冲突', async () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'gg-du-'));
+    exec = new GitExecutor('git');
+    svc = new GitService(exec);
+    runner = new OpRunner(exec);
+    const run = async (args: string[]) => { await exec.exec(root, args); };
+
+    await run(['init', '-b', 'main']);
+    await run(['config', 'core.autocrlf', 'false']);
+    fs.writeFileSync(path.join(root, 'A.png'), png('base-v1'));
+    await run(['add', '-A']);
+    await run(['commit', '-m', 'base']);
+    await run(['checkout', '-b', 'remote-sim']);
+    fs.writeFileSync(path.join(root, 'A.png'), png('remote-changed-v2'));
+    await run(['add', '-A']);
+    await run(['commit', '-m', 'remote edit']);
+    await run(['checkout', 'main']);
+    await fs.promises.rm(path.join(root, 'A.png'));
+    fs.writeFileSync(path.join(root, 'B.png'), png('totally-different-new-content'));   // 相似度低：rename 检测失败
+    await run(['add', '-A']);
+    await run(['commit', '-m', 'local rename']);
+    try { await run(['merge', '--no-edit', 'remote-sim']); } catch { /* DU 冲突即预期 */ }
+
+    let wc = await svc.workingCopyOf(root);
+    expect(wc.conflicts.map(c => `${c.conflictCode} ${c.path}`)).toEqual(['DU A.png']);
+
+    // 面板会话链路等价：theirs 内容 → 分类（binary + 删除侧 mine → UI 只出 theirs 卡片）
+    const theirs = await svc.contentAt(root, ':3', 'A.png');
+    const cls = classifyMergeSession('merge', 'DU', '', theirs ?? '');
+    expect(cls.binary).toBe(true);
+    expect(cls.deletedSideBinary).toBe('mine');
+    expect(semanticToOurs('merge', true)).toBe(false);   // 以他人为准 → --theirs
+
+    const out = await runner.run(root, { kind: 'resolveConflict', paths: ['A.png'], ours: false }, ++opSeq, () => undefined, () => 'R');
+    expect(out.ok).toBe(true);
+
+    wc = await svc.workingCopyOf(root);
+    expect(wc.conflicts).toHaveLength(0);
+    expect(wc.merging).toBe(false);
+    expect(wc.mergeActive).toBe(true);
+    // 工作副本字节级恢复为远端版本（checkout --theirs 写入 :3 blob）
+    const want = spawnSync('git', ['-C', root, 'cat-file', 'blob', 'remote-sim:A.png'], { encoding: 'buffer', maxBuffer: 16 * 1024 * 1024 }).stdout;
+    expect(fs.readFileSync(path.join(root, 'A.png')).equals(want)).toBe(true);
   });
 });

@@ -590,13 +590,16 @@ export function createMergeView(app: { setView(view: 'graph' | 'work'): void }):
     const path = (sessionAny as { path: string }).path;
     const conflicts = S.work.state?.conflicts ?? [];
     const still = conflicts.some(c => c.path === path);
-    if (!still && session && parsed) {
-      // 当前文件已解决（外部操作/自动流转）：写回余量后切下一个或收起
-      void flushPartial().then(() => {
+    if (!still) {
+      // 当前文件已解决（外部操作/整文件二选一/特殊会话按钮）：切下一个或收起；
+      // 文本会话先写回余量，二进制/删除/超限特殊会话无余量直接流转（停留原界面会被感知为点击无效）
+      const advance = (): void => {
         const rest = conflictPaths();
         if (rest.length) void open(rest[0]);
         else close();
-      });
+      };
+      if (session && parsed) void flushPartial().then(advance);
+      else advance();
       return;
     }
     updateChrome();
