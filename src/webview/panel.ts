@@ -22,6 +22,7 @@ import { classifyMergeSession, detectMove, scopeStartRefs, semanticToOurs } from
 import { OpRunner, type OpOutcome, type OpSpec, type PullStrategy } from '../ops/runner';
 import { OpVerifier, type VerifyResult } from '../ops/verify';
 import { DiffContentProvider, GITBOARD_SCHEME, EMPTY_REF, gitboardUri } from './diffProvider';
+import { GIT_FREE_CMDS } from './rpcGate';
 import { fsExistsRobust, revealableAncestor, revealSpawnForm, type RevealSelectStyle } from './revealPath';
 import { lmApi, userMessage, classifyLmError } from '../ai/lm';
 import { buildSystemPrompt, buildUserPrompt, type CommitPromptCtx } from '../ai/prompt';
@@ -333,8 +334,10 @@ export class GraphPanel {
     const req = m as WVRequest;
     if (typeof req?.id !== 'number' || typeof req?.cmd !== 'string') return;   // E_PROTOCOL：静默丢弃
     // 仓库扫描未完成的早期请求（外壳先行渲染期间用户已可点击）：等扫描结束再路由，
-    // 避免 service/runner 尚未就绪时报错；ensureRepos 幂等且不抛（失败路径同样置 resolved）
-    if (!this.reposResolved) await this.ensureRepos();
+    // 避免 service/runner 尚未就绪时报错；ensureRepos 幂等且不抛（失败路径同样置 resolved）。
+    // git 无关命令（Issue #75，见 rpcGate.ts）不经闸门——工程目录/界面持久化等
+    // 不被 git 探测→仓库发现→首仓库解析的长链阻塞，解析进行中即可交互
+    if (!this.reposResolved && !GIT_FREE_CMDS.has(req.cmd)) await this.ensureRepos();
     this.channel.appendLine(`[req] ${req.cmd} #${req.id}`);
     try {
       const data = await this.route(req.cmd, req.args ?? {});
@@ -869,8 +872,13 @@ export class GraphPanel {
     this.post({ t: 'reposChanged', repos: this.repos });
     this.reposResolved = true;
     this.ready = true;
-    await this.afterReposReady();
-    this.flushFilesReveal();   // explorer 右键排队的定位：仓库就绪后才可寻址
+    // 首仓库解析后台接续（Issue #75）：不纳入 reposResolve——闸门等待者（含 RPC）只等
+    // 「仓库发现」，自动选仓 + 首页 buildState 与用户操作并发，大仓库首解析不再拖住在途
+    // 请求；并发竞态由既有 refresh 去抖合并与 stateVersions 快照令牌兜底。
+    // afterReposReady 同步前缀即完成选仓（currentRepoId 置位），等待者恢复时服务已可寻址
+    void this.afterReposReady()
+      .then(() => this.flushFilesReveal())   // explorer 右键排队的定位：仓库就绪后才可寻址
+      .catch(() => undefined);
   }
 
   private currentRoot(): string {
