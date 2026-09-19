@@ -18,7 +18,7 @@ const GENV = {
   GIT_COMMITTER_NAME: '王五', GIT_COMMITTER_EMAIL: 'w@x.y',
 };
 
-function mkRepo(): { root: string; ex: GitExecutor } {
+function mkRepo(commits = 30): { root: string; ex: GitExecutor } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gg-trunc-'));
   const g = (...args: string[]) => {
     const r = spawnSync('git', args, { cwd: root, env: GENV });
@@ -26,7 +26,7 @@ function mkRepo(): { root: string; ex: GitExecutor } {
   };
   g('init', '-b', 'main');
   // 造足量输出：每轮变更文件内容（内容不变会 nothing to commit），log --format=%H%n%B 展开后远超测试用小 maxBytes
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < commits; i++) {
     fs.writeFileSync(path.join(root, 'big.txt'), `${'x'.repeat(64)}\nr${i}\n`);
     g('add', '-A');
     g('commit', '-q', '-m', `c${i} ${'y'.repeat(200)}`);
@@ -61,5 +61,16 @@ describe.skipIf(!enabled)('executor 截断语义（Issue #15）', () => {
       expect(isGitError(e)).toBe(false);
     }
     expect(threw).toBe(false);
+  });
+
+  // Issue #78：Node 对 execFile 强制默认 maxBuffer=1MB（超限 SIGTERM 杀子进程）——
+  // 未抬高前，输出 >1MB 且 < maxBytes 的命令以 signal 失败而非成功。
+  // 体量构造：format 字面量按提交数放大（40 × 30000B ≈ 1.2MB；单参数 <32767 字符防 CreateProcess 拒绝）
+  it('输出 >1MB（默认 maxBytes 内）：成功返回且不截断（maxBuffer 兜底已抬高）', async () => {
+    const { root, ex } = mkRepo(40);
+    const r = await ex.exec(root, ['log', `--format=${'z'.repeat(30000)}%n`], {});
+    expect(r.exitCode).toBe(0);
+    expect(r.truncated).toBe(false);
+    expect(r.stdout.length).toBeGreaterThan(1024 * 1024);
   });
 });

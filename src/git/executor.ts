@@ -76,6 +76,10 @@ export class GitExecutor {
       const child = execFile(this.gitPath, fullArgs, {
         env: opts.env ? { ...process.env, ...opts.env } : process.env,
         windowsHide: true,
+        // Node 对 execFile 强制默认 maxBuffer=1MB（超限 SIGTERM 杀子进程，即使不传
+        // callback）——stdout 逐流截断由上方 maxBytes 逻辑管理，这里只抬高 Node 层
+        // 兜底容量，防 >1MB 输出（大页 log/全量作者等）在截断逻辑生效前被杀（Issue #78）
+        maxBuffer: 64 * 1024 * 1024,
       });
       opts.registerChild?.(child);
 
