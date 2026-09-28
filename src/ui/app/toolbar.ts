@@ -29,7 +29,10 @@ export function createToolbar(app: App): Toolbar {
   const branchBadge = el('span', 'gg-dirty-badge hidden');   // 常驻元素（审查 P2-1：追加式会随 update 无界堆积）
   branchLabel.append(branchIc, branchText, branchBadge);
   // 检出分支（Issue #24）：模糊搜索选择器（本地直接检出 / 远程内联输入本地名）
+  // #87：⑂ 字形换 branch SVG（与侧栏/选择器 #84 图标体系一致）
   const checkoutBtn = el('button', 'gg-tb-btn gg-checkout-btn') as HTMLButtonElement;
+  const checkoutLabel = el('span');
+  checkoutBtn.append(iconSvg('branch'), checkoutLabel);
   checkoutBtn.addEventListener('click', () => openBranchPicker(app, 'checkout'));
   checkoutBtn.dataset.kind = 'checkout';   // #33 B2 守卫态测试锚点
   // 图形范围分段（Issue #24）：全部 / 本地 / 当前——一键直达，与单 ref 精选互斥
@@ -320,7 +323,7 @@ export function createToolbar(app: App): Toolbar {
       btn.classList.toggle('on', !st?.filterRef && scope === key);
     }
     // 检出按钮与分支筛选按钮
-    checkoutBtn.textContent = `⑂ ${S.t('checkoutBtn')}`;
+    checkoutLabel.textContent = S.t('checkoutBtn');
     checkoutBtn.title = S.t('checkoutPickerTitle');
     const refShort = shortRefName(st);
     filterLabel.textContent = refShort ?? S.t('filterBranch');

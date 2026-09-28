@@ -1,19 +1,23 @@
 /**
- * 网络操作阻塞式进度弹窗（#41，SourceTree 式）：
- * Fetch/Pull/Push 执行期间弹出模态窗，半透明遮罩挡住下层主页面（灰化=禁用，
- * 点击不穿透），展示操作名、进度条（百分比/不定态）、git 实时输出行、耗时与取消按钮。
+ * 阻塞式进度弹窗（#41，SourceTree 式；#89 扩至本地重操作）：
+ * Fetch/Pull/Push/Checkout/分支删除 执行期间弹出模态窗，半透明遮罩挡住下层主页面（灰化=禁用，
+ * 点击不穿透）——#89 动机：删除/签出等操作延迟期间 UI 仍开放，用户重复点击造成重复删除/签出。
+ * 展示操作名（#88 批量检出时为「k/N · 分支名」）、进度条（百分比/不定态）、git 实时输出行、耗时与取消按钮
+ * （取消仅网络三类——本地 checkout/branchDelete 无取消语义，按钮按 kind 隐藏）。
  * 成功绿色完成态短显后自动关闭；失败/取消立即关闭，交给既有错误通知流（重试/AI 分析）。
- * 「拉取并推送」链条：完成态留 700ms 宽限窗，链上下一个操作到达则无缝续接不闪烁。
- * #41 同时移除了自动 fetch（fetchOnOpen/autoFetchInterval）——网络操作仅用户显式触发，
- * 故凡弹窗皆用户发起，不存在"后台轮询误弹窗"问题。
+ * 「拉取并推送」/「批量检出」链条：完成态留 700ms 宽限窗，链上下一个操作到达则无缝续接不闪烁。
  */
 import { S, type App } from '../state';
 import { el } from '../util';
 import { iconSvg, type IconName } from '../icons';
 
-const NET_MODAL_KINDS = new Set(['fetch', 'pull', 'push']);
-const KIND_ICON: Record<string, IconName> = { fetch: 'syncFetch', pull: 'pullDown', push: 'pushUp' };
-/** 成功完成态展示时长（期间新网络操作可无缝接管） */
+const NET_MODAL_KINDS = new Set(['fetch', 'pull', 'push', 'checkout', 'branchDelete']);
+const KIND_ICON: Record<string, IconName> = {
+  fetch: 'syncFetch', pull: 'pullDown', push: 'pushUp', checkout: 'branch', branchDelete: 'trash',
+};
+/** 无取消语义的本地操作（#89）：模态隐藏取消按钮 */
+const NO_CANCEL_KINDS = new Set(['checkout', 'branchDelete']);
+/** 成功完成态展示时长（期间链上下一个操作可无缝接管） */
 const DONE_FLASH_MS = 700;
 
 /** opProgress / opResult 事件的最小切片（避免引入全量协议类型） */
@@ -23,6 +27,8 @@ interface OpResultLike { opId: number; kind: string; ok: boolean; verify?: 'pass
 export interface NetModal {
   onProgress(m: OpProgressLike): void;
   onResult(m: OpResultLike): void;
+  /** #88 批量检出：标题覆盖（「检出 k/N · 名」）；open() 重置标题时沿用；undefined 恢复默认 */
+  setBatch(label?: string): void;
 }
 
 export function createNetModal(app: App): NetModal {
@@ -35,11 +41,14 @@ export function createNetModal(app: App): NetModal {
   let pctEl: HTMLElement | undefined;
   let textEl: HTMLElement | undefined;
   let timeEl: HTMLElement | undefined;
+  let cancelEl: HTMLButtonElement | undefined;
 
   let opId: number | undefined;
   let startedAt = 0;
   let ticker: number | undefined;
   let closeTimer: number | undefined;
+  /** #88 批量检出标题覆盖（open() 重置时沿用；done/close 后由调用方清除） */
+  let batchLabel: string | undefined;
 
   function setIcon(name: IconName): void {
     iconEl!.textContent = '';
@@ -71,8 +80,9 @@ export function createNetModal(app: App): NetModal {
       const foot = el('div', 'gg-net-foot');
       timeEl = el('span', 'gg-net-time');
       pctEl = el('span', 'gg-net-pct');
-      const cancel = el('button', 'gg-btn small', S.t('cancel'));
+      const cancel = el('button', 'gg-btn small', S.t('cancel')) as HTMLButtonElement;
       cancel.addEventListener('click', () => { if (opId !== undefined) app.cancelOp(opId); });
+      cancelEl = cancel;
       foot.append(timeEl, el('span', 'gg-net-gap'), pctEl, cancel);
       box.append(head, bar, textEl, foot);
       overlay.appendChild(box);
@@ -80,7 +90,9 @@ export function createNetModal(app: App): NetModal {
     }
     box!.classList.remove('done', 'warn');
     setIcon(KIND_ICON[kind] ?? 'hourglass');
-    titleEl!.textContent = S.t(kind);
+    titleEl!.textContent = batchLabel ?? S.t(kind);
+    // #89：本地操作无取消语义 → 隐藏取消按钮（网络三类保留）
+    cancelEl!.style.display = NO_CANCEL_KINDS.has(kind) ? 'none' : '';
     bar!.classList.add('indet');
     fill!.style.width = '';
     pctEl!.textContent = '';
@@ -99,10 +111,16 @@ export function createNetModal(app: App): NetModal {
   function close(): void {
     overlay?.remove();
     overlay = box = undefined;
+    batchLabel = undefined;   // #88：关窗即清批量标题，防泄漏到下一次单操作
     stopTicker();
     if (closeTimer !== undefined) { clearTimeout(closeTimer); closeTimer = undefined; }
     opId = undefined;
     startedAt = 0;
+  }
+
+  function setBatch(label?: string): void {
+    batchLabel = label;
+    if (label && titleEl && overlay) titleEl.textContent = label;
   }
 
   function onProgress(m: OpProgressLike): void {
@@ -145,5 +163,5 @@ export function createNetModal(app: App): NetModal {
     }, DONE_FLASH_MS);
   }
 
-  return { onProgress, onResult };
+  return { onProgress, onResult, setBatch };
 }

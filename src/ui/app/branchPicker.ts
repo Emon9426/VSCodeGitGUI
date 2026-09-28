@@ -11,6 +11,7 @@
 import type { BranchInfo, GraphScope } from '../../common/models';
 import { S, type App } from '../state';
 import { el } from '../util';
+import { iconSvg, type IconName } from '../icons';
 import { fuzzyMatch } from '../fuzzy';
 import { buildPrefixTree, countNode, stripRemote, walkPrefixTree, type PrefixNode } from './branchGroup';
 import { openModal, toast } from './overlays';
@@ -55,7 +56,12 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   const inlineGo = el('button', 'gg-btn primary', S.t('checkoutAsGo')) as HTMLButtonElement;
   inline.append(inlineLabel, inlineInput, inlineGo);
   const hint = el('div', 'gg-bp-hint', mode === 'checkout' ? S.t('pickerCheckoutHint') : S.t('pickerFilterHint'));
-  body.append(search, list, inline, hint);
+  // #88 批量检出动作条：勾选 ≥1 个远程分支时出现（清空在左 / 「检出 N 个」主按钮在右）
+  const batchBar = el('div', 'gg-bp-batch hidden');
+  const batchClear = el('button', 'gg-btn tiny', S.t('batchClear')) as HTMLButtonElement;
+  const batchGo = el('button', 'gg-btn primary') as HTMLButtonElement;
+  batchBar.append(batchClear, batchGo);
+  body.append(search, list, inline, batchBar, hint);
   box.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
 
   const localNames = new Set(st.branches.map(b => b.name));
@@ -81,25 +87,38 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
 
   let entries: Entry[] = [];        // 当前渲染条目（与 DOM 行序一致）
   let active = 0;
+  /** #88 批量检出勾选集（远程分支全名；render() 重建行后按此恢复勾选态） */
+  const batchSel = new Set<string>();
   /** 内联输入态（Issue #24 三轮）：track=远程分支起本地名；create=新建分支（基于 HEAD） */
   let inlineMode: { kind: 'track'; src: { row: Row; display: string } } | { kind: 'create' } | null = null;
 
-  /** 分区头（#22 A1；v0.23.2 递归）：level 1=大区（12px），≥2=前缀组头（26px 起每深一级 +16px） */
-  function sectionHead(text: string, count?: number, level: number = 1): HTMLElement {
-    const h = el('div', `gg-bp-head${level > 1 ? ' l2' : ''}`, text);
+  /** 分区头（#22 A1；v0.23.2 递归；#87 图标化）：level 1=大区（12px，可带类型图标 branch/syncFetch），
+   *  ≥2=前缀组头（52px 起每深一级 +20px，folder 图标占位——与子行图标列严格对齐，侧栏同网格） */
+  function sectionHead(text: string, count?: number, level: number = 1, icon?: IconName): HTMLElement {
+    const h = el('div', `gg-bp-head${level > 1 ? ' l2' : ''}`);
     if (level > 1) h.style.setProperty('--k', String(level - 2));
+    if (icon) {
+      const ic = el('span', 'gg-bp-hic');
+      ic.appendChild(iconSvg(icon));
+      h.appendChild(ic);
+    }
+    h.appendChild(el('span', 'gg-bp-name', text));
     if (count !== undefined) h.appendChild(el('span', 'gg-bp-count', String(count)));
     return h;
   }
 
-  /** 行节点：命中下标高亮 <b>；点击即确认 */
+  /** 行节点：命中下标高亮 <b>；点击即确认。#87：●⑂⇅◎＋ 字形全换 SVG（与侧栏 #84 同体系） */
   function rowEl(e: Entry): HTMLElement {
     const r = e.row;
     const row = el('div', `gg-bp-row${e.depth !== undefined ? ' d' : ''}${r.kind === 'scope' ? ' scope' : ''}`);
     if (e.depth !== undefined) row.style.setProperty('--d', String(e.depth));
-    if (r.kind === 'scope') row.appendChild(el('span', 'gg-bp-ic', '◎'));
-    else if (r.kind === 'local') row.appendChild(el('span', 'gg-bp-ic', r.b.isHead ? '●' : '⑂'));
-    else row.appendChild(el('span', 'gg-bp-ic', '⇅'));
+    const ic = el('span', 'gg-bp-ic');
+    if (r.kind === 'scope') ic.appendChild(iconSvg('graph'));
+    else if (r.kind === 'local') {
+      ic.appendChild(iconSvg('branch'));
+      if (r.b.isHead) ic.appendChild(el('span', 'gg-dot-badge'));
+    } else ic.appendChild(iconSvg('branch'));
+    row.appendChild(ic);
     const nm = el('span', 'gg-bp-name');
     const name = e.disp ?? displayNameOf(e);
     // #45：深层级被 ellipsis 截断时悬停看全名（远程含 remote 前缀全名）
@@ -118,6 +137,19 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
     if (r.kind === 'remote') {
       if (r.hasLocal) row.appendChild(el('span', 'gg-side-flag', S.t('branchHasLocal')));
       row.appendChild(el('span', 'gg-bp-sub', r.remote));
+      // #88 批量勾选框（仅 checkout 模式）：放行尾（不占行首图标列，保持 #87 对齐网格）；
+      // 行点击仍是单个立即检出，互不干扰
+      if (mode === 'checkout') {
+        const cb = el('input', 'gg-bp-cb') as HTMLInputElement;
+        cb.type = 'checkbox';
+        cb.checked = batchSel.has(r.b.name);
+        cb.addEventListener('click', e => e.stopPropagation());
+        cb.addEventListener('change', () => {
+          if (cb.checked) batchSel.add(r.b.name); else batchSel.delete(r.b.name);
+          updateBatchBar();
+        });
+        row.appendChild(cb);
+      }
     }
     row.addEventListener('click', () => { active = entries.indexOf(e); paintActive(); pick(e); });
     return row;
@@ -143,7 +175,7 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
       walkPrefixTree(node, a => a.display, {
         item: (a, d, disp) => addRow(a, [], d, disp),
         group: (ch, d) => {
-          list.appendChild(sectionHead(`${ch.seg}/`, countNode(ch), d + 1));
+          list.appendChild(sectionHead(`${ch.seg}/`, countNode(ch), d + 1, 'folder'));
           renderTree(ch, d);
         },
       }, depth);
@@ -186,7 +218,7 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
               addRow(a, cut ? base.map(p => p - cut).filter(p => p >= 0) : base, d, disp);
             },
             group: (ch, d) => {
-              list.appendChild(sectionHead(`${ch.seg}/`, countNode(ch), d + 1));
+              list.appendChild(sectionHead(`${ch.seg}/`, countNode(ch), d + 1, 'folder'));
               renderHitTree(ch, d);
             },
           }, depth);
@@ -196,7 +228,7 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
           const groupHits = byRemote.get(g.name);
           if (!groupHits?.length) continue;
           any = true;
-          list.appendChild(sectionHead(`${S.t('pickerRemotes')} · ${g.name}`, groupHits.length));
+          list.appendChild(sectionHead(`${S.t('pickerRemotes')} · ${g.name}`, groupHits.length, 1, 'syncFetch'));
           const rg = buildPrefixTree(groupHits.map(h => h.a), a => a.display);
           for (const a of rg.top) addRow(a, posOf.get(a.row) ?? [], 0);
           renderHitTree(rg.root, 0);
@@ -231,7 +263,7 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
           addRow(headEntry, [], 0);
         }
         const others = locals.filter(a => (a.row as { b: BranchInfo }).b.name !== headName);
-        list.appendChild(sectionHead(S.t('pickerLocals'), others.length));
+        list.appendChild(sectionHead(S.t('pickerLocals'), others.length, 1, 'branch'));
         const lg = buildPrefixTree(others, a => a.display);
         for (const a of lg.top) addRow(a, [], 0);
         renderTree(lg.root, 0);
@@ -244,7 +276,7 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
           byOrigin.set((a.row as { remote: string }).remote, arr);
         }
         for (const [origin, arr] of byOrigin) {
-          list.appendChild(sectionHead(`${S.t('pickerRemotes')} · ${origin}`, arr.length));
+          list.appendChild(sectionHead(`${S.t('pickerRemotes')} · ${origin}`, arr.length, 1, 'syncFetch'));
           const rg = buildPrefixTree(arr, a => a.display);
           for (const a of rg.top) addRow(a, [], 0);
           renderTree(rg.root, 0);
@@ -263,12 +295,32 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
     entries = ordered;
     if (active >= entries.length) active = Math.max(0, entries.length - 1);
     paintActive();
+    updateBatchBar();   // #88：行重建后恢复勾选态驱动的批量条
   }
+
+  /** #88 批量条刷新：勾选数驱动显隐与按钮文案 */
+  function updateBatchBar(): void {
+    const n = batchSel.size;
+    batchBar.classList.toggle('hidden', n === 0);
+    batchGo.textContent = S.t('batchCheckoutGo', { n: String(n) });
+    batchGo.title = S.t('batchCheckoutTip');
+  }
+
+  batchClear.addEventListener('click', () => { batchSel.clear(); render(); });
+  batchGo.addEventListener('click', () => {
+    if (!batchSel.size) return;
+    // 勾选的远程分支全名 → 逐个同名跟踪检出（串行 + 阻塞进度由 #88 队列驱动）
+    const items = [...batchSel].map(remote => ({ name: stripRemote(remote), remote }));
+    app.checkoutMany(items);
+    close();
+  });
 
   /** 「＋ 新建分支 “<q>”」特殊行：基于当前 HEAD 的 checkout -b */
   function createRowEl(e: Entry, q: string): HTMLElement {
     const row = el('div', 'gg-bp-row create');
-    row.appendChild(el('span', 'gg-bp-ic', '＋'));
+    const ic = el('span', 'gg-bp-ic');
+    ic.appendChild(iconSvg('plus'));
+    row.appendChild(ic);
     const nm = el('span', 'gg-bp-name');
     nm.appendChild(document.createTextNode(S.t('pickerCreateBranch') + (q ? ' ' : '')));
     if (q) nm.appendChild(el('b', undefined, q));
@@ -342,6 +394,15 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (entries[active]) pick(entries[active]);
+    } else if (e.key === ' ' && mode === 'checkout') {
+      // #88：空格勾选/取消当前高亮的远程行（与行内复选框同一集合）
+      const cur = entries[active];
+      if (cur?.row.kind === 'remote') {
+        e.preventDefault();
+        const nm = cur.row.b.name;
+        if (batchSel.has(nm)) batchSel.delete(nm); else batchSel.add(nm);
+        render();
+      }
     }
   });
   inlineInput.addEventListener('keydown', e => {
