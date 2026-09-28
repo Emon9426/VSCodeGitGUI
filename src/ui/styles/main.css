@@ -37,6 +37,11 @@
   --gg-indent-dir: 12px;
   --gg-indent-file: 28px;
   --gg-indent-max: 140px;   /* 深层级封顶：防窄侧栏下缩进吃光名字 */
+  /* #84 侧栏分支树专属网格（行首 14px 图标槽 + 6px gap）：基准 52 + 步长 20——
+     一级组头名字 = 顶层行图标列（52）、前缀组头名字 = 子行图标列（72），同级组头与行同缩进。
+     旧 --gg-indent-row/group/step 仍由分支选择器弹窗（gg-bp-*）沿用，不受影响 */
+  --gg-btree-row: 52px;
+  --gg-btree-step: 20px;
 }
 
 html, body {
@@ -318,7 +323,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-side-item.group { color: var(--vscode-descriptionForeground); }
 .gg-side-item.repo .gg-side-sub { color: var(--vscode-charts-green); font-size: 11px; }
 .gg-side-item.branch.head .gg-side-name { font-weight: 600; }
-.gg-side-item.tag { padding-left: var(--gg-indent-row); }   /* A3（#22）：与分支区顶层行（28px）层级对齐 */
+.gg-side-item.tag { padding-left: var(--gg-indent-row); }   /* A3（#22）/#84：标签区独立基准 28px，图标槽对齐分支区节奏 */
 .gg-side-name { overflow: hidden; text-overflow: ellipsis; }
 .gg-side-sub { font-size: 11px; color: var(--vscode-descriptionForeground); margin-left: auto; }
 .gg-side-empty { padding: 6px 12px; color: var(--vscode-descriptionForeground); font-size: 12px; }
@@ -331,7 +336,12 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   text-overflow: ellipsis;
   font-family: var(--vscode-editor-font-family);
 }
-.gg-dot { width: 7px; height: 7px; min-width: 7px; border-radius: 50%; background: var(--vscode-charts-green); }
+.gg-dot-badge {
+  position: absolute; top: -2px; right: -3px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--vscode-charts-green);
+  box-shadow: 0 0 0 1.5px var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
 .gg-ab { margin-left: auto; font-size: 11px; }
 .gg-ab b { font-weight: 400; }
 .gg-ab b.a { color: var(--vscode-charts-green); }
@@ -921,18 +931,31 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   background: color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent);
 }
 
-/* 前缀分组组头（Issue #24 / #23；v0.23.2 递归多级）：折叠箭头 + 前缀名 + 计数；
-   缩进随嵌套深度逐级递增（CSS 变量，JS 按 depth/level 注入）——
-   一级组头 12px（基准）→ 一级组内顶层分支行 28px（--d=0）→ 二级组头 26px（--k=0）
-   → 二级组内行 44px（--d=1）→ 三级组头 42px（--k=1）→ 三级组内行 60px（--d=2）……每级 +16px */
-.gg-side-caret { flex: none; width: 12px; text-align: center; font-size: 10px; color: var(--vscode-descriptionForeground); }
-.gg-side-count { flex: none; margin-left: auto; font-size: 10px; color: var(--vscode-descriptionForeground); opacity: 0.85; }
+/* 前缀分组组头（Issue #24 / #23；v0.23.2 递归多级；#84 图标化）：SVG 折叠箭头 + 前缀名 + 胶囊计数。
+   行首统一 14px 槽位（箭头/类型图标），缩进 = 52px 基准 + 20px×深度（--k 组头 / --d 行，JS 注入）——
+   一级组头 12px（[箭头][类型图标]名字@52）→ 顶层行/一级前缀组头 52px → 子行 72px → 再深每级 +20px；
+   对齐锚点：一级组头名字 = 顶层行图标列（52）、前缀组头名字 = 子行图标列（72）、同级组头与行同缩进 */
+.gg-side-caret, .gg-side-ticon, .gg-side-slot {
+  flex: none; display: inline-flex; align-items: center;
+  width: 14px; height: 14px;
+}
+.gg-side-caret .gg-ic, .gg-side-ticon .gg-ic, .gg-side-slot .gg-ic { width: 14px; height: 14px; }
+.gg-side-caret .gg-ic { color: var(--vscode-descriptionForeground); transition: transform .12s ease; }
+.gg-side-caret .gg-ic.open { transform: rotate(90deg); }
+.gg-side-ticon { color: var(--vscode-descriptionForeground); }
+.gg-side-slot { position: relative; }
+.gg-side-count {
+  flex: none; margin-left: auto; font-size: 10px; line-height: 14px;
+  padding: 0 5px; border-radius: 3px;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 16%, transparent);
+}
 .gg-side-item.pgroup { cursor: pointer; user-select: none; }
 .gg-side-item.pgroup.l1 { font-weight: 600; }
-.gg-side-item.pgroup.l1 .gg-side-caret { font-size: 11px; }
+.gg-side-item.pgroup.l1 .gg-side-caret .gg-ic { stroke-width: 1.3; }
 .gg-side-group .gg-side-item.branch,
-.gg-side-group .gg-side-item.remote { padding-left: min(calc(var(--gg-indent-row) + var(--d, 0) * var(--gg-indent-step)), var(--gg-indent-max)); }
-.gg-side-item.pgroup:not(.l1) { padding-left: min(calc(var(--gg-indent-group) + var(--k, 0) * var(--gg-indent-step)), var(--gg-indent-max)); }
+.gg-side-group .gg-side-item.remote { padding-left: min(calc(var(--gg-btree-row) + var(--d, 0) * var(--gg-btree-step)), var(--gg-indent-max)); }
+.gg-side-item.pgroup:not(.l1) { padding-left: min(calc(var(--gg-btree-row) + var(--k, 0) * var(--gg-btree-step)), var(--gg-indent-max)); }
 
 /* 分支筛选按钮（Issue #24）：替代原生 select，点击弹 branchPicker */
 .gg-filter-btn {
