@@ -36,6 +36,7 @@ export function createToolbar(app: App): Toolbar {
   checkoutBtn.addEventListener('click', () => openBranchPicker(app, 'checkout'));
   checkoutBtn.dataset.kind = 'checkout';   // #33 B2 守卫态测试锚点
   // 图形范围分段（Issue #24）：全部 / 本地 / 当前——一键直达，与单 ref 精选互斥
+  // #92：「纯提交」并入为第 4 段（视图开关）——与范围正交：pure 视图下前三段仍切范围、数据即时跟随
   const scopeSeg = el('div', 'gg-scope-seg');
   const scopeBtns: Record<'all' | 'local' | 'current', HTMLButtonElement> = {
     all: el('button', 'gg-scope-btn') as HTMLButtonElement,
@@ -45,7 +46,9 @@ export function createToolbar(app: App): Toolbar {
   for (const key of ['all', 'local', 'current'] as const) {
     scopeBtns[key].addEventListener('click', () => app.setScope(key));
   }
-  scopeSeg.append(scopeBtns.all, scopeBtns.local, scopeBtns.current);
+  const pureSegBtn = el('button', 'gg-scope-btn pure') as HTMLButtonElement;
+  pureSegBtn.addEventListener('click', () => app.setView(S.view === 'pure' ? 'graph' : 'pure'));
+  scopeSeg.append(scopeBtns.all, scopeBtns.local, scopeBtns.current, pureSegBtn);
   // 分支筛选（Issue #24）：原生 select 换 branchPicker（搜索 + 模糊匹配 + 分组 + 范围项）
   const filterBtn = el('button', 'gg-filter-btn') as HTMLButtonElement;
   const filterLabel = el('span', 'gg-filter-label');
@@ -218,14 +221,11 @@ export function createToolbar(app: App): Toolbar {
   gearBtn.title = S.t('settings');
   const versionLabel = el('span', 'gg-version-label', '');
 
-  // 视图切换：提交图 ⇄ 纯提交列表 ⇄ 工作副本 ⇄ 文件历史（v0.14 第四视图；纯列表隐藏合并提交）
+  // 视图切换：提交图 ⇄ 工作副本 ⇄ 文件历史（v0.14 第四视图；#92「纯提交」并入范围分段器第 4 段）
   const viewSeg = el('div', 'gg-viewseg');
   const graphBtn = el('button', 'gg-viewseg-btn') as HTMLButtonElement;
   const graphLabel = el('span');
   graphBtn.append(iconSvg('graph'), graphLabel);
-  const pureBtn = el('button', 'gg-viewseg-btn') as HTMLButtonElement;
-  const pureLabel = el('span');
-  pureBtn.append(iconSvg('list'), pureLabel);
   const workBtn = el('button', 'gg-viewseg-btn') as HTMLButtonElement;
   const workLabel = el('span');
   const workBadge = el('span', 'gg-viewseg-badge hidden');
@@ -234,10 +234,9 @@ export function createToolbar(app: App): Toolbar {
   const filesLabel = el('span');
   filesBtn.append(iconSvg('folderClock'), filesLabel);
   graphBtn.addEventListener('click', () => app.setView('graph'));
-  pureBtn.addEventListener('click', () => app.setView('pure'));
   workBtn.addEventListener('click', () => app.setView('work'));
   filesBtn.addEventListener('click', () => app.setView('files'));
-  viewSeg.append(graphBtn, pureBtn, workBtn, filesBtn);
+  viewSeg.append(graphBtn, workBtn, filesBtn);
 
   // 侧栏折叠切换（工程/仓库/分支/远程向左收起；折叠后左缘把手展开，v0.14.1）
   const sideToggle = el('button', 'gg-tb-btn gg-side-toggle') as HTMLButtonElement;
@@ -261,15 +260,12 @@ export function createToolbar(app: App): Toolbar {
     document.body.classList.toggle('gg-tb-narrow', root.clientWidth > 0 && root.clientWidth < 1080);
     // 视图分段控件（文案随语言刷新；图标常驻只刷 label span——S4 结构）
     graphBtn.classList.toggle('on', S.view === 'graph');
-    pureBtn.classList.toggle('on', S.view === 'pure');
     workBtn.classList.toggle('on', S.view === 'work');
     filesBtn.classList.toggle('on', S.view === 'files');
     graphLabel.textContent = S.t('viewGraph');
-    pureLabel.textContent = S.t('viewPure');
     workLabel.textContent = S.t('viewWork');
     filesLabel.textContent = S.t('viewFiles');
     graphBtn.title = S.t('viewGraphTip');
-    pureBtn.title = S.t('viewPureTip');
     workBtn.title = S.t('viewWorkTip');
     filesBtn.title = S.t('viewFilesTip');
     // 侧栏折叠：按钮箭头随状态（« 收起 / » 展开），折叠态高亮提示
@@ -322,6 +318,10 @@ export function createToolbar(app: App): Toolbar {
       btn.title = S.t(`scope${key[0].toUpperCase()}${key.slice(1)}Tip`);
       btn.classList.toggle('on', !st?.filterRef && scope === key);
     }
+    // #92 第 4 段「纯提交」：视图开关（与前三段的范围单选语义不同，CSS 加双线区隔）
+    pureSegBtn.textContent = S.t('viewPure');
+    pureSegBtn.title = S.t('viewPureTip');
+    pureSegBtn.classList.toggle('on', S.view === 'pure');
     // 检出按钮与分支筛选按钮
     checkoutLabel.textContent = S.t('checkoutBtn');
     checkoutBtn.title = S.t('checkoutPickerTitle');

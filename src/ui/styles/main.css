@@ -920,6 +920,9 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 }
 .gg-scope-btn + .gg-scope-btn { border-left: 1px solid var(--vscode-dropdown-border, #666); }
 .gg-scope-btn.on { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+/* #92 第 4 段「纯提交」：视图开关（非范围单选）——双线区隔 + 默认弱化色，on 时随 .on 恢复 */
+.gg-scope-btn.pure { border-left: 3px double var(--vscode-dropdown-border, #666); color: var(--vscode-descriptionForeground); }
+.gg-scope-btn.pure.on { color: var(--vscode-button-foreground); }
 
 /* 侧栏分支小标（Issue #24）：未推送 / 已有本地 */
 .gg-side-flag {

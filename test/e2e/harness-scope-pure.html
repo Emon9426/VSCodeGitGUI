@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<!-- mock VS Code API：必须先于 webview.js 定义 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * Issue #92 防回归：「纯提交」并入 全部|本地|当前 分段器（第 4 段视图开关），视图组四变三。
+ *  T1 分段器四段（前三范围 + .pure 第 4 段「纯提交」，双线分隔）；视图组三按钮且无「纯提交」
+ *  T2 点第 4 段 → ui:setView(view=pure) + 第 4 段 .on
+ *  T3 pure 视图下点「本地」→ setFilter(scopeMode=local) + 前三段与第 4 段各自 .on（正交生效）
+ *  T4 再点第 4 段 → 回 graph（ui:setView view=graph + .on 消失）
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const finish = (r) => { window.__result = r; document.title = 'e2e:' + r; };
+  const fails = [];
+  const ok = (name, cond, detail) => { if (!cond) fails.push(name + (detail ? '(' + detail + ')' : '')); };
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchPrune: true, branchGroupByPrefix: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', colWidths: undefined, selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  const commit = (i) => ({
+    sha: 'a' + String(i).padStart(2, '0') + 'f'.repeat(37), shortSha: 'a' + String(i).padStart(2, '0') + 'fffff',
+    parents: [], author: { name: 'e2e', email: 'e2e@test', date: '2026-09-28T10:00:00+08:00' },
+    committer: { name: 'e2e', email: 'e2e@test', date: '2026-09-28T10:00:00+08:00' },
+    subject: 'C' + i, body: '', refs: [],
+  });
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: 'a' + '0'.repeat(39), branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'a' + '0'.repeat(39), isHead: true, subject: 's' }],
+      remotes: [], tags: [],
+      status: { dirtyCount: 0 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits: Array.from({ length: 3 }, (_, i) => commit(i)), commitsLoaded: 3, hasMore: false, stateVersion: 1,
+    },
+  });
+  await twoFrames(); await sleep(150);
+
+  // ---------- T1：四段分段器 + 视图组三按钮 ----------
+  const seg = document.querySelector('.gg-scope-seg');
+  const segBtns = seg ? [...seg.querySelectorAll('.gg-scope-btn')] : [];
+  ok('T1-seg-four', segBtns.length === 4, 'got ' + segBtns.length);
+  const pureSeg = seg?.querySelector('.gg-scope-btn.pure');
+  ok('T1-pure-label', !!pureSeg && /纯提交/.test(pureSeg.textContent || ''), pureSeg?.textContent);
+  const bl = pureSeg ? getComputedStyle(pureSeg).borderLeftStyle : '';
+  ok('T1-pure-divider', bl === 'double', 'borderLeftStyle=' + bl);
+  const viewBtns = [...document.querySelectorAll('.gg-viewseg .gg-viewseg-btn')];
+  ok('T1-viewseg-three', viewBtns.length === 3, 'got ' + viewBtns.length);
+  ok('T1-viewseg-no-pure', !viewBtns.some(b => /纯提交/.test(b.textContent || '')));
+
+  // ---------- T2：点第 4 段 → pure ----------
+  const sentView = v => window.__sent.some(m => m && m.cmd === 'ui:setView' && m.args?.view === v);
+  pureSeg?.click();
+  await twoFrames(); await sleep(60);
+  ok('T2-setview-pure', sentView('pure'));
+  ok('T2-pure-on', pureSeg?.classList.contains('on'));
+  ok('T2-graph-btn-off', !viewBtns[0]?.classList.contains('on'));   // 视图组「提交图」不亮（当前=pure）
+
+  // ---------- T3：pure 态下点「本地」→ 范围正交生效 ----------
+  // 真机里高亮等宿主回推 repoState（scopeMode 持久化后）才刷新——mock 补推同款状态
+  const localBtn = segBtns.find(b => /本地/.test(b.textContent || ''));
+  localBtn?.click();
+  await twoFrames(); await sleep(40);
+  ok('T3-setfilter-local', window.__sent.some(m => m && m.cmd === 'setFilter' && m.args?.scopeMode === 'local'));
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: 'a' + '0'.repeat(39), branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'a' + '0'.repeat(39), isHead: true, subject: 's' }],
+      remotes: [], tags: [],
+      status: { dirtyCount: 0 },
+      scopeMode: 'local', filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: true },
+      commits: Array.from({ length: 3 }, (_, i) => commit(i)), commitsLoaded: 3, hasMore: false, stateVersion: 2,
+    },
+  });
+  await twoFrames(); await sleep(120);
+  ok('T3-local-on', localBtn?.classList.contains('on'));
+  ok('T3-pure-still-on', pureSeg?.classList.contains('on'));   // 范围切换不清第 4 段
+
+  // ---------- T4：再点第 4 段 → 回 graph ----------
+  const sentCount0 = window.__sent.filter(m => m && m.cmd === 'ui:setView').length;
+  pureSeg?.click();
+  await twoFrames(); await sleep(60);
+  ok('T4-setview-graph', window.__sent.filter(m => m && m.cmd === 'ui:setView').length > sentCount0 && sentView('graph'));
+  ok('T4-pure-off', !pureSeg?.classList.contains('on'));
+  ok('T4-graph-btn-on', viewBtns[0]?.classList.contains('on'));
+
+  finish(fails.length ? 'FAIL:' + fails.join('|') : 'PASS');
+})();
+</script>
+</body>
+</html>
