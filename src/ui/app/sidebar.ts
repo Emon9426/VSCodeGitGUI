@@ -3,10 +3,13 @@
  * 一级 本地/远程·<remote>，前缀组按 "/" 逐段嵌套，缩进逐级递增——Issue #24 二轮重设计）、标签。
  * 单击分支 = 过滤提交图；双击 = 检出；右键 = 操作菜单。
  * 工程区：双击在当前窗口打开工程；右键可新窗口打开/重命名/移除。
+ * #84 图标体系：行首统一 14px 槽位（箭头/类型图标），▸▾⑂⇅ 字符字形全部换 SVG，
+ * HEAD 行 = 分支图标右上角绿点角标；计数徽章胶囊化；对齐网格 = 52 + 20×深度。
  */
 import type { BranchInfo } from '../../common/models';
 import { S, type App } from '../state';
 import { el, clearChildren } from '../util';
+import { iconSvg, type IconName } from '../icons';
 import { buildPrefixTree, countNode, stripRemote, walkPrefixTree, type PrefixNode } from './branchGroup';
 import { openBranchPicker } from './branchPicker';
 import { showContextMenu, confirmDialog, promptDialog, tagDialog } from './overlays';
@@ -104,7 +107,7 @@ export function createSidebar(app: App): Sidebar {
     clearChildren(branchSec.list);
     if (st) {
       // ---- 一级：本地（HEAD 分支恒置顶，buildRefTree 已排序）----
-      branchSec.list.appendChild(collapseGroup('top:local', `⑂ ${S.t('pickerLocals')}`, st.branches.length, box => {
+      branchSec.list.appendChild(collapseGroup('top:local', S.t('pickerLocals'), st.branches.length, box => {
         if (S.config.branchGroupByPrefix) {
           // 递归多级前缀分组（v0.23.2）：组内行显示剥前缀短名，缩进逐级递增
           const { top, root } = buildPrefixTree(st.branches, b => b.name);
@@ -113,10 +116,10 @@ export function createSidebar(app: App): Sidebar {
         } else {
           for (const b of st.branches) box.appendChild(branchRow(b, 0));
         }
-      }, 1));
+        }, 1, undefined, 'branch'));
       // ---- 一级：远程（每 remote 一组；右键 fetch 菜单保留）----
       for (const g of st.remotes) {
-        branchSec.list.appendChild(collapseGroup('top:remote:' + g.name, `⇅ ${S.t('pickerRemotes')} · ${g.name}`, g.branches.length, box => {
+        branchSec.list.appendChild(collapseGroup('top:remote:' + g.name, `${S.t('pickerRemotes')} · ${g.name}`, g.branches.length, box => {
           if (S.config.branchGroupByPrefix) {
             // 远程分支剥 remote 名后按前缀分组；组内行显示剥 remote 名与前缀的短名（操作仍用全名）
             const { top, root } = buildPrefixTree(g.branches, b => stripRemote(b.name));
@@ -130,7 +133,7 @@ export function createSidebar(app: App): Sidebar {
           showContextMenu([
             { label: S.t('fetchAll'), run: () => app.runFetch() },
           ], e.clientX, e.clientY);
-        }));
+        }, 'syncFetch'));
       }
     }
 
@@ -154,6 +157,10 @@ export function createSidebar(app: App): Sidebar {
       }
       for (const tg of st.tags) {
         const item = el('div', `gg-side-item tag${S.state?.filterRef === tg.name ? ' filtered' : ''}`);
+        // #84 标签行同款图标槽（价签形）
+        const slot = el('span', 'gg-side-slot');
+        slot.appendChild(iconSvg('tag'));
+        item.appendChild(slot);
         item.appendChild(el('span', 'gg-side-name', tg.name));
         // #45：标签名优先（被截时悬停可见），日期作次行
         item.title = `${tg.name}${tg.date ? `\n${tg.date}` : ''}`;
@@ -189,17 +196,27 @@ export function createSidebar(app: App): Sidebar {
   }
 
   /** 折叠组（Issue #24 二轮；v0.23.2 递归多级）：一级（本地 / 远程·<remote>）与前缀组（任意深度）共用骨架；
-   *  缩进：level 1 基准 12px，level ≥2 组头 = 26 + (level-2)×16px（CSS 变量 --k）；
+   *  #84 图标化：折叠箭头 = chevronRight SVG（展开 .open 旋转 90°），一级组头带类型图标（branch/syncFetch），
+   *  计数徽章胶囊化；缩进 = 52px 基准 + 20px×深度（--k/--d），一级组头与子行图标列严格对齐；
    *  折叠集合经宿主 globalState 跨会话保持（key 含完整前缀路径，旧一级 key 天然兼容） */
   function collapseGroup(
     key: string, label: string, count: number, renderItems: (into: HTMLElement) => void,
-    level: number = 2, onContextMenu?: (e: MouseEvent) => void,
+    level: number = 2, onContextMenu?: (e: MouseEvent) => void, icon?: IconName,
   ): HTMLElement {
     const box = el('div', 'gg-side-group');
     const collapsed = S.branchGroupsCollapsed.has(key);
     const head = el('div', `gg-side-item group pgroup${level === 1 ? ' l1' : ''}`);
     if (level > 1) head.style.setProperty('--k', String(level - 2));
-    head.appendChild(el('span', 'gg-side-caret', collapsed ? '▸' : '▾'));
+    const caret = el('span', 'gg-side-caret');
+    const chev = iconSvg('chevronRight');
+    if (!collapsed) chev.classList.add('open');
+    caret.appendChild(chev);
+    head.appendChild(caret);
+    if (level === 1 && icon) {
+      const ti = el('span', 'gg-side-ticon');
+      ti.appendChild(iconSvg(icon));
+      head.appendChild(ti);
+    }
     head.appendChild(el('span', 'gg-side-name', label));
     head.appendChild(el('span', 'gg-side-count', String(count)));
     head.title = `${label} (${count})`;
@@ -208,7 +225,7 @@ export function createSidebar(app: App): Sidebar {
     head.addEventListener('click', () => {
       app.toggleBranchGroup(key);
       const collapsed = S.branchGroupsCollapsed.has(key);
-      (head.firstChild as HTMLElement).textContent = collapsed ? '▸' : '▾';
+      ((head.firstChild as HTMLElement).firstChild as HTMLElement).classList.toggle('open', !collapsed);
       while (box.children.length > 1) box.removeChild(box.lastChild!);
       if (!collapsed) renderItems(box);
     });
@@ -236,7 +253,11 @@ export function createSidebar(app: App): Sidebar {
   function branchRow(b: BranchInfo, depth: number, display?: string): HTMLElement {
     const item = el('div', `gg-side-item branch${b.isHead ? ' head' : ''}${S.state?.filterRef === b.fullName ? ' filtered' : ''}`);
     item.style.setProperty('--d', String(depth));
-    if (b.isHead) item.appendChild(el('span', 'gg-dot'));
+    // #84 行首 14px 类型图标槽：分支图标；HEAD = 图标右上角绿点角标（槽位固定，名字列对齐）
+    const slot = el('span', 'gg-side-slot');
+    slot.appendChild(iconSvg('branch'));
+    if (b.isHead) slot.appendChild(el('span', 'gg-dot-badge'));
+    item.appendChild(slot);
     item.appendChild(el('span', 'gg-side-name', display ?? b.name));
     const badge = el('span', 'gg-ab');
     if (b.ahead) badge.appendChild(el('b', 'a', `↑${b.ahead}`));
@@ -272,6 +293,10 @@ export function createSidebar(app: App): Sidebar {
   function remoteRow(b: BranchInfo, group: string, depth: number, display?: string): HTMLElement {
     const item = el('div', `gg-side-item remote${S.state?.filterRef === b.fullName ? ' filtered' : ''}`);
     item.style.setProperty('--d', String(depth));
+    // #84 与本地分支行同款类型图标槽
+    const slot = el('span', 'gg-side-slot');
+    slot.appendChild(iconSvg('branch'));
+    item.appendChild(slot);
     item.appendChild(el('span', 'gg-side-name', display ?? b.name));
     // 本地已有同名分支（Issue #24）：远端影子指针标记，回答"哪个分支在远程、哪个在本地"
     const stripped = stripRemote(b.name);

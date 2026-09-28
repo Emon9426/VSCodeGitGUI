@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<!-- mock VS Code API：必须先于 webview.js 定义 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * Issue #84 防回归：侧栏分支树图标体系。
+ * 断言（基于真实构建产物 out/webview.js）：
+ *  V1 组头折叠箭头 = SVG（.gg-side-caret svg.gg-ic，无字符文本）
+ *  V2 一级组头类型图标 = .gg-side-ticon svg ×2（本地 branch / 远程 syncFetch）
+ *  V3 计数徽章胶囊化（非透明背景）
+ *  V4 分支/远程行行首 .gg-side-slot svg；HEAD = 图标右上 .gg-dot-badge + 名字加粗
+ *  V5 对齐网格：一级组头名字.x == 顶层行槽位.x；前缀组头名字.x == 子行槽位.x（±1px）
+ *  V6 折叠交互：点击前缀组头 → 子行就地移除 + 箭头失去 .open；再点恢复
+ *  V7 标签行图标槽 svg
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const finish = (r) => { window.__result = r; document.title = 'e2e:' + r; };
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchPrune: true, branchGroupByPrefix: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', colWidths: undefined, selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  const br = (name, extra = {}) => ({
+    name, fullName: 'refs/heads/' + name, sha: 'a' + '0'.repeat(39),
+    isHead: false, subject: 's-' + name, ...extra,
+  });
+  const rb = (name, extra = {}) => ({
+    name: 'origin/' + name, fullName: 'refs/remotes/origin/' + name, sha: 'b' + '0'.repeat(39),
+    subject: 'r-' + name, ...extra,
+  });
+  const commit = (i) => ({
+    sha: 'a' + String(i).padStart(2, '0') + 'f'.repeat(37), shortSha: 'a' + String(i).padStart(2, '0') + 'fffff',
+    parents: [], author: { name: 'e2e', email: 'e2e@test', date: '2026-09-28T10:00:00+08:00' },
+    committer: { name: 'e2e', email: 'e2e@test', date: '2026-09-28T10:00:00+08:00' },
+    subject: 'C' + i, body: '', refs: [],
+  });
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: 'a' + '0'.repeat(39), branch: 'main', detached: false },
+      branches: [
+        br('main', { isHead: true, upstream: 'origin/main', ahead: 2, behind: 1 }),
+        br('dev'),
+        br('feat/alpha'),                       // 无 upstream → 未推送小标
+        br('feat/beta'),
+        br('fix/gamma'),
+      ],
+      remotes: [{ name: 'origin', branches: [rb('main'), rb('feat/alpha')] }],
+      tags: [{ name: 'v1.0.0', sha: 'a' + '0'.repeat(39), date: '2026-09-01' }, { name: 'v0.9.0', sha: 'a' + '0'.repeat(39) }],
+      status: { dirtyCount: 0 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits: Array.from({ length: 3 }, (_, i) => commit(i)), commitsLoaded: 3, hasMore: false, stateVersion: 1,
+    },
+  });
+  await twoFrames(); await sleep(200);
+
+  const fails = [];
+  const ok = (name, cond, detail) => { if (!cond) fails.push(name + (detail ? '(' + detail + ')' : '')); };
+
+  // ---- V1/V2/V3 ----
+  const caret = document.querySelector('.gg-side-caret');
+  ok('V1-caret-svg', !!caret?.querySelector('svg.gg-ic'));
+  ok('V1-caret-no-text', caret?.textContent === '');
+  const ticons = document.querySelectorAll('.gg-side-item.pgroup.l1 .gg-side-ticon svg.gg-ic');
+  ok('V2-ticons-2', ticons.length === 2, 'got ' + ticons.length);
+  const cnt = document.querySelector('.gg-side-count');
+  // harness 无 VS Code 主题注入：补上变量再验证 color-mix 胶囊背景（实机由主题提供）
+  document.documentElement.style.setProperty('--vscode-descriptionForeground', '#9d9d9d');
+  const cntStyle = cnt ? getComputedStyle(cnt) : null;
+  const cntBg = cntStyle?.backgroundColor || '';
+  ok('V3-count-capsule', !!cntBg && cntBg !== 'rgba(0, 0, 0, 0)' && cntBg !== 'transparent', cntBg);
+  ok('V3-count-pill', cntStyle && cntStyle.paddingLeft === '5px' && cntStyle.borderRadius === '3px',
+    (cntStyle?.paddingLeft || '') + '/' + (cntStyle?.borderRadius || ''));
+
+  // ---- V4 ----
+  const branchSlots = document.querySelectorAll('.gg-side-item.branch .gg-side-slot svg.gg-ic').length;
+  ok('V4-branch-slot', branchSlots >= 5, 'got ' + branchSlots);
+  const headRow = document.querySelector('.gg-side-item.branch.head');
+  ok('V4-head-badge', !!headRow?.querySelector('.gg-side-slot .gg-dot-badge'));
+  ok('V4-head-bold', headRow && Number(getComputedStyle(headRow.querySelector('.gg-side-name')).fontWeight) >= 600);
+  const remoteSlots = document.querySelectorAll('.gg-side-item.remote .gg-side-slot svg.gg-ic').length;
+  ok('V4-remote-slot', remoteSlots >= 2, 'got ' + remoteSlots);
+
+  // ---- V5 对齐（同一文档坐标） ----
+  const L = (el) => el ? Math.round(el.getBoundingClientRect().left) : -1;
+  const l1 = document.querySelector('.gg-side-item.pgroup.l1');
+  const topRow = document.querySelector('.gg-side-group .gg-side-item.branch');
+  ok('V5-align-l1-vs-top', Math.abs(L(l1?.querySelector('.gg-side-name')) - L(topRow?.querySelector('.gg-side-slot'))) <= 1,
+    L(l1?.querySelector('.gg-side-name')) + ' vs ' + L(topRow?.querySelector('.gg-side-slot')));
+  const pg = document.querySelector('.gg-side-item.pgroup:not(.l1)');
+  const pgBox = pg?.parentElement;
+  const subSlot = pgBox ? pgBox.querySelector('.gg-side-item.branch .gg-side-slot') : null;
+  ok('V5-align-pg-vs-sub', pg && subSlot && Math.abs(L(pg.querySelector('.gg-side-name')) - L(subSlot)) <= 1,
+    L(pg?.querySelector('.gg-side-name')) + ' vs ' + L(subSlot));
+  // 同级：前缀组头与顶层行同缩进（同级同列）
+  ok('V5-align-pg-pad-eq-top', pg && topRow && Math.abs(pg.getBoundingClientRect().left - topRow.getBoundingClientRect().left) <= 1,
+    Math.round(pg?.getBoundingClientRect().left) + ' vs ' + Math.round(topRow?.getBoundingClientRect().left));
+
+  // ---- V6 折叠交互（放最后：改变 DOM） ----
+  if (pg) {
+    pg.click();
+    await twoFrames();
+    const hidden = pg.parentElement.children.length <= 1;
+    const openGone = !pg.querySelector('.gg-side-caret svg').classList.contains('open');
+    pg.click();
+    await twoFrames();
+    const back = pg.parentElement.children.length > 1;
+    const openBack = pg.querySelector('.gg-side-caret svg').classList.contains('open');
+    ok('V6-collapse', hidden && openGone);
+    ok('V6-expand', back && openBack);
+  } else fails.push('V6-no-pgroup');
+
+  // ---- V7 标签行 ----
+  const tagRows = document.querySelectorAll('.gg-side-item.tag');
+  ok('V7-tag-slot', tagRows.length === 2 && tagRows[0].querySelector('.gg-side-slot svg.gg-ic') && tagRows[1].querySelector('.gg-side-slot svg.gg-ic'),
+    'rows=' + tagRows.length);
+
+  finish(fails.length ? 'FAIL:' + fails.join('|') : 'PASS');
+})();
+</script>
+</body>
+</html>

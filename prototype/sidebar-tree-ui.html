@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GitBoard 侧栏分支树 · UI 优化原型</title>
+<style>
+  :root{
+    --canvas:#111111; --side:#181818; --fg:#cccccc; --desc:#9d9d9d;
+    --hover:#2a2a2a; --border:#2b2b2b; --green:#89d185; --red:#f14c4c;
+    --cap-bg:rgba(157,157,157,.16);
+    --accent:#4daafc;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--canvas); color:var(--fg);
+    font:13px/1.5 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    display:flex; flex-direction:column; align-items:center; padding:28px 16px 48px;
+  }
+  h1{font-size:16px; margin:0 0 4px}
+  .sub{color:var(--desc); font-size:12px; margin-bottom:20px; text-align:center}
+  .sub b{color:var(--fg); font-weight:600}
+
+  /* ---------- 对比双栏 ---------- */
+  .compare{display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; justify-content:center}
+  .col{display:flex; flex-direction:column; gap:8px}
+  .col-tag{font-size:12px; font-weight:600; letter-spacing:.05em; text-align:center}
+  .col-tag .v{color:var(--desc); font-weight:400}
+  .col-tag.opt{color:var(--green)}
+  .side{
+    width:252px; background:var(--side); border:1px solid var(--border);
+    border-radius:6px; overflow:hidden; position:relative; padding-bottom:8px;
+  }
+  .side .sechead{
+    padding:10px 12px 4px; font-size:11px; font-weight:600;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--desc);
+    display:flex; align-items:center;
+  }
+  .side .sechead .plus{
+    margin-left:auto; width:16px; height:16px; line-height:14px; text-align:center;
+    border:none; background:none; color:var(--desc); cursor:pointer; border-radius:4px;
+    font-size:12px; padding:0;
+  }
+  .side .sechead .plus:hover{background:var(--hover); color:var(--fg)}
+
+  /* ---------- 行(两栏共用骨架) ---------- */
+  .row{
+    display:flex; align-items:center; height:22px;
+    padding:0 10px 0 var(--p,12px); cursor:pointer; white-space:nowrap;
+    border-radius:3px; margin:0 3px;
+  }
+  .row:hover{background:var(--hover)}
+  .row .name{overflow:hidden; text-overflow:ellipsis}
+  .row.head{color:var(--desc); font-weight:600}
+  .row.phead{color:var(--desc)}
+  .row.head .name.bold,.row.branch .name.bold{font-weight:600}
+  .row .count{
+    margin-left:auto; font-size:10px; color:var(--desc); opacity:.85; flex:none;
+  }
+  .row .count.capsule{
+    opacity:1; background:var(--cap-bg); border-radius:3px;
+    padding:0 5px; line-height:14px;
+  }
+  .row .ab{margin-left:auto; font-size:11px; flex:none}
+  .row .ab b{font-weight:400}
+  .row .ab b.a{color:var(--green)}
+  .row .flag{
+    flex:none; margin-left:4px; padding:0 4px; border-radius:3px;
+    font-size:10px; line-height:14px; color:var(--desc); background:var(--cap-bg);
+  }
+  /* 首元素固定槽:箭头/图标/圆点统一 14px 宽,保证名字列对齐(优化栏) */
+  .slot{flex:none; width:14px; height:14px; display:inline-flex; align-items:center; justify-content:center}
+  .slot+ .name{margin-left:4px}
+  svg.ic{width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.2; stroke-linecap:round; stroke-linejoin:round; display:block}
+  svg.chev{width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.3; stroke-linecap:round; stroke-linejoin:round;
+    transition:transform .12s ease; color:var(--desc)}
+  svg.chev.open{transform:rotate(90deg)}
+  /* HEAD 角标模式:图标右上角 6px 绿点 + 背景色隔断圈 */
+  .slot .dot-badge{
+    position:absolute; width:6px; height:6px; border-radius:50%;
+    background:var(--green); box-shadow:0 0 0 1.5px var(--side);
+    transform:translate(11px,-3px);
+  }
+  .slot.wrap{position:relative}
+  /* HEAD 绿点占位模式:7px 圆点居中入槽 */
+  .hdot{width:7px; height:7px; border-radius:50%; background:var(--green); margin:auto}
+  /* 现状栏字符字形 */
+  .glyph{flex:none; text-align:center; color:var(--desc); font-size:10px; line-height:1}
+  .glyph.caret{width:12px}
+  .glyph.tico{width:12px; font-size:12px}
+  .dot-legacy{flex:none; width:7px; height:7px; border-radius:50%; background:var(--green)}
+
+  /* ---------- 对齐参考线 ---------- */
+  .guide{position:absolute; top:0; bottom:0; width:0; border-left:1px dashed rgba(77,175,252,.55); pointer-events:none}
+  .guide i{
+    position:absolute; top:6px; left:3px; font-style:normal; font-size:10px;
+    color:var(--accent); white-space:nowrap;
+  }
+
+  /* ---------- 控件 ---------- */
+  .controls{
+    display:flex; gap:26px; flex-wrap:wrap; justify-content:center;
+    margin:22px 0 6px; font-size:12px; color:var(--desc);
+  }
+  .controls .grp{display:flex; align-items:center; gap:8px}
+  .controls label{cursor:pointer; display:flex; align-items:center; gap:4px}
+  .controls input{accent-color:var(--accent); cursor:pointer}
+  .controls .note{width:100%; text-align:center; font-size:11px; opacity:.75}
+
+  /* ---------- 图例 ---------- */
+  .legend{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+    gap:12px; max-width:760px; margin-top:20px; width:100%;
+  }
+  .card{
+    background:#1b1b1b; border:1px solid var(--border); border-radius:6px;
+    padding:12px 14px; font-size:12px; color:var(--desc);
+  }
+  .card .no{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px; border-radius:50%; background:var(--cap-bg);
+    color:var(--fg); font-size:10px; margin-right:6px; font-weight:600;
+  }
+  .card b{color:var(--fg); font-weight:600}
+  .card .demo{display:flex; align-items:center; gap:6px; margin:8px 0 6px; color:var(--fg)}
+  .card .demo .old{color:var(--desc); opacity:.6}
+  .card .arrow{color:var(--desc); font-size:11px}
+  .card code{background:#111; border:1px solid var(--border); border-radius:3px; padding:0 4px; font-size:11px}
+
+  table.spec{
+    border-collapse:collapse; max-width:760px; width:100%; margin-top:18px;
+    font-size:12px; color:var(--desc);
+  }
+  table.spec th,table.spec td{border:1px solid var(--border); padding:5px 10px; text-align:left}
+  table.spec th{color:var(--fg); background:#1b1b1b; font-weight:600}
+  table.spec td b{color:var(--fg)}
+</style>
+</head>
+<body>
+
+<h1>GitBoard 侧栏分支树 · 图标体系优化原型</h1>
+<div class="sub">
+  左栏 = <b>现状 v0.30</b>(字符字形 / 分支行无图标 / 纯数字计数),右栏 = <b>优化方案</b>。
+  两栏数据、行高、字号完全一致,仅图标与对齐体系不同。组头可点击折叠。
+</div>
+
+<div class="compare">
+  <div class="col">
+    <div class="col-tag">现状 <span class="v">v0.30.2</span></div>
+    <div class="side" id="panelNow"></div>
+  </div>
+  <div class="col">
+    <div class="col-tag opt">优化方案</div>
+    <div class="side" id="panelOpt"></div>
+  </div>
+</div>
+
+<div class="controls">
+  <div class="grp">计数徽章:
+    <label><input type="radio" name="cnt" value="capsule" checked>胶囊</label>
+    <label><input type="radio" name="cnt" value="plain">纯数字(现状)</label>
+  </div>
+  <div class="grp">HEAD 标记:
+    <label><input type="radio" name="head" value="badge" checked>图标角标</label>
+    <label><input type="radio" name="head" value="dot">绿点占位</label>
+  </div>
+  <div class="grp">
+    <label><input type="checkbox" id="guides">显示对齐参考线</label>
+  </div>
+  <div class="note">开关只作用于右栏(优化方案);左侧为不可变的现状对照。</div>
+</div>
+
+<div class="legend">
+  <div class="card">
+    <span class="no">1</span><b>分支行补上类型图标</b><br>
+    子分支行不再"裸文字",每行 14px 分支图标(路径直接复用 <code>icons.ts#branch</code>),与组头形成"文件夹 vs 分支"的清晰层级。远程行、标签行同体系。
+    <div class="demo"><span class="old">issue-36-outline-ux</span><span class="arrow">→</span><svg class="ic" viewBox="0 0 16 16"><use href="#i-branch"/></svg> issue-36-outline-ux</div>
+  </div>
+  <div class="card">
+    <span class="no">2</span><b>折叠箭头换 SVG chevron</b><br>
+    文本字符 <code>▸/▾</code> 在不同字体下大小、基线不稳,截图里细小发虚。换成 SVG(<code>icons.ts#chevronRight</code> + 90° 旋转过渡),与 VS Code 原生树同视觉。
+    <div class="demo"><span class="old">▾ feat/</span><span class="arrow">→</span>
+      <svg class="chev open" viewBox="0 0 16 16" style="color:#9d9d9d"><use href="#i-chev"/></svg> feat/</div>
+  </div>
+  <div class="card">
+    <span class="no">3</span><b>一级组头字形图标化</b><br>
+    <code>⑂ 本地分支 / ⇅ 远程分支</code> 的 Unicode 字形跨平台易退化。本地组用 <code>branch</code> SVG、远程组用双向循环箭头 <code>syncFetch</code>(与 ⇅ 语义一致)。
+    <div class="demo"><span class="old">⑂ ⇅</span><span class="arrow">→</span>
+      <svg class="ic" viewBox="0 0 16 16"><use href="#i-branch"/></svg>
+      <svg class="ic" viewBox="0 0 16 16"><use href="#i-sync"/></svg></div>
+  </div>
+  <div class="card">
+    <span class="no">4</span><b>计数徽章与"未推送"小标统一语言</b><br>
+    组尾灰色数字与行内胶囊小标风格割裂。计数改为同款轻量胶囊(10px / radius 3 / desc 16% 底),与 <code>.gg-side-flag</code> 完全同一视觉语言。可切换回纯数字对比。
+    <div class="demo"><span class="old">5</span><span class="arrow">→</span><span style="font-size:10px;line-height:14px;padding:0 5px;border-radius:3px;background:rgba(157,157,157,.16)">5</span></div>
+  </div>
+</div>
+
+<table class="spec">
+  <tr><th style="width:130px">规格项</th><th>现状 v0.30</th><th>优化方案</th></tr>
+  <tr><td>行首槽位</td><td>无统一槽(组头 12px 字符箭头,HEAD 行 7px 绿点,普通行空)</td><td><b>统一 14px 槽</b>:箭头 / 类型图标 / 绿点择一入槽,名字列全部对齐</td></tr>
+  <tr><td>缩进梯度</td><td>组头 26 / 行 28 / 子行 44(组头比兄弟行浅 2px,近似平齐难分层级)</td><td><b>基准 12 + 步长 18</b>:L1 项 48、L2 项 66;<b>子行图标与父组头名字严格同列</b>(48/48、66/66)</td></tr>
+  <tr><td>图标资产</td><td>字符 ⑂ / ⇅ / ▸ / ▾</td><td>SVG × 4:branch、chevronRight、syncFetch(均在 <code>icons.ts</code> 现成)、tag(新增一个)</td></tr>
+  <tr><td>行高 / 密度</td><td colspan="2">22px(3px 上下 padding),<b>不变</b>——保持紧凑偏好,不新增留白</td></tr>
+  <tr><td>实装落点</td><td colspan="2"><code>sidebar.ts</code>(行构造)+ <code>main.css</code>(槽位/缩进变量)+ <code>icons.ts</code>(补 tag 图标),共 3 个文件</td></tr>
+</table>
+
+<!-- SVG 符号库:路径逐条复制自 src/ui/icons.ts -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6.2 2.8L10.4 8l-4.2 5.2"/></symbol>
+    <symbol id="i-branch" viewBox="0 0 16 16">
+      <path d="M2.6 3.4a1.4 1.4 0 1 0 2.8 0 1.4 1.4 0 1 0 -2.8 0"/>
+      <path d="M2.6 12.6a1.4 1.4 0 1 0 2.8 0 1.4 1.4 0 1 0 -2.8 0"/>
+      <path d="M10.6 5.4a1.4 1.4 0 1 0 2.8 0 1.4 1.4 0 1 0 -2.8 0"/>
+      <path d="M4 4.8v6.4"/><path d="M4 8.6c0-2 1.4-3.2 3.6-3.2h1.8"/>
+    </symbol>
+    <symbol id="i-sync" viewBox="0 0 16 16">
+      <path d="M12.9 5.9A5.2 5.2 0 0 0 3.2 4.4"/><path d="M3.2 1.8v2.6h2.6"/>
+      <path d="M3.1 10.1A5.2 5.2 0 0 0 12.8 11.6"/><path d="M12.8 14.2v-2.6h-2.6"/>
+    </symbol>
+    <symbol id="i-tag" viewBox="0 0 16 16">
+      <path d="M2 2h5.4l6.6 6.6-5.4 5.4L2 7.4V2z"/>
+      <path d="M4.7 4.7a.9.9 0 1 0 1.8 0 .9.9 0 1 0 -1.8 0"/>
+    </symbol>
+  </defs>
+</svg>
+
+<script>
+/* ============ 数据(贴近用户截图的真实分支结构) ============ */
+const DATA = [
+  { type:'head1', ticon:'branch', label:'本地分支', count:11, children:[
+    { type:'branch', name:'main', head:true, depth:1 },
+    { type:'phead', label:'feat/', count:5, children:[
+      { type:'branch', name:'issue-36-outline-ux', depth:2 },
+      { type:'branch', name:'issue-40-wtree-load',  depth:2 },
+      { type:'branch', name:'issue-45-diff-fold',   depth:2 },
+      { type:'branch', name:'issue-50-tag-ui',      depth:2 },
+      { type:'branch', name:'issue-58-cdp-verify',  depth:2, unpushed:true },
+    ]},
+    { type:'phead', label:'fix/', count:3, children:[
+      { type:'branch', name:'issue-75-decouple',    depth:2, ahead:2 },
+      { type:'branch', name:'issue-78-maxbuf',      depth:2 },
+      { type:'branch', name:'issue-81-resolve-flow',depth:2 },
+    ]},
+    { type:'phead', label:'refactor/', count:1, children:[
+      { type:'branch', name:'v1.8.0', depth:2 },
+    ]},
+  ]},
+  { type:'head1', ticon:'sync', label:'远程分支 · origin', count:11, collapsed:true, children:[
+    { type:'branch', name:'main', depth:1 },
+    { type:'branch', name:'feat/issue-36-outline-ux', depth:1 },
+  ]},
+];
+const TAGS = ['v0.30.2','v0.30.1'];
+
+/* 缩进:现状沿用 v0.30 的 12/26/28/44;优化方案基准 12 + 步长 18(严格同列对齐) */
+const PAD = {
+  now: { head1:12, rowTop:28, phead:26, rowSub:44, tag:28 },
+  opt: { head1:12, rowTop:48, phead:48, rowSub:66, tag:28 },
+};
+const SVG = {
+  branch:'#i-branch', sync:'#i-sync', tag:'#i-tag', chev:'#i-chev',
+};
+const GLYPH_TICO = { branch:'⑂', sync:'⇅' };
+
+let optCount = 'capsule', optHead = 'badge';
+
+/* ============ 渲染 ============ */
+function slotSvg(href, cls='ic'){
+  const s = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  s.setAttribute('viewBox','0 0 16 16'); s.classList.add(cls);
+  const u = document.createElementNS('http://www.w3.org/2000/svg','use');
+  u.setAttribute('href', href); s.appendChild(u);
+  return s;
+}
+
+function buildRow(cfg, mode){
+  const pad = PAD[mode];
+  const row = document.createElement('div');
+  row.className = 'row';
+
+  /* --- 组头(一级 / 前缀) --- */
+  if (cfg.type === 'head1' || cfg.type === 'phead'){
+    row.classList.add(cfg.type === 'head1' ? 'head' : 'phead');
+    row.style.setProperty('--p', (cfg.type === 'head1' ? pad.head1 : pad.phead) + 'px');
+    const caret = document.createElement('span');
+    caret.className = 'slot';
+    if (mode === 'opt'){
+      const c = slotSvg(SVG.chev,'chev'); caret.appendChild(c); caret.dataset.chev='1';
+    } else {
+      caret.className = 'glyph caret'; caret.textContent = '▾';
+    }
+    row.appendChild(caret);
+    if (cfg.type === 'head1'){
+      if (mode === 'opt'){
+        const t = document.createElement('span'); t.className='slot'; t.style.marginLeft='4px';
+        t.appendChild(slotSvg(SVG[cfg.ticon])); row.appendChild(t);
+      } else {
+        const g = document.createElement('span'); g.className='glyph tico';
+        g.textContent = GLYPH_TICO[cfg.ticon]; row.appendChild(g);
+      }
+    }
+    const nm = document.createElement('span'); nm.className='name'+(cfg.type==='head1'?' bold':'');
+    nm.textContent = cfg.label; nm.style.marginLeft = mode==='opt' ? '' : '6px';
+    row.appendChild(nm);
+    row.appendChild(count(cfg.count));
+    row.addEventListener('click', () => toggle(row, cfg, mode));
+    row._cfg = cfg; row._caret = caret;
+    if (cfg.collapsed) setCollapsed(row, true, mode);
+    return row;
+  }
+
+  /* --- 分支行 / 远程行 --- */
+  row.classList.add('branch');
+  row.style.setProperty('--p', (cfg.depth === 1 ? pad.rowTop : pad.rowSub) + 'px');
+  if (mode === 'opt'){
+    const slot = document.createElement('span'); slot.className='slot wrap';
+    if (cfg.head && optHead === 'dot'){
+      const d = document.createElement('span'); d.className='hdot'; slot.appendChild(d);
+    } else {
+      slot.appendChild(slotSvg(SVG.branch));
+      if (cfg.head && optHead === 'badge'){
+        const d = document.createElement('span'); d.className='dot-badge'; slot.appendChild(d);
+      }
+    }
+    row.appendChild(slot);
+    /* dot 模式下保持名字列与其余行对齐:slot 已是 14px 固定槽,天然对齐 */
+  } else if (cfg.head){
+    const d = document.createElement('span'); d.className='dot-legacy';
+    d.style.marginRight='6px'; row.appendChild(d);
+  }
+  const nm = document.createElement('span');
+  nm.className = 'name' + (cfg.head ? ' bold' : '');
+  nm.textContent = cfg.name; row.appendChild(nm);
+  if (cfg.ahead){
+    const ab = document.createElement('span'); ab.className='ab';
+    ab.innerHTML = '<b class="a">↑'+cfg.ahead+'</b>'; row.appendChild(ab);
+  }
+  if (cfg.unpushed){
+    const f = document.createElement('span'); f.className='flag'; f.textContent='未推送';
+    row.appendChild(f);
+  }
+  return row;
+}
+
+function count(n){
+  const c = document.createElement('span');
+  c.className = 'count' + (optCount === 'capsule' ? ' capsule' : '');
+  c.textContent = n; return c;
+}
+
+function setCollapsed(headRow, collapsed, mode){
+  const box = headRow._box; if (!box) return;
+  box.style.display = collapsed ? 'none' : '';
+  if (mode === 'opt'){
+    headRow.querySelector('.chev').classList.toggle('open', !collapsed);
+  } else {
+    headRow.querySelector('.glyph.caret').textContent = collapsed ? '▸' : '▾';
+  }
+}
+function toggle(headRow, cfg, mode){
+  const cur = headRow._box.style.display === 'none';
+  setCollapsed(headRow, !cur, mode);
+}
+
+function renderNode(panel, node, mode){
+  const r = buildRow(node, mode);
+  panel.appendChild(r);
+  if (!node.children) return;
+  const box = document.createElement('div'); box.className='gbox';
+  for (const ch of node.children) renderNode(box, ch, mode);
+  r._box = box; panel.appendChild(box);
+  if (node.collapsed) setCollapsed(r, true, mode);
+}
+
+function render(panel, mode){
+  panel.innerHTML = '';
+  const total = DATA.reduce((s, n) => s + (n.count ?? 0), 0);
+  const sec = document.createElement('div'); sec.className='sechead';
+  sec.textContent = `分支 (${total})`;
+  const plus = document.createElement('button'); plus.className='plus'; plus.textContent='＋';
+  plus.title='检出分支'; sec.appendChild(plus);
+  panel.appendChild(sec);
+
+  for (const node of DATA) renderNode(panel, node, mode);
+
+  const th = document.createElement('div'); th.className='sechead'; th.textContent='标签 (2)';
+  panel.appendChild(th);
+  for (const t of TAGS){
+    const row = document.createElement('div'); row.className='row'; row.style.setProperty('--p', PAD[mode].tag + 'px');
+    if (mode === 'opt'){
+      const s = document.createElement('span'); s.className='slot';
+      s.appendChild(slotSvg(SVG.tag)); row.appendChild(s);
+    }
+    const nm = document.createElement('span'); nm.className='name'; nm.textContent=t;
+    row.appendChild(nm); panel.appendChild(row);
+  }
+}
+
+const panelNow = document.getElementById('panelNow');
+const panelOpt = document.getElementById('panelOpt');
+render(panelNow,'now');
+render(panelOpt,'opt');
+
+/* ============ 控件 ============ */
+document.querySelectorAll('input[name=cnt]').forEach(r => r.addEventListener('change', () => {
+  optCount = r.value; render(panelOpt,'opt');
+}));
+document.querySelectorAll('input[name=head]').forEach(r => r.addEventListener('change', () => {
+  optHead = r.value; render(panelOpt,'opt');
+}));
+
+/* 对齐参考线:优化栏内 48px(组头名字列=顶层行图标列)与 66px(前缀组头名字列=子行图标列) */
+document.getElementById('guides').addEventListener('change', e => {
+  panelOpt.querySelectorAll('.guide').forEach(g => g.remove());
+  if (!e.target.checked) return;
+  for (const [x,label] of [[52,'52 · 一级组头名字 = 顶层行图标'],[70,'70 · 前缀组头名字 = 子行图标']]){
+    const g = document.createElement('div'); g.className='guide'; g.style.left = x+'px';
+    const i = document.createElement('i'); i.textContent = label; g.appendChild(i);
+    panelOpt.appendChild(g);
+  }
+});
+</script>
+</body>
+</html>
