@@ -103,6 +103,14 @@
   const subRow = pgHead ? (pgHead.nextElementSibling?.classList.contains('gg-bp-row') ? pgHead.nextElementSibling : null) : null;
   ok('P2-align-folder-vs-row', pgHead && subRow && Math.abs(L(pgHead.querySelector('.gg-bp-name')) - L(subRow.querySelector('.gg-bp-ic'))) <= 2,
     L(pgHead?.querySelector('.gg-bp-name')) + ' vs ' + L(subRow?.querySelector('.gg-bp-ic')));
+  // #98 勾选框=行首固定选择列:cb 在图标前、全部 cb 同列(±1)、组头/新建行有空槽占位
+  const cbsX = [...bp.querySelectorAll('input.gg-bp-cb')].map(c => L(c));
+  const firstRow = bp.querySelector('.gg-bp-row');
+  const cbBeforeIc = firstRow && L(firstRow.querySelector('input.gg-bp-cb')) < L(firstRow.querySelector('.gg-bp-ic'));
+  ok('P2-cb-first', cbBeforeIc && cbsX.length >= 2, `cb=${cbsX.length} first=${cbBeforeIc}`);
+  ok('P2-cb-column', cbsX.length >= 2 && Math.max(...cbsX) - Math.min(...cbsX) <= 1, cbsX.join(','));
+  const slots = bp.querySelectorAll('.gg-bp-cbslot').length;
+  ok('P2-slot-placeholders', slots >= 2, 'slots=' + slots);   // l1 大区头 + l2 组头 + 新建行(至少)
 
   // ---------- P3：多选交互 ----------
   const cbs = [...bp.querySelectorAll('.gg-bp-row input.gg-bp-cb[type=checkbox]')];
