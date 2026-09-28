@@ -1002,8 +1002,9 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-bp-flag { margin-left: 6px; flex: none; color: var(--vscode-charts-green); font-size: 11px; }
 .gg-bp-empty { padding: 14px 12px; color: var(--vscode-descriptionForeground); font-size: 12px; text-align: center; }
 .gg-bp-row.create .gg-bp-ic { color: var(--vscode-charts-green); }
-/* #88 批量检出：远程行前置复选框（行点击仍单个检出，互不干扰）+ 底部批量动作条 */
-.gg-bp-cb { flex: none; margin: 0; }
+/* #88/#98 checkout 批量勾选：行首固定选择列——checkbox/空槽统一 13px（组头与新建行占位，全列对齐）+ 底部批量动作条 */
+.gg-bp-cb, .gg-bp-cbslot { flex: none; width: 13px; height: 13px; margin: 0; }
+.gg-bp-cbslot { display: inline-block; }
 .gg-bp-batch { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .gg-bp-batch .gg-btn.primary { margin-left: auto; }
 /* A1（#22）；v0.23.2 递归多级缩进；#87 换 #84 同款网格（行/组头同基准 52 + 20×深度，组头 folder 图标与子行图标列对齐）——

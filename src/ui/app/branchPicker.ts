@@ -92,11 +92,13 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   /** 内联输入态（Issue #24 三轮）：track=远程分支起本地名；create=新建分支（基于 HEAD） */
   let inlineMode: { kind: 'track'; src: { row: Row; display: string } } | { kind: 'create' } | null = null;
 
-  /** 分区头（#22 A1；v0.23.2 递归；#87 图标化）：level 1=大区（12px，可带类型图标 branch/syncFetch），
+  /** 分区头（#22 A1；v0.23.2 递归；#87 图标化；#98 checkout 加勾选空槽保持选择列对齐）：
+   *  level 1=大区（12px，可带类型图标 branch/syncFetch），
    *  ≥2=前缀组头（52px 起每深一级 +20px，folder 图标占位——与子行图标列严格对齐，侧栏同网格） */
   function sectionHead(text: string, count?: number, level: number = 1, icon?: IconName): HTMLElement {
     const h = el('div', `gg-bp-head${level > 1 ? ' l2' : ''}`);
     if (level > 1) h.style.setProperty('--k', String(level - 2));
+    if (mode === 'checkout') h.appendChild(el('span', 'gg-bp-cbslot'));
     if (icon) {
       const ic = el('span', 'gg-bp-hic');
       ic.appendChild(iconSvg(icon));
@@ -137,19 +139,19 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
     if (r.kind === 'remote') {
       if (r.hasLocal) row.appendChild(el('span', 'gg-side-flag', S.t('branchHasLocal')));
       row.appendChild(el('span', 'gg-bp-sub', r.remote));
-      // #88 批量勾选框（仅 checkout 模式）：放行尾（不占行首图标列，保持 #87 对齐网格）；
-      // 行点击仍是单个立即检出，互不干扰
-      if (mode === 'checkout') {
-        const cb = el('input', 'gg-bp-cb') as HTMLInputElement;
-        cb.type = 'checkbox';
-        cb.checked = batchSel.has(r.b.name);
-        cb.addEventListener('click', e => e.stopPropagation());
-        cb.addEventListener('change', () => {
-          if (cb.checked) batchSel.add(r.b.name); else batchSel.delete(r.b.name);
-          updateBatchBar();
-        });
-        row.appendChild(cb);
-      }
+    }
+    // #88/#98 批量勾选框（仅 checkout 模式）：行首固定选择列（checkbox 即 13px 槽，
+    // 组头/新建行用空槽占位——全列对齐）；行点击仍是单个立即检出，互不干扰
+    if (mode === 'checkout' && r.kind === 'remote') {
+      const cb = el('input', 'gg-bp-cb') as HTMLInputElement;
+      cb.type = 'checkbox';
+      cb.checked = batchSel.has(r.b.name);
+      cb.addEventListener('click', e => e.stopPropagation());
+      cb.addEventListener('change', () => {
+        if (cb.checked) batchSel.add(r.b.name); else batchSel.delete(r.b.name);
+        updateBatchBar();
+      });
+      row.prepend(cb);
     }
     row.addEventListener('click', () => { active = entries.indexOf(e); paintActive(); pick(e); });
     return row;
@@ -315,9 +317,10 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
     close();
   });
 
-  /** 「＋ 新建分支 “<q>”」特殊行：基于当前 HEAD 的 checkout -b */
+  /** 「＋ 新建分支 “<q>”」特殊行：基于当前 HEAD 的 checkout -b（#98 行首留勾选空槽保持选择列） */
   function createRowEl(e: Entry, q: string): HTMLElement {
     const row = el('div', 'gg-bp-row create');
+    row.appendChild(el('span', 'gg-bp-cbslot'));
     const ic = el('span', 'gg-bp-ic');
     ic.appendChild(iconSvg('plus'));
     row.appendChild(ic);
