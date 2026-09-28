@@ -45,6 +45,7 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   }
   const { box, body, close } = openModal(mode === 'checkout' ? S.t('checkoutPickerTitle') : S.t('filterPickerTitle'));
   box.classList.add('gg-bp');
+  if (mode === 'checkout') box.classList.add('co');   // #101：勾选框列脱离树形缩进（缩进移到图标 margin）
 
   const search = el('input', 'gg-input gg-bp-search') as HTMLInputElement;
   search.placeholder = S.t('searchBranchPh');
