@@ -195,7 +195,16 @@ const waitEval = async (E, js, timeout, step = 400) => {
   // ---------------- L3:多选批量检出(#88)+ 阻塞模态(#89 checkout) ----------------
   await E(`document.querySelector('.gg-checkout-btn')?.click()`);
   await sleep(500);
-  await E(`(() => { const cbs = [...document.querySelectorAll('input.gg-bp-cb[type=checkbox]')]; cbs[0]?.click(); cbs[1]?.click(); return cbs.length; })()`);
+  // #101 后列表含无前缀顶层行(hotfix)——按短名定位勾选(组内行显示剥前缀短名),勿按 DOM 序
+  await E(`(() => {
+    const pick = nm => {
+      const row = [...document.querySelectorAll('.gg-bp-row')].find(r => (r.querySelector('.gg-bp-name')?.textContent || '') === nm);
+      const cb = row?.querySelector('input.gg-bp-cb');
+      if (cb && !cb.checked) cb.click();
+      return !!cb;
+    };
+    return pick('alpha') && pick('beta');
+  })()`);
   await sleep(250);
   const barTxt = await E(`document.querySelector('.gg-bp-batch .gg-btn.primary')?.textContent || ''`);
   check('L3 勾选 2 个→批量条「检出 2 个」', /2/.test(barTxt), barTxt);
