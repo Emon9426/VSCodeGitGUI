@@ -22,7 +22,7 @@ const DONE_FLASH_MS = 700;
 
 /** opProgress / opResult 事件的最小切片（避免引入全量协议类型） */
 interface OpProgressLike { opId: number; kind: string; text: string; pct?: number; queued?: boolean; position?: number }
-interface OpResultLike { opId: number; kind: string; ok: boolean; verify?: 'pass' | 'warn' | 'unknown'; cancelled?: boolean }
+interface OpResultLike { opId: number; kind: string; ok: boolean; verify?: 'pass' | 'warn' | 'unknown'; cancelled?: boolean; message?: string }
 
 export interface NetModal {
   onProgress(m: OpProgressLike): void;
@@ -149,7 +149,9 @@ export function createNetModal(app: App): NetModal {
     box!.classList.add('done');
     box!.classList.toggle('warn', warn);
     setIcon(warn ? 'warnTriangle' : 'checkCircle');
-    titleEl!.textContent = S.t(`${m.kind}Done`);
+    // #95：完成态标题优先用宿主已插值的 message（如「Local branch dev deleted」），
+    // 回退 ${kind}Done 键——该键可能带 {name} 占位符，裸取会显示字面量
+    titleEl!.textContent = m.message || S.t(`${m.kind}Done`);
     bar!.classList.remove('indet');
     fill!.style.width = '100%';
     pctEl!.textContent = '';
