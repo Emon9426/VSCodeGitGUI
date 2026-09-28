@@ -243,8 +243,8 @@ const waitEval = async (E, js, timeout, step = 400) => {
   await sleep(600);
   check('L4 侧栏 dev 行消失', await E(`![...document.querySelectorAll('.gg-side-item.branch .gg-side-name')].some(n => n.textContent === 'dev')`));
 
-  // ---------------- 截图留档 ----------------
-  await page.screenshot({ path: 'e2e-84-92-final.png' }).catch(() => {});
+  // ---------------- 截图留档（.playwright-mcp/ 已双忽略，防再混入发布包） ----------------
+  await page.screenshot({ path: '.playwright-mcp/e2e-84-92-final.png' }).catch(() => {});
 
   const fail = results.filter(r => !r.pass).length;
   console.log(`\n#84/#87/#88/#89/#92 实机回归:${results.length - fail}/${results.length} PASS`);
