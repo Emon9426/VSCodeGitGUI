@@ -39,6 +39,9 @@ export interface App {
   checkoutTrack(name: string, remoteBranch: string): void;
   /** 新建分支并检出（检出选择器「新建分支」，Issue #24）：checkout -b，base 缺省当前 HEAD */
   checkoutCreate(name: string, base?: string): void;
+  /** 批量检出（Issue #88，检出选择器多选）：逐个跟踪检出（name=本地名，remote=远程分支全名），
+   *  串行执行、阻塞模态显示 k/N 进度，失败即停不回滚 */
+  checkoutMany(items: { name: string; remote: string }[]): void;
   checkoutDetached(sha: string): void;
   resetTo(sha: string): void;
   requestDiff(sha: string, path: string): void;

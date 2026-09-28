@@ -131,6 +131,10 @@ const zh: Record<string, string> = {
   pushDone: '推送完成',
   resetDone: '重置完成',
   checkoutDone: '检出完成',
+  checkoutBatchTitle: '检出 {k}/{n} · {name}',
+  batchCheckoutGo: '检出 {n} 个',
+  batchCheckoutTip: '批量检出：逐个以同名创建本地跟踪分支并检出，最后停在最后一个',
+  batchClear: '清空',
   resolveConflict: '解决冲突',
   resolveConflictDone: '已按所选版本解决',
   // Issue #7：排队可见性 / 乐观态 / 统一推送收尾
@@ -713,6 +717,10 @@ const en: Record<string, string> = {
   pushDone: 'Push completed',
   resetDone: 'Reset completed',
   checkoutDone: 'Checkout completed',
+  checkoutBatchTitle: 'Checkout {k}/{n} · {name}',
+  batchCheckoutGo: 'Check out {n}',
+  batchCheckoutTip: 'Batch checkout: create a local tracking branch of the same name for each, ending on the last one',
+  batchClear: 'Clear',
   resolveConflict: 'Resolve conflict',
   resolveConflictDone: 'Resolved with the chosen side',
   // Issue #7: queue visibility / optimistic state / unified push finish

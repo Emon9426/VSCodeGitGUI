@@ -31,15 +31,12 @@
   --gg-disabled-opacity: 0.45;
   /* #46 缩进统一（A1 #22 梯度的变量化）：树形行 28px 起/组头 26px 起、每深一级 +16px；
      目录分组梯度：组头 12px / 行 28px（workView、detailPanel、pullSummary 共用） */
-  --gg-indent-step: 16px;
-  --gg-indent-row: 28px;
-  --gg-indent-group: 26px;
   --gg-indent-dir: 12px;
   --gg-indent-file: 28px;
   --gg-indent-max: 140px;   /* 深层级封顶：防窄侧栏下缩进吃光名字 */
-  /* #84 侧栏分支树专属网格（行首 14px 图标槽 + 6px gap）：基准 52 + 步长 20——
+  /* #84/#87 分支树网格（行首 14px 图标槽 + 6px gap，侧栏与选择器弹窗共用）：基准 52 + 步长 20——
      一级组头名字 = 顶层行图标列（52）、前缀组头名字 = 子行图标列（72），同级组头与行同缩进。
-     旧 --gg-indent-row/group/step 仍由分支选择器弹窗（gg-bp-*）沿用，不受影响 */
+     workView/detailPanel/pullSummary 的目录梯度用上方 dir/file 变量，不受影响 */
   --gg-btree-row: 52px;
   --gg-btree-step: 20px;
 }
@@ -107,6 +104,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-ic { width: 13px; height: 13px; display: block; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
 /* ---- SVG 图标接入点（Issue #18 S4：去 emoji，跨平台渲染一致） ---- */
 .gg-tb-btn { display: inline-flex; align-items: center; justify-content: center; }
+.gg-checkout-btn { gap: 5px; }   /* #87：branch SVG + 文字 */
 .gg-btn.has-ic { display: inline-flex; align-items: center; gap: 6px; }
 .gg-btn.has-ic .gg-ic { width: 12px; height: 12px; }
 .gg-viewseg-btn .gg-ic { width: 13px; height: 13px; }
@@ -323,7 +321,7 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
 .gg-side-item.group { color: var(--vscode-descriptionForeground); }
 .gg-side-item.repo .gg-side-sub { color: var(--vscode-charts-green); font-size: 11px; }
 .gg-side-item.branch.head .gg-side-name { font-weight: 600; }
-.gg-side-item.tag { padding-left: var(--gg-indent-row); }   /* A3（#22）/#84：标签区独立基准 28px，图标槽对齐分支区节奏 */
+.gg-side-item.tag { padding-left: 28px; }   /* A3（#22）/#84/#87：标签区独立基准 28px，图标槽对齐分支区节奏 */
 .gg-side-name { overflow: hidden; text-overflow: ellipsis; }
 .gg-side-sub { font-size: 11px; color: var(--vscode-descriptionForeground); margin-left: auto; }
 .gg-side-empty { padding: 6px 12px; color: var(--vscode-descriptionForeground); font-size: 12px; }
@@ -979,21 +977,37 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
   display: flex; align-items: center; gap: 6px;
   padding: 5px 12px 2px; font-size: 11px; color: var(--vscode-descriptionForeground);
 }
-.gg-bp-count { margin-left: auto; opacity: 0.85; }
+.gg-bp-count {
+  margin-left: auto; font-size: 10px; line-height: 14px;
+  padding: 0 5px; border-radius: 3px;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 16%, transparent);
+}
 .gg-bp-row { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; cursor: pointer; font-size: 12px; }
 .gg-bp-row:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.12)); }
 .gg-bp-row.active { background: var(--vscode-list-activeSelectionBackground, rgba(128,128,128,0.2)); }
-.gg-bp-ic { flex: none; width: 14px; text-align: center; font-size: 11px; color: var(--vscode-descriptionForeground); }
+/* #87 图标槽（与侧栏 #84 同体系）：SVG 14px 槽位；HEAD 角标隔断圈对弹窗底色 */
+.gg-bp-ic { flex: none; position: relative; display: inline-flex; align-items: center; width: 14px; height: 14px; color: var(--vscode-descriptionForeground); }
+.gg-bp-ic .gg-ic { width: 14px; height: 14px; }
+.gg-bp-ic .gg-dot-badge { box-shadow: 0 0 0 1.5px var(--vscode-editorWidget-background, #222); }
+/* #87 分区头类型图标槽：大区头 branch/syncFetch、前缀组头 folder（与子行图标列对齐） */
+.gg-bp-hic { flex: none; display: inline-flex; align-items: center; width: 14px; height: 14px; color: var(--vscode-descriptionForeground); }
+.gg-bp-hic .gg-ic { width: 14px; height: 14px; }
 .gg-bp-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gg-bp-name b { color: var(--vscode-charts-blue); font-weight: 600; }
 .gg-bp-sub { margin-left: auto; flex: none; font-size: 11px; color: var(--vscode-descriptionForeground); }
 .gg-bp-flag { margin-left: 6px; flex: none; color: var(--vscode-charts-green); font-size: 11px; }
 .gg-bp-empty { padding: 14px 12px; color: var(--vscode-descriptionForeground); font-size: 12px; text-align: center; }
-.gg-bp-row.create .gg-bp-ic { color: var(--vscode-charts-green); font-weight: 600; }
-/* A1（#22）；v0.23.2 递归多级缩进——行 .d + --d（0=顶层 28px 起，每级 +16px）、组头 .l2 + --k（0=26px 起）；
-   查询态平铺行不设 .d（12px 基准）。#46：公式变量化并 min() 封顶（深前缀组在窄侧栏不吃光名字） */
-.gg-bp-row.d { padding-left: min(calc(var(--gg-indent-row) + var(--d, 0) * var(--gg-indent-step)), var(--gg-indent-max)); }
-.gg-bp-head.l2 { padding-left: min(calc(var(--gg-indent-group) + var(--k, 0) * var(--gg-indent-step)), var(--gg-indent-max)); }
+.gg-bp-row.create .gg-bp-ic { color: var(--vscode-charts-green); }
+/* #88 批量检出：远程行前置复选框（行点击仍单个检出，互不干扰）+ 底部批量动作条 */
+.gg-bp-cb { flex: none; margin: 0; }
+.gg-bp-batch { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.gg-bp-batch .gg-btn.primary { margin-left: auto; }
+/* A1（#22）；v0.23.2 递归多级缩进；#87 换 #84 同款网格（行/组头同基准 52 + 20×深度，组头 folder 图标与子行图标列对齐）——
+   行 .d + --d（0=顶层 52px 起，每级 +20px）、组头 .l2 + --k（0=52px 起）；
+   查询态平铺行不设 .d（12px 基准）。min() 封顶（深前缀组不吃光名字） */
+.gg-bp-row.d { padding-left: min(calc(var(--gg-btree-row) + var(--d, 0) * var(--gg-btree-step)), var(--gg-indent-max)); }
+.gg-bp-head.l2 { padding-left: min(calc(var(--gg-btree-row) + var(--k, 0) * var(--gg-btree-step)), var(--gg-indent-max)); }
 /* C2（#22）：远程行三段信息（名/已有本地标/remote）间距，防粘连 */
 .gg-bp-row .gg-side-flag { margin-left: 8px; }
 .gg-bp-row .gg-bp-sub { margin-left: 8px; }

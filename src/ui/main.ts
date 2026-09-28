@@ -29,6 +29,7 @@ import { fileIconSvg, iconSvg } from './icons';
 // ---------- App 实现 ----------
 
 const app: App = {
+  // （#88 批量检出队列状态放在对象外——startBatchCheckout/opResult 驱动共用；见下方声明）
   selectRepo(repoId) {
     if (S.repoId !== repoId) {
       S.repoId = repoId;
@@ -219,6 +220,12 @@ const app: App = {
   },
   checkoutCreate(name, base) {
     void rpc('op:checkout', { newBranch: name, ref: base }).catch(showErr);
+  },
+  // #88 批量检出：串行驱动在 opResult case 'checkout'（每个的进度/结果仍走事件流）
+  checkoutMany(items) {
+    if (!items.length) return;
+    batchCheckout = { items, idx: 0 };
+    startBatchCheckout();
   },
   checkoutDetached(sha) {
     void confirmDialog(S.t('checkoutDetached'), sha.slice(0, 12), S.t('checkout')).then(ok => {
@@ -701,6 +708,22 @@ const toolbar = createToolbar(app);
 const opstatus = createOpStatus(app);
 // 网络操作阻塞弹窗（#41）：fetch/pull/push 进度以模态窗呈现并挡住主页面
 const netmodal = createNetModal(app);
+
+/** #88 批量检出队列：当前批次与游标（opResult case 'checkout' 逐个推进） */
+let batchCheckout: { items: { name: string; remote: string }[]; idx: number } | null = null;
+
+/** #88 发起批次中第 idx 个跟踪检出：阻塞模态标题带「k/N · 分支名」；RPC 层失败（未进 op 流）即中止 */
+function startBatchCheckout(): void {
+  if (!batchCheckout) return;
+  const { items, idx } = batchCheckout;
+  const it = items[idx];
+  netmodal.setBatch(S.t('checkoutBatchTitle', { k: String(idx + 1), n: String(items.length), name: it.name }));
+  void rpc('op:checkout', { trackFrom: { name: it.name, remoteBranch: it.remote } }).catch(err => {
+    batchCheckout = null;
+    netmodal.setBatch(undefined);
+    showErr(err);
+  });
+}
 const sidebar = createSidebar(app);
 const list = createCommitList(app);
 const detail = createDetailPanel(app);
@@ -1041,7 +1064,17 @@ window.addEventListener('message', e => {
     case 'opResult':
       S.activeOps.delete(m.opId);
       opstatus.update();          // 先按剩余队列收起/切换
-      netmodal.onResult(m);       // 阻塞弹窗收口（成功闪绿/warn 琥珀/失败即关；非网络类操作自忽略）
+      netmodal.onResult(m);       // 阻塞弹窗收口（成功闪绿/warn 琥珀/失败即关）
+      // #88 批量检出串行推进：单个成功且还有剩余 → 发下一个（模态宽限窗无缝续接）；
+      // 失败/取消即停（错误通知流接管，已检出的不回滚）；全部完成清覆盖标题、交 done 闪绿收口
+      if (batchCheckout && m.kind === 'checkout') {
+        if (!m.ok || ++batchCheckout.idx >= batchCheckout.items.length) {
+          batchCheckout = null;
+          netmodal.setBatch(undefined);
+        } else {
+          startBatchCheckout();
+        }
+      }
       if (m.ok) {
         opstatus.finish(m.kind, m.verify === 'warn', m.message);  // 成功：绿色闪现；校验警示=琥珀（Issue #6 后续）；细化消息优先（#45）
         toolbar.flash(m.kind);    // 按钮短暂闪绿，明确"点击已生效"

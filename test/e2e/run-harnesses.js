@@ -18,7 +18,8 @@ const path = require('path');
     // Issue #9：工作副本多选批量操作（暂存/取消暂存/放弃/删除）
     'harness-psum-table.html', 'harness-author-filter.html', 'harness-chip-ellipsis.html', 'harness-work-dircheck.html', 'harness-prbtn-hist-dblclick.html', 'harness-scanfuse.html', 'harness-work-multi.html',
     // Issue #84：侧栏分支树图标体系（SVG 槽位/对齐网格/计数胶囊/折叠交互）
-    'harness-side-icons.html'];
+    // Issue #87/#88/#89：选择器图标体系 + checkout 多选批量（串行驱动全链路）+ 本地操作阻塞模态
+    'harness-side-icons.html', 'harness-bp-icons.html'];
   let fails = 0;
   for (const h of list) {
     try {

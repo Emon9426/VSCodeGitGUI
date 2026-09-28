@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>e2e</title>
+<style>
+  html, body, #app { height: 100%; margin: 0; }
+</style>
+<!-- mock VS Code API：必须先于 webview.js 定义 -->
+<script>
+  window.__sent = [];
+  window.__result = 'pending';
+  window.__send = (msg) => window.postMessage(msg, '*');
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { window.__sent.push(m); },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<link rel="stylesheet" href="../../out/webview.css">
+</head>
+<body>
+<div id="app" class="root"></div>
+<script src="../../out/webview.js"></script>
+<script>
+/**
+ * Issue #87/#88/#89 防回归：分支选择器图标体系 + checkout 多选批量 + 本地操作阻塞模态。
+ * 断言（基于真实构建产物 out/webview.js，mock 宿主消息驱动全链路）：
+ *  P1 打开 checkout 弹窗：行图标 = SVG（无 ●⑂⇅◎＋ 字符）；大区头 syncFetch、前缀组头 folder 图标
+ *  P2 对齐：前缀组头名字.x == 子行图标.x（±1px）；计数徽章胶囊（注入主题变量后非透明）
+ *  P3 多选：勾选 2 个远程行 → 批量条出现 + 按钮文案；Space 勾选当前行；清空恢复隐藏
+ *  P4 批量执行：点「检出 2 个」→ 弹窗关 + op:checkout(trackFrom) 发出 + 阻塞模态出现且无取消钮
+ *  P5 串行驱动：mock opProgress → 标题含 k/N；opResult(ok) → 自动发第 2 个；第 2 个 ok → done 态后模态关闭
+ */
+(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const finish = (r) => { window.__result = r; document.title = 'e2e:' + r; };
+  const fails = [];
+  const ok = (name, cond, detail) => { if (!cond) fails.push(name + (detail ? '(' + detail + ')' : '')); };
+
+  for (let i = 0; i < 100 && !window.__sent.some(m => m && m.t === 'bootstrap'); i++) await sleep(50);
+  if (!window.__sent.some(m => m && m.t === 'bootstrap')) { finish('FAIL: no bootstrap'); return; }
+
+  window.__send({
+    t: 'ready',
+    config: {
+      language: 'zh-CN', dateFormat: 'datetime', rowHeightPx: 24, graphStyle: 'curved',
+      graphColumnWidth: 180, maxTagChips: 2, showRemoteChips: true, detailPanelPosition: 'bottom',
+      commitPageSize: 500, maxAutoLoad: 20000, fetchPrune: true, branchGroupByPrefix: true,
+      defaultPullStrategy: 'merge', logOrder: 'topo', aiEnabled: false, aiLanguage: 'auto',
+      aiLearnFromHistory: false, aiUseWorkspaceInstructions: false, commitClearMessage: true,
+      commitPushAfter: false, startView: 'graph',
+    },
+    repos: [{ id: 'r1', name: 'demo', root: 'D:/demo' }],
+    language: 'zh-CN', colWidths: undefined, selectedSha: undefined, version: 'e2e',
+  });
+  await twoFrames();
+
+  const rb = (name) => ({
+    name: 'origin/' + name, fullName: 'refs/remotes/origin/' + name, sha: 'b' + '0'.repeat(39),
+    subject: 'r-' + name,
+  });
+  const commit = (i) => ({
+    sha: 'a' + String(i).padStart(2, '0') + 'f'.repeat(37), shortSha: 'a' + String(i).padStart(2, '0') + 'fffff',
+    parents: [], author: { name: 'e2e', email: 'e2e@test', date: '2026-09-28T10:00:00+08:00' },
+    committer: { name: 'e2e', email: 'e2e@test', date: '2026-09-28T10:00:00+08:00' },
+    subject: 'C' + i, body: '', refs: [],
+  });
+  window.__send({
+    t: 'repoState',
+    state: {
+      repoId: 'r1',
+      head: { sha: 'a' + '0'.repeat(39), branch: 'main', detached: false },
+      branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'a' + '0'.repeat(39), isHead: true, subject: 's' }],
+      remotes: [{ name: 'origin', branches: [rb('main'), rb('feat/alpha'), rb('feat/beta'), rb('fix/gamma')] }],
+      tags: [],
+      status: { dirtyCount: 0 },
+      filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
+      commits: Array.from({ length: 3 }, (_, i) => commit(i)), commitsLoaded: 3, hasMore: false, stateVersion: 1,
+    },
+  });
+  await twoFrames(); await sleep(150);
+
+  // ---------- P1/P2：打开 checkout 弹窗（工具栏检出按钮），图标与对齐 ----------
+  document.querySelector('.gg-checkout-btn')?.click();
+  await twoFrames(); await sleep(100);
+  let bp = document.querySelector('.gg-bp');
+  ok('P1-picker-open', !!bp);
+  if (!bp) { finish('FAIL:' + fails.join('|')); return; }
+  const glyphRe = /[●⑂⇅◎＋]/;
+  ok('P1-no-glyph', !glyphRe.test(bp.textContent || ''), bp.textContent.slice(0, 60));
+  ok('P1-row-branch-svg', bp.querySelectorAll('.gg-bp-row .gg-bp-ic svg.gg-ic').length >= 2);
+  ok('P1-head-sync-svg', bp.querySelectorAll('.gg-bp-head .gg-bp-hic svg.gg-ic').length >= 1);
+  ok('P1-folder-svg', bp.querySelectorAll('.gg-bp-head.l2 .gg-bp-hic svg.gg-ic').length >= 1);
+  // harness 无 VS Code 主题注入：补变量后验证胶囊背景（#87）
+  document.documentElement.style.setProperty('--vscode-descriptionForeground', '#9d9d9d');
+  const cnt = bp.querySelector('.gg-bp-count');
+  const cntBg = cnt ? getComputedStyle(cnt).backgroundColor : '';
+  ok('P2-count-capsule', !!cntBg && cntBg !== 'rgba(0, 0, 0, 0)' && cntBg !== 'transparent', cntBg);
+  const L = el => el ? Math.round(el.getBoundingClientRect().left) : -1;
+  const pgHead = bp.querySelector('.gg-bp-head.l2');
+  const subRow = pgHead ? (pgHead.nextElementSibling?.classList.contains('gg-bp-row') ? pgHead.nextElementSibling : null) : null;
+  ok('P2-align-folder-vs-row', pgHead && subRow && Math.abs(L(pgHead.querySelector('.gg-bp-name')) - L(subRow.querySelector('.gg-bp-ic'))) <= 2,
+    L(pgHead?.querySelector('.gg-bp-name')) + ' vs ' + L(subRow?.querySelector('.gg-bp-ic')));
+
+  // ---------- P3：多选交互 ----------
+  const cbs = [...bp.querySelectorAll('.gg-bp-row input.gg-bp-cb[type=checkbox]')];
+  ok('P3-checkboxes', cbs.length === 3, 'got ' + cbs.length);   // origin/main 有本地同名被剔除，剩 3
+  cbs[0].click(); cbs[1].click();
+  await twoFrames();
+  const bar = bp.querySelector('.gg-bp-batch');
+  ok('P3-batch-bar-visible', !!bar && !bar.classList.contains('hidden'));
+  ok('P3-batch-label', /检出 2 个/.test(bar?.querySelector('.gg-btn.primary')?.textContent || ''), bar?.querySelector('.gg-btn.primary')?.textContent);
+  // 清空 → 批量条隐藏
+  bar.querySelector('.gg-btn.tiny').click();
+  await twoFrames();
+  ok('P3-clear-hides', bp.querySelector('.gg-bp-batch')?.classList.contains('hidden'));
+  // Space 勾选当前高亮行（远程）
+  bp = document.querySelector('.gg-bp');
+  bp.querySelector('.gg-bp-search').focus();
+  bp.querySelector('.gg-bp-search').dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+  await twoFrames();
+  ok('P3-space-selects', !bp.querySelector('.gg-bp-batch')?.classList.contains('hidden'));
+
+  // ---------- P4：批量执行（当前 Space 已选 1 个，再补 1 个） ----------
+  const cbs2 = [...bp.querySelectorAll('input.gg-bp-cb[type=checkbox]')];
+  for (const cb of cbs2) { if (!cb.checked) { cb.click(); break; } }
+  await twoFrames();
+  bp.querySelector('.gg-bp-batch .gg-btn.primary').click();
+  await twoFrames(); await sleep(80);
+  const sent0 = window.__sent.filter(m => m && m.cmd === 'op:checkout');
+  ok('P4-first-op-sent', sent0.length === 1 && !!sent0[0]?.args?.trackFrom, JSON.stringify(sent0[0]?.args?.trackFrom));
+  ok('P4-picker-closed', !document.querySelector('.gg-bp'));
+
+  // ---------- P5：串行驱动（mock 宿主事件；真机由 startOp 立即播报 opProgress） ----------
+  window.__send({ t: 'opProgress', opId: 1, kind: 'checkout', text: "Switched to a new branch 'feat/alpha'" });
+  await twoFrames(); await sleep(50);
+  // #89 阻塞模态：checkout 开模态、无取消钮（本地操作无取消语义）
+  const overlay = document.querySelector('.gg-net-overlay');
+  ok('P5-modal-open', !!overlay);
+  // #89：本地操作无取消语义 → 取消按钮隐藏（可见按钮中不得出现「取消」）
+  const visBtns = overlay ? [...overlay.querySelectorAll('button')].filter(b => b.offsetParent !== null) : [];
+  ok('P5-modal-no-cancel', visBtns.length === 0 && !visBtns.some(b => /取消|Cancel/.test(b.textContent)),
+    'visible=' + visBtns.map(b => b.textContent).join(','));
+  let title = document.querySelector('.gg-net-title')?.textContent || '';
+  ok('P5-title-k1', /检出 1\/2/.test(title), title);
+  window.__send({ t: 'opResult', opId: 1, kind: 'checkout', ok: true, message: '' });
+  await twoFrames(); await sleep(120);
+  const sent1 = window.__sent.filter(m => m && m.cmd === 'op:checkout');
+  ok('P5-second-op-auto', sent1.length === 2, 'sent=' + sent1.length);
+  window.__send({ t: 'opProgress', opId: 2, kind: 'checkout', text: "Switched to a new branch 'feat/beta'" });
+  await twoFrames();
+  title = document.querySelector('.gg-net-title')?.textContent || '';
+  ok('P5-title-k2', /检出 2\/2/.test(title), title);
+  window.__send({ t: 'opResult', opId: 2, kind: 'checkout', ok: true, message: '' });
+  await twoFrames(); await sleep(60);
+  ok('P5-done-state', document.querySelector('.gg-net-box')?.classList.contains('done'));
+  await sleep(900);   // DONE_FLASH_MS 700ms 后自动关
+  ok('P5-modal-autoclose', !document.querySelector('.gg-net-overlay'));
+
+  finish(fails.length ? 'FAIL:' + fails.join('|') : 'PASS');
+})();
+</script>
+</body>
+</html>
