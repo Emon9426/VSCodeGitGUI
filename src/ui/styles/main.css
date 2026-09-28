@@ -1012,6 +1012,13 @@ button:disabled { opacity: var(--gg-disabled-opacity); cursor: not-allowed; }
    查询态平铺行不设 .d（12px 基准）。min() 封顶（深前缀组不吃光名字） */
 .gg-bp-row.d { padding-left: min(calc(var(--gg-btree-row) + var(--d, 0) * var(--gg-btree-step)), var(--gg-indent-max)); }
 .gg-bp-head.l2 { padding-left: min(calc(var(--gg-btree-row) + var(--k, 0) * var(--gg-btree-step)), var(--gg-indent-max)); }
+/* #101：checkout（.co）勾选框列脱离树形缩进——行/组头缩进基准回落 12px，层级缩进由类型图标 margin 承担：
+   勾选框/空槽恒在弹窗左缘同列（无前缀顶层行与前缀组内行不再错位一个缩进级）；
+   锚点核验：前缀组头(k)名字 = 组内行(d=k+1)图标（#87 保留）；同级组头(k)图标与同级行(d=k)图标同列 */
+.gg-bp.co .gg-bp-row.d { padding-left: 12px; }
+.gg-bp.co .gg-bp-row.d .gg-bp-ic { margin-left: calc(var(--d, 0) * var(--gg-btree-step)); }
+.gg-bp.co .gg-bp-head.l2 { padding-left: 12px; }
+.gg-bp.co .gg-bp-head.l2 .gg-bp-hic { margin-left: calc(var(--k, 0) * var(--gg-btree-step)); }
 /* C2（#22）：远程行三段信息（名/已有本地标/remote）间距，防粘连 */
 .gg-bp-row .gg-side-flag { margin-left: 8px; }
 .gg-bp-row .gg-bp-sub { margin-left: 8px; }

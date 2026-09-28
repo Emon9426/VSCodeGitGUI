@@ -73,7 +73,7 @@
       repoId: 'r1',
       head: { sha: 'a' + '0'.repeat(39), branch: 'main', detached: false },
       branches: [{ name: 'main', fullName: 'refs/heads/main', sha: 'a' + '0'.repeat(39), isHead: true, subject: 's' }],
-      remotes: [{ name: 'origin', branches: [rb('main'), rb('feat/alpha'), rb('feat/beta'), rb('fix/gamma')] }],
+      remotes: [{ name: 'origin', branches: [rb('main'), rb('dev'), rb('feat/alpha'), rb('feat/beta'), rb('fix/gamma')] }],
       tags: [],
       status: { dirtyCount: 0 },
       filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
@@ -108,13 +108,15 @@
   const firstRow = bp.querySelector('.gg-bp-row');
   const cbBeforeIc = firstRow && L(firstRow.querySelector('input.gg-bp-cb')) < L(firstRow.querySelector('.gg-bp-ic'));
   ok('P2-cb-first', cbBeforeIc && cbsX.length >= 2, `cb=${cbsX.length} first=${cbBeforeIc}`);
+  // #101 核心断言：无前缀顶层行（depth=0）与组内行（depth=1）勾选框严格同列（±1px）
   ok('P2-cb-column', cbsX.length >= 2 && Math.max(...cbsX) - Math.min(...cbsX) <= 1, cbsX.join(','));
   const slots = bp.querySelectorAll('.gg-bp-cbslot').length;
   ok('P2-slot-placeholders', slots >= 2, 'slots=' + slots);   // l1 大区头 + l2 组头 + 新建行(至少)
 
   // ---------- P3：多选交互 ----------
   const cbs = [...bp.querySelectorAll('.gg-bp-row input.gg-bp-cb[type=checkbox]')];
-  ok('P3-checkboxes', cbs.length === 3, 'got ' + cbs.length);   // origin/main 有本地同名被剔除，剩 3
+  // #101：origin/main 有本地同名被剔除；dev 无前缀（顶层行 depth=0）与 alpha/beta/gamma（组内 depth=1）并存
+  ok('P3-checkboxes', cbs.length === 4, 'got ' + cbs.length);
   cbs[0].click(); cbs[1].click();
   await twoFrames();
   const bar = bp.querySelector('.gg-bp-batch');

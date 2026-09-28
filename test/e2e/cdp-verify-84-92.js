@@ -134,6 +134,7 @@ const waitEval = async (E, js, timeout, step = 400) => {
       folder: bp.querySelectorAll('.gg-bp-head.l2 .gg-bp-hic svg.gg-ic').length,
       align: pgHead && subRow ? Math.abs(L(pgHead.querySelector('.gg-bp-name')) - L(subRow.querySelector('.gg-bp-ic'))) : -1,
       cbs: bp.querySelectorAll('input.gg-bp-cb[type=checkbox]').length,
+      cbX: [...bp.querySelectorAll('input.gg-bp-cb')].map(c => L(c)),
     };
   })()`).catch(() => ({}));
   check('L2 checkout 弹窗打开', l2.open);
@@ -141,7 +142,9 @@ const waitEval = async (E, js, timeout, step = 400) => {
   check('L2 行图标=SVG', (l2.rowSvg || 0) >= 4, `svg=${l2.rowSvg}`);
   check('L2 大区头 syncFetch+组头 folder', (l2.sync || 0) >= 1 && (l2.folder || 0) >= 1, `sync=${l2.sync} folder=${l2.folder}`);
   check('L2 对齐:组头名字=子行图标(±1)', l2.align >= 0 && l2.align <= 1, `dx=${l2.align}`);
-  check('L2 多选勾选框(4 个可检出远程)', l2.cbs === 4, `cb=${l2.cbs}`);
+  check('L2 多选勾选框(5 个可检出远程,含无前缀 hotfix)', l2.cbs === 5, `cb=${l2.cbs}`);
+  // #101:无前缀顶层行(depth=0)与组内行(depth=1)勾选框严格同列
+  check('L2 勾选框跨层级同列(±1)', Array.isArray(l2.cbX) && l2.cbX.length >= 2 && Math.max(...l2.cbX) - Math.min(...l2.cbX) <= 1, (l2.cbX || []).join(','));
   await E(`(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); const m = document.querySelector('.gg-modal-overlay'); if (m) m.remove(); return !document.querySelector('.gg-bp'); })()`);
   await sleep(300);
   // filter 模式(本地组+范围项+HEAD 角标)
