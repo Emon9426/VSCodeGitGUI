@@ -97,7 +97,8 @@
 
   // ---- ② 文件页双击回退 ----
   const viewBtns = [...document.querySelectorAll('.gg-viewseg-btn')];
-  const filesBtn = viewBtns[3];
+  // #92 后视图组三按钮（纯提交并入范围分段器）——按文字定位，勿写死序号
+  const filesBtn = viewBtns.find(b => /文件|Files/i.test(b.textContent || ''));
   assert('files-view-btn', !!filesBtn);
   if (filesBtn) {
     filesBtn.click();
