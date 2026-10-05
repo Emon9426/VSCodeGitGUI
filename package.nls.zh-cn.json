@@ -18,6 +18,7 @@
   "cfg.fetchPrune": "fetch 时附加 --prune。",
   "cfg.pullFetchSummary": "每次 Pull/Fetch 后弹窗显示拉到的提交摘要（排除合并提交，附变更文件清单）。",
   "cfg.defaultPullStrategy": "默认拉取策略。",
+  "cfg.push.autoPullOnReject": "推送需要先拉取时（本地落后或推送被拒）不再询问，自动执行「拉取并推送」。仅在已显式点击推送后触发；拉取产生冲突仍会中止挂起，待解决并完成合并后统一确认推送。",
   "cfg.dateFormat": "提交列表时间列的格式。",
   "cfg.dateFormat.datetime": "YYYY-MM-DD HH:mm:ss（24 小时制）",
   "cfg.dateFormat.relative": "相对时间（如 3 小时前）",

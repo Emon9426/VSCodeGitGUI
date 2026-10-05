@@ -86,6 +86,7 @@ function readConfig(): ConfigDto {
     commitPushAfter: cfg.get('commit.pushAfter', false),
     startView: cfg.get('startView', 'graph'),
     pullFetchSummary: cfg.get('pullFetchSummary', true),
+    autoPullOnReject: cfg.get('push.autoPullOnReject', false),   // #106
     notifyWidth: Math.max(320, Math.min(560, Math.round(cfg.get('notifyWidth', 420)) || 420)),
   };
 }
@@ -605,6 +606,12 @@ export class GraphPanel {
       }
       case 'ui:openSettings':
         await vscode.commands.executeCommand('workbench.action.openSettings', 'gitboard');
+        return null;
+      case 'ui:setAutoPullOnReject':
+        // #106：被拒通知「以后自动」——写入用户级配置，onDidChangeConfiguration → configChanged
+        // 全量下发，webview 侧 S.config 即时生效（本次链路由调用方自行发起）
+        await vscode.workspace.getConfiguration('gitboard')
+          .update('push.autoPullOnReject', !!args.value, vscode.ConfigurationTarget.Global);
         return null;
 
       // ---------- 工程切换（v0.11） ----------

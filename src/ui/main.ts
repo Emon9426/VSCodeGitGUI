@@ -124,7 +124,7 @@ const app: App = {
     // 本地名≠上游名时不再拉错同名远端旧分支
     void rpc('op:pull', { strategy: S.config.defaultPullStrategy }).catch(showErr);
   },
-  runPush() {
+  runPush(opts?: { skipBehindGuard?: boolean }) {
     if (netBusy()) { toast('warn', S.t('netOpBusy')); return; }
     const branch = S.state?.head.branch;
     const target = pushTarget();
@@ -148,8 +148,19 @@ const app: App = {
     }
     const remote = target.remote;
     const head = S.state?.branches.find(b => b.isHead);   // target 已确保上游存在，head 必在
-    // R3 事前拦截：本地落后远端 → 引导先拉取（拉取并推送 = pull 后无冲突自动续推）
-    if ((head?.behind ?? 0) > 0) {
+    // R3 事前拦截：本地落后远端 → 引导先拉取（拉取并推送 = pull 后无冲突自动续推）。
+    // #108 跟进：续推链自动续推时跳过——pull 刚完成而 repoState 未刷新的陈旧 behind 会再次
+    // 触发拦截→重复拉取循环（链靠刷新时序收敛、竞态断链）；推送意图已在链首确认，
+    // 服务端 non-fast-forward 拒绝兜底仍在（被拒分诊可再走链）
+    if (!opts?.skipBehindGuard && (head?.behind ?? 0) > 0) {
+      // #106：已选「以后自动」（gitboard.push.autoPullOnReject）→ 不再询问直接走链。事前拦截
+      // （behind>0 预检）与事后被拒（non-fast-forward）是同一意图的两个检测时机，同语义生效；
+      // 自动化仍以本次显式点击推送为前提，冲突中止挂起/失败作废与手动点按钮完全一致
+      if (S.config.autoPullOnReject) {
+        pendingPushAfterPull = true;
+        app.runPull();
+        return;
+      }
       // #49：拉取并推送非不可逆操作，确认框用常规级（原 danger 降级）
       void confirmDialog(
         S.t('pushBehindTitle'),
@@ -843,6 +854,10 @@ let pendingLoad: { repoId: string | undefined; offset: number; anchor: string | 
 let emptyAppendStreak = 0;
 /** 「拉取并推送」链条：pull 完成且无冲突时自动续推（R3/决议 #3 的事前引导侧） */
 let pendingPushAfterPull = false;
+/** #108：pull 失败（含冲突）后的待裁决窗口——冲突与否在 outputTail 不可靠（CONFLICT 行走
+ *  stdout，失败 outputTail 只含 stderr），改由紧随其后的首个 workState 合并态裁决：
+ *  merging=true → 挂起链（转 pendingPushAfterResolve + mergePushPaused）；否则作废（绝不自动推） */
+let pendingPullVerdict = false;
 /** 冲突路径的统一推送确认（Issue #7 方案 E）：冲突出现时置位，完成合并后弹确认条，中止作废 */
 let pendingPushAfterResolve = false;
 
@@ -969,6 +984,7 @@ window.addEventListener('message', e => {
         S.selectedFile = undefined;
         // 换仓库：拉取/推送链条标志一并作废（审查 P1-2：否则 A 库的挂起推送意图会在 B 库误弹确认条/误推）
         pendingPushAfterPull = false;
+        pendingPullVerdict = false;
         pendingPushAfterResolve = false;
         // 工作副本：换仓库 → 选中/diff 失效，草稿待重载
         S.work.state = undefined;
@@ -1081,8 +1097,14 @@ window.addEventListener('message', e => {
       }
       toolbar.updateProgress();
       if (!m.ok) {
-        // #45 幽灵推送链防护：「拉取并推送」的 pull 落败（失败/取消）即作废续推意图
-        if (m.kind === 'pull') pendingPushAfterPull = false;
+        // #45 幽灵推送链防护 + #108 冲突挂起链修复：「拉取并推送」的 pull 落败不清标志，
+        // 改挂 pendingPullVerdict 等首个 workState 合并态裁决（冲突→挂起链 / 其余→作废）——
+        // 文本判定不可靠：CONFLICT 行走 stdout 而失败 outputTail 只含 stderr。取消是用户显式
+        // 放弃（panel 取消分支不发 workState），立即作废
+        if (m.kind === 'pull') {
+          if (m.cancelled) pendingPushAfterPull = false;
+          else pendingPullVerdict = true;
+        }
         // 删除本地分支（#39）：失败分诊由 branch.delete 返回值驱动（未合并→二次确认强删），
         // 不走通用错误通知与 AI 自动诊断（删除被拒不是需要 AI 诊断的故障）
         if (m.kind === 'branchDelete') break;
@@ -1090,18 +1112,38 @@ window.addEventListener('message', e => {
         if (m.cancelled) {
           notify('info', { title: m.message || S.t('opCancelled') });
         } else if (m.kind === 'push' && m.outputTail && pushNeedsPull(m.outputTail)) {
-          // #104：被拒提示改常驻错误通知 + 直达按钮——原一次性阻塞模态错过（Esc/关闭/切走）
-          // 后按钮即失，用户转而手动 Pull，「先拉后推」链条断开需二次手动；error 级通知
-          // 常驻不超时且堆叠不被挤，「拉取并推送」按钮随时可点（点后走 #7/#45 既有续推链）
-          notify('error', {
-            title: S.t('pushRejectedTitle'),
-            body: S.t('pushRejectedText'),
-            detail: m.outputTail,
-            actions: [{
-              label: S.t('pushPullAndPush'), primary: true,
-              run: () => { pendingPushAfterPull = true; app.runPull(); },
-            }],
-          });
+          // #106：已选「以后自动」→ 不弹询问，直接挂续推链自动 pull→push（与手动点按钮的链路语义
+          // 完全一致：干净 pull 自动续推 / 冲突中止挂起待解决 / 失败作废）
+          if (S.config.autoPullOnReject) {
+            pendingPushAfterPull = true;
+            app.runPull();
+          } else {
+            // #104：被拒提示改常驻错误通知 + 直达按钮——原一次性阻塞模态错过（Esc/关闭/切走）
+            // 后按钮即失，用户转而手动 Pull，「先拉后推」链条断开需二次手动；error 级通知
+            // 常驻不超时且堆叠不被挤，「拉取并推送」按钮随时可点（点后走 #7/#45 既有续推链）
+            notify('error', {
+              title: S.t('pushRejectedTitle'),
+              body: S.t('pushRejectedText'),
+              detail: m.outputTail,
+              actions: [
+                {
+                  label: S.t('pushPullAndPush'), primary: true,
+                  run: () => { pendingPushAfterPull = true; app.runPull(); },
+                },
+                {
+                  // #106：记住选择——写入 gitboard.push.autoPullOnReject（用户级，configChanged 即时
+                  // 生效），本次即开始走链；toast 明示已记住与可关闭入口
+                  label: S.t('pushAutoAlways'),
+                  run: () => {
+                    void rpc('ui:setAutoPullOnReject', { value: true }).catch(showErr);
+                    toast('success', S.t('pushAutoRemembered'));
+                    pendingPushAfterPull = true;
+                    app.runPull();
+                  },
+                },
+              ],
+            });
+          }
         } else {
           // Issue #18 S2：操作失败改为常驻错误通知（标题+人话原因+折叠的 git 输出+重试），
           // 不再弹阻塞式确认框平铺 stderr；可重试操作必带「重试」。
@@ -1215,6 +1257,12 @@ window.addEventListener('message', e => {
       // 「拉取并推送」链条（Issue #7 方案 E）：干净 pull 自动续推（点击时已表达推送意图，决议 #3 不变）；
       // 冲突路径挂起——全部解决 + 完成合并（mergeActive 清零，合并提交已创建）后弹统一推送确认条，
       // 中止合并则作废。推送永远显式确认，对齐 IDEA。
+      // #108：pull 失败后的首个 workState 裁决——冲突（merging）保住意图转挂起链，其余落败作废
+      // （比 #45 更严：pull 失败后的链条永不直接自动推，自动续推只属于 pull 成功路径）
+      if (pendingPullVerdict) {
+        pendingPullVerdict = false;
+        if (!m.state.merging) pendingPushAfterPull = false;
+      }
       if (pendingPushAfterPull) {
         if (m.state.merging) {
           pendingPushAfterPull = false;
@@ -1222,7 +1270,7 @@ window.addEventListener('message', e => {
           toast('warn', S.t('mergePushPaused'));
         } else if (!m.state.mergeActive) {
           pendingPushAfterPull = false;
-          app.runPush();
+          app.runPush({ skipBehindGuard: true });   // #108 跟进：链内续推跳过事前拦截（防陈旧 behind 重复拉取循环）
         }
       } else if (pendingPushAfterResolve && !m.state.merging && !m.state.mergeActive) {
         pendingPushAfterResolve = false;
