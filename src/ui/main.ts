@@ -1090,14 +1090,17 @@ window.addEventListener('message', e => {
         if (m.cancelled) {
           notify('info', { title: m.message || S.t('opCancelled') });
         } else if (m.kind === 'push' && m.outputTail && pushNeedsPull(m.outputTail)) {
-          void confirmDialog(
-            S.t('pushRejectedTitle'),
-            S.t('pushRejectedText'),
-            S.t('pushPullAndPush'),
-          ).then(ok => {
-            if (!ok) return;
-            pendingPushAfterPull = true;
-            app.runPull();
+          // #104：被拒提示改常驻错误通知 + 直达按钮——原一次性阻塞模态错过（Esc/关闭/切走）
+          // 后按钮即失，用户转而手动 Pull，「先拉后推」链条断开需二次手动；error 级通知
+          // 常驻不超时且堆叠不被挤，「拉取并推送」按钮随时可点（点后走 #7/#45 既有续推链）
+          notify('error', {
+            title: S.t('pushRejectedTitle'),
+            body: S.t('pushRejectedText'),
+            detail: m.outputTail,
+            actions: [{
+              label: S.t('pushPullAndPush'), primary: true,
+              run: () => { pendingPushAfterPull = true; app.runPull(); },
+            }],
           });
         } else {
           // Issue #18 S2：操作失败改为常驻错误通知（标题+人话原因+折叠的 git 输出+重试），
