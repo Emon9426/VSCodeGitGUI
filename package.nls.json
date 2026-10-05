@@ -18,6 +18,7 @@
   "cfg.fetchPrune": "Add `--prune` when fetching.",
   "cfg.pullFetchSummary": "Show a summary popup of incoming commits after Pull/Fetch (merges excluded, changed files listed).",
   "cfg.defaultPullStrategy": "Default pull strategy.",
+  "cfg.push.autoPullOnReject": "When a push needs a pull first (local behind or push rejected), automatically pull and push without asking. Only triggered after an explicit push; conflicts still pause the chain until resolved and confirmed.",
   "cfg.dateFormat": "Time column format in the commit list.",
   "cfg.dateFormat.datetime": "YYYY-MM-DD HH:mm:ss (24-hour)",
   "cfg.dateFormat.relative": "Relative time (e.g. 3 hours ago)",

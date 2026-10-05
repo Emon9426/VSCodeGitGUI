@@ -18,7 +18,9 @@ export interface App {
   resumeScan(): void;
   runFetch(remote?: string): void;
   runPull(): void;
-  runPush(): void;
+  /** #108 跟进：续推链的自动推送跳过事前拦截（behind 预检）——意图已确认、pull 刚完成，
+   *  repoState 未刷新的陈旧 behind 不应再次触发拦截/重复拉取 */
+  runPush(opts?: { skipBehindGuard?: boolean }): void;
   runRefresh(): void;
   cancelOp(opId: number): void;
   openSettings(): void;
@@ -122,6 +124,7 @@ export const S = {
     netStallTimeout: 180,
     opVerify: 'quick',
     defaultPullStrategy: 'merge', logOrder: 'topo', pullFetchSummary: true, notifyWidth: 420,
+    autoPullOnReject: false,   // #106：ready/configChanged 到达前的兜底默认（关）
   } as ConfigDto,
   lang: 'zh-CN' as Lang,
   t: createT('zh-CN') as Translate,

@@ -216,6 +216,11 @@
           ],
           "description": "%cfg.defaultPullStrategy%"
         },
+        "gitboard.push.autoPullOnReject": {
+          "type": "boolean",
+          "default": false,
+          "description": "%cfg.push.autoPullOnReject%"
+        },
         "gitboard.dateFormat": {
           "type": "string",
           "default": "datetime",

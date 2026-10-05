@@ -39,6 +39,8 @@ export interface ConfigDto {
   startView: 'graph' | 'work' | 'last';
   /** Pull/Fetch 后弹窗显示拉到的纯净提交摘要（v0.13） */
   pullFetchSummary: boolean;
+  /** #106：推送需要先拉取时（本地落后/被拒）不再询问，自动走「拉取并推送」链（仅显式推送后触发） */
+  autoPullOnReject: boolean;
   /** 通知区默认宽度 px（#22 B1，320–560）：拖拽记忆（globalState）优先于此配置 */
   notifyWidth: number;
   // 创建 Pull Request（Issue #61）
@@ -202,6 +204,7 @@ export type WVCommand =
   | 'ui:saveColWidths'      // { widths: ColWidths }
   | 'ui:saveDetailPct'      // { pct }（详情面板高度百分比，跨屏按相对高度恢复）
   | 'ui:openSettings'
+  | 'ui:setAutoPullOnReject'  // { value }（#106：写入 gitboard.push.autoPullOnReject 用户级配置）
   // 工作副本（Commit 功能）
   | 'work.state'            // {} -> WorkState
   | 'work.stage'            // { paths: string[] }
