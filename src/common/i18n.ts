@@ -127,9 +127,11 @@ const zh: Record<string, string> = {
   fetchAll: '获取全部远程',
 
   // Issue #112 跨分支拉取：From 选择弹窗（参考 Sourcetree 的 Pull 对话框）
+  // Issue #116：列表收紧为仅远端分支，当前上游置顶默认选中
   pullToCurrent: '拉取到当前分支…',
   pullPickerTitle: '拉取',
   pullPickerHint: '选择来源分支，拉取到当前分支 {branch}（策略：{strategy}）',
+  pickerUpstream: '当前上游',
   pullStrategyMerge: '合并',
   pullStrategyRebase: '变基',
   pullStrategyFfOnly: '仅快进',
@@ -725,9 +727,11 @@ const en: Record<string, string> = {
   fetchAll: 'Fetch all remotes',
 
   // Issue #112 cross-branch pull: From picker (modeled on Sourcetree's Pull dialog)
+  // Issue #116: remote-branch-only list, current upstream pinned first and preselected
   pullToCurrent: 'Pull into current branch…',
   pullPickerTitle: 'Pull',
   pullPickerHint: 'Pick a source branch to pull into the current branch {branch} (strategy: {strategy})',
+  pickerUpstream: 'Current upstream',
   pullStrategyMerge: 'merge',
   pullStrategyRebase: 'rebase',
   pullStrategyFfOnly: 'fast-forward only',

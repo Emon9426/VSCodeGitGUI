@@ -125,20 +125,18 @@ const app: App = {
     lastPullRefspec = null;
     void rpc('op:pull', { strategy: S.config.defaultPullStrategy }).catch(showErr);
   },
-  /** Issue #112 跨分支拉取：From 选择弹窗（本地+远端、可搜索；参考 Sourcetree 的 Pull 对话框）。
-   *  preselect 显式传入时用之；缺省预选当前上游（Enter=旧一键拉上游的直达习惯），
-   *  无上游退预选当前分支本地行（Enter 为无害 up-to-date） */
-  openPullPicker(preselect?: string) {
+  /** Issue #112/#116 跨分支拉取：From 选择弹窗（只列远端分支、可搜索）。
+   *  preselect：undefined=缺省（当前分支上游，置顶第一行默认选中）；null=明确无预选
+   *  （无高亮、Enter 不执行）；string=指定远端行全名（origin/dev） */
+  openPullPicker(preselect?: string | null) {
     if (netBusy()) { toast('warn', S.t('netOpBusy')); return; }
     if (S.state?.head.detached) { toast('warn', S.t('pullDetached')); return; }
     // 拉取=merge/rebase：未完成合并时 git 会拒绝，与检出选择器同款预拦截
     if (S.work.state?.mergeActive) { toast('warn', S.t('blockedByMerge')); return; }
-    let pre = preselect;
-    if (!pre) {
-      const head = S.state?.branches.find(b => b.isHead);
-      pre = head?.upstream ?? head?.name;
-    }
-    openBranchPicker(app, 'pullFrom', pre);
+    const pre = preselect !== undefined
+      ? preselect
+      : (S.state?.branches.find(b => b.isHead)?.upstream ?? null);
+    openBranchPicker(app, 'pullFrom', pre ?? undefined);
   },
   /** Issue #112 跨分支拉取执行：remote="."=合并本地源分支；否则取远端源分支最新。
    *  refspec 记入 lastPullRefspec——#29 autostash 重拉须同源续拉，不能退回当前上游 */

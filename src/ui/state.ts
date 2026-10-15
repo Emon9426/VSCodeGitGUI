@@ -18,9 +18,9 @@ export interface App {
   resumeScan(): void;
   runFetch(remote?: string): void;
   runPull(): void;
-  /** Issue #112 跨分支拉取：打开 From 选择弹窗（本地+远端分支、可搜索）；
-   *  preselect=预选 ref（远端全名 origin/dev 或本地名 dev），缺省预选当前上游 */
-  openPullPicker(preselect?: string): void;
+  /** Issue #112/#116 跨分支拉取：打开 From 选择弹窗（只列远端分支、可搜索、当前上游置顶
+   *  默认选中）；preselect=undefined 缺省当前上游 / null 明确无预选 / 远端行全名指定 */
+  openPullPicker(preselect?: string | null): void;
   /** Issue #112 跨分支拉取执行：remote="."=合并本地源分支；否则 git pull <remote> <短名> 取远端最新 */
   pullFrom(remote: string, branch: string): void;
   /** #108 跟进：续推链的自动推送跳过事前拦截（behind 预检）——意图已确认、pull 刚完成，
