@@ -126,6 +126,14 @@ const zh: Record<string, string> = {
   fetchRemote: '获取此远程',
   fetchAll: '获取全部远程',
 
+  // Issue #112 跨分支拉取：From 选择弹窗（参考 Sourcetree 的 Pull 对话框）
+  pullToCurrent: '拉取到当前分支…',
+  pullPickerTitle: '拉取',
+  pullPickerHint: '选择来源分支，拉取到当前分支 {branch}（策略：{strategy}）',
+  pullStrategyMerge: '合并',
+  pullStrategyRebase: '变基',
+  pullStrategyFfOnly: '仅快进',
+
   fetchDone: '获取完成',
   pullDone: '拉取完成',
   pushDone: '推送完成',
@@ -165,6 +173,7 @@ const zh: Record<string, string> = {
   pushPickRemoteText: '当前分支没有上游分支，且仓库配置了多个远端。请选择推送目标（将建立该远端上的同名分支）：',
   pullNoUpstream: '当前分支没有上游分支，无法拉取。',
   pullDetached: '当前处于分离 HEAD 状态（不在任何分支上），无法拉取——请先检出分支。',
+  invalidPullFrom: '跨分支拉取参数无效：来源远端或分支名不合法。',
 
   noCommits: '该仓库尚无提交',
   noCommitsHint: '在终端提交第一个提交后，此处将显示提交图。',
@@ -451,6 +460,7 @@ const zh: Record<string, string> = {
   verifyWarnTagMissing: '校验警告：标签 {name} 未创建成功',
   verifyWarnTagExists: '校验警告：标签 {name} 未能删除',
   verifyWarnRemoteDrift: '校验警告：远端 {ref} 实际指向与本地记录不一致——fetch 结果可能陈旧或存在并行推送，建议重试',
+  verifyWarnPullFrom: '校验警告：{ref} 的提交未并入当前分支——请重试拉取或检查来源分支',
   refreshDone: '已刷新',
   showMoreLines: '展开剩余 {n} 行',
 
@@ -714,6 +724,14 @@ const en: Record<string, string> = {
   fetchRemote: 'Fetch this remote',
   fetchAll: 'Fetch all remotes',
 
+  // Issue #112 cross-branch pull: From picker (modeled on Sourcetree's Pull dialog)
+  pullToCurrent: 'Pull into current branch…',
+  pullPickerTitle: 'Pull',
+  pullPickerHint: 'Pick a source branch to pull into the current branch {branch} (strategy: {strategy})',
+  pullStrategyMerge: 'merge',
+  pullStrategyRebase: 'rebase',
+  pullStrategyFfOnly: 'fast-forward only',
+
   fetchDone: 'Fetch completed',
   pullDone: 'Pull completed',
   pushDone: 'Push completed',
@@ -753,6 +771,7 @@ const en: Record<string, string> = {
   pushPickRemoteText: 'The current branch has no upstream and this repository has multiple remotes. Pick the push target (a same-name branch will be created there):',
   pullNoUpstream: 'The current branch has no upstream; cannot pull.',
   pullDetached: 'You are in detached HEAD state (not on any branch) — check out a branch before pulling.',
+  invalidPullFrom: 'Invalid pull source: the source remote or branch name is not valid.',
 
   noCommits: 'This repository has no commits yet',
   noCommitsHint: 'The graph will appear here after the first commit.',
@@ -1039,6 +1058,7 @@ const en: Record<string, string> = {
   verifyWarnTagMissing: 'Verify warning: tag {name} was not created',
   verifyWarnTagExists: 'Verify warning: tag {name} was not deleted',
   verifyWarnRemoteDrift: 'Verify warning: remote {ref} points elsewhere than the local record — the fetch result may be stale or there was a concurrent push; retry',
+  verifyWarnPullFrom: 'Verify warning: commits from {ref} were not merged into the current branch — retry the pull or check the source branch',
   refreshDone: 'Refreshed',
   showMoreLines: 'Show {n} more lines',
 

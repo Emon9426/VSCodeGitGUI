@@ -162,6 +162,8 @@ export type ExtEvent =
   | { t: 'filesReveal'; path: string }
   // 检出分支（Issue #24）：命令面板 gitboard.checkoutBranch → webview 弹检出选择器
   | { t: 'showCheckout' }
+  // 跨分支拉取（Issue #112）：命令面板 gitboard.pull → webview 弹 From 选择器（与工具栏 Pull 同入口）
+  | { t: 'showPullPicker' }
   // Pull 历史回看（Issue #51）：命令面板 gitboard.pullHistory → webview 弹摘要窗（历史下拉可选）
   | { t: 'pullSummaryShow'; history: PullSummaryHistoryItem[] };
 

@@ -3,7 +3,7 @@
  * 探针层（真实 git 调用）由 test/integration/opVerify.git.test.ts 覆盖。
  */
 import { describe, expect, it } from 'vitest';
-import { judgeByTrack, judgeHeadChanged, judgeHeadEquals, judgeTag, parseTrack } from '../../src/ops/verify';
+import { judgeByTrack, judgeHeadChanged, judgeHeadEquals, judgeMergedRef, judgeTag, parseTrack } from '../../src/ops/verify';
 
 describe('parseTrack（for-each-ref track 输出解析）', () => {
   it('ahead/behind 混合', () => {
@@ -75,5 +75,18 @@ describe('judgeTag（标签存在性判定）', () => {
     const r = judgeTag(false, true);
     expect(r.verdict).toBe('warn');
     expect(r.reason).toBe('tagExists');
+  });
+});
+
+describe('judgeMergedRef（跨分支拉取判定，Issue #112）', () => {
+  it('源 ref tip 是 HEAD 祖先 = pass（merge/rebase/ff/up-to-date 四形态皆然）', () => {
+    expect(judgeMergedRef('origin/dev', true).verdict).toBe('pass');
+    expect(judgeMergedRef('dev', true).reason).toBeUndefined();
+  });
+  it('源 ref tip 未并入 = warn(notMerged)，ref 带源短名', () => {
+    const r = judgeMergedRef('origin/dev', false);
+    expect(r.verdict).toBe('warn');
+    expect(r.reason).toBe('notMerged');
+    expect(r.ref).toBe('origin/dev');
   });
 });

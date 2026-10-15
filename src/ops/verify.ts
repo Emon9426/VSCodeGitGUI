@@ -27,9 +27,9 @@ export interface VerifyContext {
 /** 结构化结果：panel 按 reason 选 i18n 文案与参数拼装 */
 export interface VerifyResult {
   verdict: VerifyVerdict;
-  reason?: 'behind' | 'ahead' | 'headUnchanged' | 'headMismatch' | 'tagMissing' | 'tagExists' | 'remoteDrift';
+  reason?: 'behind' | 'ahead' | 'headUnchanged' | 'headMismatch' | 'tagMissing' | 'tagExists' | 'remoteDrift' | 'notMerged';
   n?: number;          // behind/ahead/未达提交数
-  ref?: string;        // 上游短名（origin/main）
+  ref?: string;        // 上游短名（origin/main）/ 跨分支拉取的源 ref（Issue #112）
   name?: string;       // 标签名
 }
 
@@ -70,6 +70,12 @@ export function judgeTag(expectExists: boolean, exists: boolean): VerifyResult {
   return { verdict: 'warn', reason: expectExists ? 'tagMissing' : 'tagExists' };
 }
 
+/** 跨分支拉取判定（Issue #112，纯函数）：merge/rebase/ff-only 与 Already up to date
+ *  四种成功形态下，源 ref 的 tip 都必须是 HEAD 的祖先（rebase 重写后源 tip 仍是基底） */
+export function judgeMergedRef(ref: string, srcIsAncestor: boolean): VerifyResult {
+  return srcIsAncestor ? { verdict: 'pass' } : { verdict: 'warn', reason: 'notMerged', ref };
+}
+
 export class OpVerifier {
   constructor(private readonly executor: GitExecutor) {}
 
@@ -78,6 +84,10 @@ export class OpVerifier {
     try {
       switch (spec.kind) {
         case 'pull':
+          // Issue #112 跨分支拉取：意图是「源 ref 已并入 HEAD」，与当前分支上游的
+          // behind 无关（拉别的分支本就不消上游落后），走专属核对防误报
+          if (spec.remote && spec.branch) return this.verifyMergedRef(root, spec.remote, spec.branch);
+          return await this.verifySync(root, spec.kind, depth);
         case 'push':
           return await this.verifySync(root, spec.kind, depth);
         case 'commit':
@@ -125,6 +135,25 @@ export class OpVerifier {
     const drift = await this.remoteDrift(root, kind, branch);
     if (drift) return drift;
     return { ...verdict, ref: track.upstream };
+  }
+
+  /** 跨分支拉取核对（Issue #112）：源 ref tip 应为 HEAD 祖先。源 ref 候选——
+   *  本地源（remote="."）= refs/heads/<branch>；远端源 = refs/remotes/<remote>/<branch>
+   *  （git pull 顺手更新的跟踪引用），解析失败退 FETCH_HEAD（pull 刚写入、首行即所拉 ref），
+   *  再失败 fail-open=unknown（如单分支克隆无该 refspec 时跟踪引用不落地） */
+  private async verifyMergedRef(root: string, remote: string, branch: string): Promise<VerifyResult> {
+    if (!BRANCH_RE.test(branch) || !BRANCH_RE.test(remote)) return { verdict: 'unknown' };
+    const short = remote === '.' ? branch : `${remote}/${branch}`;
+    const tracking = remote === '.' ? `refs/heads/${branch}` : `refs/remotes/${remote}/${branch}`;
+    // revSha 失败返回 undefined（不抛）——先跟踪引用，落空退 FETCH_HEAD，再落空 fail-open
+    const src = await this.revSha(root, tracking) ?? await this.revSha(root, 'FETCH_HEAD');
+    if (!src) return { verdict: 'unknown' };
+    try {
+      const anc = await this.run(root, ['merge-base', '--is-ancestor', src, 'HEAD'], 4000);
+      return judgeMergedRef(short, anc.ok);
+    } catch {
+      return { verdict: 'unknown' };
+    }
   }
 
   /** ls-remote 比对：远端引用与本地视角（pull=跟踪引用 / push=HEAD）不一致 → 警示 */

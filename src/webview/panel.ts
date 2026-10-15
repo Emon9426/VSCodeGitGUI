@@ -204,6 +204,8 @@ export class GraphPanel {
   private ready = false;
   /** 命令面板「检出分支…」在 webview 就绪前到达：挂起待 ready 后弹检出选择器（Issue #24） */
   private pendingCheckout = false;
+  /** 命令面板「拉取」在 webview 就绪前到达：挂起待 ready 后弹 From 选择器（Issue #112） */
+  private pendingPullPicker = false;
   /** handleBootstrap 已开始（webview 在线，可随时推送事件；pendingWorkView 等排队仅在此之前有效） */
   private bootstrapped = false;
   /** 仓库扫描已完成至少一次（webview 重建走热路径，ready 直接带全量 repos） */
@@ -398,10 +400,27 @@ export class GraphPanel {
       case 'op:fetch':
         this.startOp({ kind: 'fetch', all: args.all !== false, remote: args.remote, prune: args.prune ?? this.config.fetchPrune });
         return null;
-      case 'op:pull':
-        // F1（Issue #6）：不传 remote/branch——git 按分支级配置 branch.<name>.remote/merge 拉取
-        this.startOp({ kind: 'pull', strategy: (args.strategy ?? this.config.defaultPullStrategy) as PullStrategy, autostash: !!args.autostash });
+      case 'op:pull': {
+        // F1（Issue #6）：默认不传 remote/branch——git 按分支级配置 branch.<name>.remote/merge 拉取。
+        // Issue #112 跨分支拉取：From 选择弹窗显式传 refspec（远端行 <remote> <branch>；本地行 "." <branch>），
+        // 沿用 BAD_BRANCH_RE 白名单校验（execFile 参数数组无 shell 面，此处为纵深防御）
+        const fromRemote = typeof args.remote === 'string' ? args.remote.trim().slice(0, 200) : undefined;
+        const fromBranch = typeof args.branch === 'string' ? args.branch.trim().slice(0, 200) : undefined;
+        if ((fromRemote !== undefined) !== (fromBranch !== undefined)) {
+          throw new Error(this.t('invalidPullFrom'));
+        }
+        if (fromBranch !== undefined && (!fromBranch || BAD_BRANCH_RE.test(fromBranch))) {
+          throw new Error(this.t('invalidPullFrom'));
+        }
+        if (fromRemote !== undefined && !fromRemote) {
+          throw new Error(this.t('invalidPullFrom'));
+        }
+        this.startOp({
+          kind: 'pull', remote: fromRemote, branch: fromBranch,
+          strategy: (args.strategy ?? this.config.defaultPullStrategy) as PullStrategy, autostash: !!args.autostash,
+        });
         return null;
+      }
       case 'op:push':
         this.startOp({ kind: 'push', remote: args.remote, branch: args.branch, setUpstream: !!args.setUpstream });
         return null;
@@ -802,11 +821,13 @@ export class GraphPanel {
       await this.afterReposReady();
       this.flushFilesReveal();   // explorer 右键在 bootstrap 期间排队的定位
       this.flushCheckout();
+      this.flushPullPicker();
       return;
     }
     this.post({ t: 'ready', config: this.config, repos: [], reposPending: true, language: this.lang, colWidths: this.readColWidths(), selectedSha: this.lastSelectedSha, version, ...this.readyExtras() });
     void this.ensureRepos();   // 后台：detect → discoverRepos → reposChanged → 自动选仓
     this.flushCheckout();
+    this.flushPullPicker();
   }
 
   /** 检出选择器（Issue #24）：面板就绪后通知 webview；未就绪先挂起 */
@@ -822,6 +843,21 @@ export class GraphPanel {
     if (!this.pendingCheckout) return;
     this.pendingCheckout = false;
     this.post({ t: 'showCheckout' });
+  }
+
+  /** 拉取 From 选择器（Issue #112）：与工具栏 Pull 按钮同入口；未就绪先挂起 */
+  openPullPicker(): void {
+    if (!this.ready) {
+      this.pendingPullPicker = true;
+      return;
+    }
+    this.post({ t: 'showPullPicker' });
+  }
+
+  private flushPullPicker(): void {
+    if (!this.pendingPullPicker) return;
+    this.pendingPullPicker = false;
+    this.post({ t: 'showPullPicker' });
   }
 
   /** 初始视图：命令直达 / startView 配置（work | last）——不依赖 git，随首个 ready 先行 */
@@ -1316,6 +1352,7 @@ export class GraphPanel {
       case 'tagMissing': return this.t('verifyWarnTagMissing', { name: v.name ?? '' });
       case 'tagExists': return this.t('verifyWarnTagExists', { name: v.name ?? '' });
       case 'remoteDrift': return this.t('verifyWarnRemoteDrift', { ref: v.ref ?? '' });
+      case 'notMerged': return this.t('verifyWarnPullFrom', { ref: v.ref ?? '' });
       default: return this.t(`${kind}Done`);
     }
   }
@@ -1393,9 +1430,13 @@ export class GraphPanel {
               message = n > 0 ? this.t('fetchUpdated', { n }) : this.t('fetchUpToDate');
             } catch { /* 保留默认消息 */ }
           } else if (kind === 'pull' && /already up to date/i.test(outcome.stdoutTail ?? '')) {
-            // F3（Issue #6）："已是最新"带上游名便于诊断拉错分支/远端；
-            // 矛盾校验（上游领先却未合并）已由下方 OpVerifier 统一承载
-            message = upstreamBefore ? this.t('pullUpToDateWith', { ref: upstreamBefore }) : this.t('pullUpToDate');
+            // F3（Issue #6）："已是最新"带来源名便于诊断拉错分支/远端；
+            // Issue #112 跨分支拉取带显式 refspec 时来源=所选拉取源（本地源显示纯分支名），
+            // 不能误标为与当前上游一致；矛盾校验（上游领先却未合并）已由下方 OpVerifier 统一承载
+            const fromRef = spec.remote && spec.branch
+              ? (spec.remote === '.' ? spec.branch : `${spec.remote}/${spec.branch}`)
+              : upstreamBefore;
+            message = fromRef ? this.t('pullUpToDateWith', { ref: fromRef }) : this.t('pullUpToDate');
           } else if (kind === 'push') {
             // #14：branch 可为 HEAD:<上游分支名> refspec——显示目标段（本地名≠上游名时可读）
             const specBranch = spec.branch?.includes(':') ? spec.branch.split(':').pop()! : spec.branch;
@@ -1488,7 +1529,7 @@ export class GraphPanel {
   }
 
   /** 命令面板快捷操作（作用于当前分支） */
-  quickOp(kind: 'fetch' | 'pull' | 'push'): void {
+  quickOp(kind: 'fetch' | 'push'): void {
     if (!this.currentRepoId) return;
     const st = this.lastState;
     const head = st?.head;
@@ -1496,13 +1537,7 @@ export class GraphPanel {
     const upstream = branchInfo?.upstream;
     const remote = upstream?.split('/')[0] ?? 'origin';
     if (kind === 'fetch') this.startOp({ kind: 'fetch', all: true, prune: this.config.fetchPrune });
-    if (kind === 'pull') {
-      // #33 B3：分离 HEAD 与无上游分开提示（detached 时不存在"当前分支的上游"概念）
-      if (head?.detached) { void vscode.window.showWarningMessage(this.t('pullDetached')); return; }
-      if (!upstream) { void vscode.window.showWarningMessage(this.t('pullNoUpstream')); return; }
-      // F1（Issue #6）：不传 remote/branch，按分支级配置拉取（与原生 git pull 语义一致）
-      this.startOp({ kind: 'pull', strategy: this.config.defaultPullStrategy });
-    }
+    // pull 已并入 From 选择器（Issue #112）：gitboard.pull → openPullPicker → webview 弹窗
     if (kind === 'push') {
       this.startOp({ kind: 'push', remote, branch: head?.branch ?? 'HEAD', setUpstream: !upstream });
     }

@@ -122,7 +122,30 @@ const app: App = {
     }
     // F1（Issue #6）：不传 remote/branch——宿主按分支级配置 branch.<name>.merge 拉取，
     // 本地名≠上游名时不再拉错同名远端旧分支
+    lastPullRefspec = null;
     void rpc('op:pull', { strategy: S.config.defaultPullStrategy }).catch(showErr);
+  },
+  /** Issue #112 跨分支拉取：From 选择弹窗（本地+远端、可搜索；参考 Sourcetree 的 Pull 对话框）。
+   *  preselect 显式传入时用之；缺省预选当前上游（Enter=旧一键拉上游的直达习惯），
+   *  无上游退预选当前分支本地行（Enter 为无害 up-to-date） */
+  openPullPicker(preselect?: string) {
+    if (netBusy()) { toast('warn', S.t('netOpBusy')); return; }
+    if (S.state?.head.detached) { toast('warn', S.t('pullDetached')); return; }
+    // 拉取=merge/rebase：未完成合并时 git 会拒绝，与检出选择器同款预拦截
+    if (S.work.state?.mergeActive) { toast('warn', S.t('blockedByMerge')); return; }
+    let pre = preselect;
+    if (!pre) {
+      const head = S.state?.branches.find(b => b.isHead);
+      pre = head?.upstream ?? head?.name;
+    }
+    openBranchPicker(app, 'pullFrom', pre);
+  },
+  /** Issue #112 跨分支拉取执行：remote="."=合并本地源分支；否则取远端源分支最新。
+   *  refspec 记入 lastPullRefspec——#29 autostash 重拉须同源续拉，不能退回当前上游 */
+  pullFrom(remote: string, branch: string) {
+    if (netBusy()) { toast('warn', S.t('netOpBusy')); return; }
+    lastPullRefspec = { remote, branch };
+    void rpc('op:pull', { remote, branch, strategy: S.config.defaultPullStrategy }).catch(showErr);
   },
   runPush(opts?: { skipBehindGuard?: boolean }) {
     if (netBusy()) { toast('warn', S.t('netOpBusy')); return; }
@@ -631,10 +654,11 @@ function netBusy(): boolean {
 }
 
 /** pull 因本地未提交修改被 merge 拒绝（#29 路径 B）：--autostash 贮藏后重拉一步完成
- *  （冲突未解时 git 会把贮藏留在栈里，由冲突解决流程接管） */
+ *  （冲突未解时 git 会把贮藏留在栈里，由冲突解决流程接管）。
+ *  Issue #112：重拉沿用 lastPullRefspec 同源续拉（跨分支被拒不能退回拉当前上游） */
 const LOCAL_CHANGES_RE = /local changes.*would be overwritten/i;
 function retryPullWithStash(): void {
-  void rpc('op:pull', { strategy: S.config.defaultPullStrategy, autostash: true }).catch(showErr);
+  void rpc('op:pull', { ...lastPullRefspec ?? {}, strategy: S.config.defaultPullStrategy, autostash: true }).catch(showErr);
 }
 
 /** 移动目标选择对话框（webview 内实现——原生 showOpenDialog 在部分环境静默取消，已弃用）：
@@ -854,6 +878,9 @@ let pendingLoad: { repoId: string | undefined; offset: number; anchor: string | 
 let emptyAppendStreak = 0;
 /** 「拉取并推送」链条：pull 完成且无冲突时自动续推（R3/决议 #3 的事前引导侧） */
 let pendingPushAfterPull = false;
+/** Issue #112：最近一次 pull 的显式 refspec（跨分支源；null=当前分支上游的无参拉取）——
+ *  #29 autostash 重拉同源续拉用，避免跨分支被拒重试时退回拉当前上游 */
+let lastPullRefspec: { remote: string; branch: string } | null = null;
 /** #108：pull 失败（含冲突）后的待裁决窗口——冲突与否在 outputTail 不可靠（CONFLICT 行走
  *  stdout，失败 outputTail 只含 stderr），改由紧随其后的首个 workState 合并态裁决：
  *  merging=true → 挂起链（转 pendingPushAfterResolve + mergePushPaused）；否则作废（绝不自动推） */
@@ -1285,6 +1312,10 @@ window.addEventListener('message', e => {
     // 检出分支选择器（Issue #24）：命令面板 / 工具栏入口 → 模糊搜索检出
     case 'showCheckout':
       openBranchPicker(app, 'checkout');
+      break;
+    // 拉取 From 选择器（Issue #112）：命令面板与工具栏 Pull 同入口
+    case 'showPullPicker':
+      app.openPullPicker();
       break;
     case 'pullSummary':
       showPullSummary(m.entries, m.truncated, m.stat, app, m.history);
