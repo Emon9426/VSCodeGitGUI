@@ -4,8 +4,10 @@
  * - checkout 模式（#40 收紧）：只列「能够被检出」的分支——本地没有同名分支的远程分支
  *   （选中即内联输入本地名检出为本地跟踪分支）；本地分支与已有本地对应的远程分支不再出现
  *   （本地分支检出走侧栏）；底部恒有「新建分支」行（checkout -b，基于当前 HEAD），无匹配时成为唯一可选项
+ * - pullFrom 模式（Issue #112 跨分支拉取）：本地+远端分支全列，点击/Enter 即拉取到当前分支
+ *   （本地行 = git pull . <name>，远端行 = git pull <remote> <短名>）；preselect 预选初始高亮行
  * - 搜索结果（#40）：checkout 模式按分组与排序规则渲染——远程分组 → 递归前缀组，
- *   组间按远程序、组内（同叶组）按匹配分降序；filter 模式仍按匹配分平铺
+ *   组间按远程序、组内（同叶组）按匹配分降序；filter/pullFrom 模式仍按匹配分平铺
  * 键盘：↑↓ 移动高亮、Enter 确认、Esc 关闭；无查询按分组呈现。
  */
 import type { BranchInfo, GraphScope } from '../../common/models';
@@ -34,7 +36,7 @@ interface Entry {
   disp?: string;
 }
 
-export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
+export function openBranchPicker(app: App, mode: 'filter' | 'checkout' | 'pullFrom', preselect?: string): void {
   const st = S.state;
   if (!st) return;
   // #33 B2：未完成合并（MERGE_HEAD/rebase 中）禁止检出——git 会拒绝
@@ -43,7 +45,7 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
     toast('warn', S.t('blockedByMerge'));
     return;
   }
-  const { box, body, close } = openModal(mode === 'checkout' ? S.t('checkoutPickerTitle') : S.t('filterPickerTitle'));
+  const { box, body, close } = openModal(mode === 'checkout' ? S.t('checkoutPickerTitle') : mode === 'pullFrom' ? S.t('pullPickerTitle') : S.t('filterPickerTitle'));
   box.classList.add('gg-bp');
   if (mode === 'checkout') box.classList.add('co');   // #101：勾选框列脱离树形缩进（缩进移到图标 margin）
 
@@ -56,7 +58,12 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   const inlineInput = el('input', 'gg-input') as HTMLInputElement;
   const inlineGo = el('button', 'gg-btn primary', S.t('checkoutAsGo')) as HTMLButtonElement;
   inline.append(inlineLabel, inlineInput, inlineGo);
-  const hint = el('div', 'gg-bp-hint', mode === 'checkout' ? S.t('pickerCheckoutHint') : S.t('pickerFilterHint'));
+  // Issue #112：pullFrom 模式 hint 带当前分支名与策略（Sourcetree 式 From 语义一目了然）
+  const strategyName = S.config.defaultPullStrategy === 'rebase' ? S.t('pullStrategyRebase')
+    : S.config.defaultPullStrategy === 'ff-only' ? S.t('pullStrategyFfOnly') : S.t('pullStrategyMerge');
+  const hint = el('div', 'gg-bp-hint', mode === 'checkout' ? S.t('pickerCheckoutHint')
+    : mode === 'pullFrom' ? S.t('pullPickerHint', { branch: st.head.branch ?? '', strategy: strategyName })
+      : S.t('pickerFilterHint'));
   // #88 批量检出动作条：勾选 ≥1 个远程分支时出现（清空在左 / 「检出 N 个」主按钮在右）
   const batchBar = el('div', 'gg-bp-batch hidden');
   const batchClear = el('button', 'gg-btn tiny', S.t('batchClear')) as HTMLButtonElement;
@@ -76,7 +83,11 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
       const label = S.t(`scope${m[0].toUpperCase()}${m.slice(1)}`);
       all.push({ row: { kind: 'scope', mode: m, label, active: !st.filterRef && scope === m }, display: label, sub: '' });
     }
-    for (const b of st.branches) all.push({ row: { kind: 'local', b, active: st.filterRef === b.fullName }, display: b.name, sub: '' });
+  }
+  // Issue #112：pullFrom 列全部本地分支（含当前——选自己=无害 up-to-date，且作默认高亮的
+  // 安全落点）；filter 模式本地行带过滤态 ✓，pullFrom 不带
+  if (mode !== 'checkout') {
+    for (const b of st.branches) all.push({ row: { kind: 'local', b, active: st.filterRef === b.fullName && mode === 'filter' }, display: b.name, sub: '' });
   }
   for (const g of st.remotes) {
     for (const b of g.branches) {
@@ -361,6 +372,11 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
     if (r.kind === 'scope') {
       app.setScope(r.mode);
       close();
+    } else if (mode === 'pullFrom') {
+      // Issue #112 跨分支拉取：本地行 = 本地 ref 源（git pull . <name>）；远端行 = 取远端最新（git pull <remote> <短名>）
+      if (r.kind === 'local') app.pullFrom('.', r.b.name);
+      else app.pullFrom(r.remote, src.display);
+      close();
     } else if (r.kind === 'local') {
       if (mode === 'checkout') app.checkoutRef(r.b.name);
       else app.setFilter(S.state?.filterRef === r.b.fullName ? null : r.b.fullName);
@@ -435,5 +451,13 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout'): void {
   }
 
   render();
+  // Issue #112：pullFrom 初始预选——远端全名（origin/dev）或本地名精确匹配列表行，
+  // 匹配不上维持 active=0（首行=当前分支本地行，Enter 为无害 up-to-date）
+  if (mode === 'pullFrom' && preselect) {
+    const idx = entries.findIndex(e => e.row.kind !== 'create' && (
+      (e.row.kind === 'remote' && e.row.b.name === preselect)
+      || (e.row.kind === 'local' && e.row.b.name === preselect)));
+    if (idx >= 0) { active = idx; paintActive(); }
+  }
   search.focus();
 }

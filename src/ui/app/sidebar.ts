@@ -273,7 +273,9 @@ export function createSidebar(app: App): Sidebar {
       e.preventDefault();
       showContextMenu([
         { label: S.t('checkout'), run: () => app.checkoutRef(b.name) },
-        { label: S.t('pullThis'), disabled: !b.upstream, run: () => app.runPull() },
+        // Issue #112：拉取整合到 From 选择弹窗——右键哪行预选哪行（当前分支行则预选其上游），
+        // 语义所见即所得，消除旧「拉取此分支」在非当前行实际拉当前分支的误导
+        { label: S.t('pullThis'), run: () => app.openPullPicker(b.isHead ? undefined : b.name) },
         { label: S.t('pushThis'), run: () => app.runPush() },
         { sep: true },
         { label: S.t('copyBranchName'), run: () => app.copy(b.name) },
@@ -315,6 +317,8 @@ export function createSidebar(app: App): Sidebar {
           const suggest = stripRemote(b.name);
           app.checkoutRemoteAs(b.name, suggest);
         } },
+        // Issue #112：远端分支拉到当前分支——From 弹窗预选该远端行（fetch+merge 远端最新）
+        { label: S.t('pullToCurrent'), run: () => app.openPullPicker(b.name) },
         { label: S.t('fetchRemote'), run: () => app.runFetch(group) },
         { sep: true },
         { label: S.t('copyBranchName'), run: () => app.copy(b.name) },

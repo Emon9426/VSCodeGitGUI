@@ -11,16 +11,32 @@ import { GitError, type ExecOpts, type ExecResult, type GitExecutor } from '../.
 
 const LOW_SPEED = ['-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=60'];
 
-describe('buildArgs（Issue #6 F1/F2）', () => {
-  it('pull 不携带 remote/branch（按分支级配置解析），即使 spec 误传也忽略', () => {
-    const cmds = buildArgs({ kind: 'pull', remote: 'origin', branch: 'master', strategy: 'merge' } as OpSpec);
+describe('buildArgs（Issue #6 F1/F2；#112 跨分支 refspec）', () => {
+  it('pull 默认不携带 remote/branch（按分支级配置解析，Issue #6 F1 语义保持）', () => {
+    const cmds = buildArgs({ kind: 'pull', strategy: 'merge' } as OpSpec);
     expect(cmds).toEqual([[...LOW_SPEED, 'pull', '--progress']]);
   });
 
-  it('pull 策略与 autostash 旗标保留', () => {
+  it('pull 单侧 refspec（只有 remote 或只有 branch）忽略——跨分支拉取必须成对（Issue #112）', () => {
+    expect(buildArgs({ kind: 'pull', remote: 'origin' } as OpSpec))
+      .toEqual([[...LOW_SPEED, 'pull', '--progress']]);
+    expect(buildArgs({ kind: 'pull', branch: 'dev' } as OpSpec))
+      .toEqual([[...LOW_SPEED, 'pull', '--progress']]);
+  });
+
+  it('pull 跨分支 refspec：远端源 origin dev / 本地源 . dev（Issue #112）', () => {
+    expect(buildArgs({ kind: 'pull', remote: 'origin', branch: 'dev' }))
+      .toEqual([[...LOW_SPEED, 'pull', '--progress', 'origin', 'dev']]);
+    expect(buildArgs({ kind: 'pull', remote: '.', branch: 'feature/x' }))
+      .toEqual([[...LOW_SPEED, 'pull', '--progress', '.', 'feature/x']]);
+  });
+
+  it('pull 策略与 autostash 旗标保留，且位于 refspec 之前（Issue #112 组合形态）', () => {
     expect(buildArgs({ kind: 'pull', strategy: 'rebase' })).toEqual([[...LOW_SPEED, 'pull', '--progress', '--rebase']]);
     expect(buildArgs({ kind: 'pull', strategy: 'ff-only' })).toEqual([[...LOW_SPEED, 'pull', '--progress', '--ff-only']]);
     expect(buildArgs({ kind: 'pull', autostash: true })).toEqual([[...LOW_SPEED, 'pull', '--progress', '--autostash']]);
+    expect(buildArgs({ kind: 'pull', remote: 'origin', branch: 'dev', strategy: 'rebase', autostash: true }))
+      .toEqual([[...LOW_SPEED, 'pull', '--progress', '--rebase', '--autostash', 'origin', 'dev']]);
   });
 
   it('fetch：显式低速中断 60s；-c 全局选项位于子命令之前（#41 起无后台 fetch）', () => {

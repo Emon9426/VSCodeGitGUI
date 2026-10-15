@@ -18,8 +18,10 @@ export interface OpSpec {
   | 'moveFolder' | 'renamePath' | 'deletePaths';   // 文件页操作（v0.14）
   /** 依 kind 不同 */
   all?: boolean;               // fetch
-  remote?: string;             // fetch / push（pull 不再使用：按分支级配置解析，Issue #6）
-  branch?: string;             // push
+  /** fetch / push；pull 仅跨分支拉取显式 refspec 时使用（Issue #112：远端名，本地源为 "."）。
+   *  缺省 pull 不传 refspec——按分支级配置 branch.<name>.remote/merge 解析（Issue #6 F1） */
+  remote?: string;
+  branch?: string;             // push；pull 跨分支拉取的源分支短名（Issue #112）
   prune?: boolean;             // fetch
   strategy?: PullStrategy;     // pull
   autostash?: boolean;         // pull
@@ -245,14 +247,18 @@ export function buildArgs(spec: OpSpec): string[][] {
       return [args];
     }
     case 'pull': {
-      // F1（Issue #6）：不传 remote/branch——按分支级配置 branch.<name>.remote/merge 解析（原生
+      // F1（Issue #6）：默认不传 remote/branch——按分支级配置 branch.<name>.remote/merge 解析（原生
       // git 语义）。此前把"本地分支名"当远端分支参数显式传入，本地名≠上游名时（默认分支改名后
       // branch -u origin/main master 等）会去拉同名的远端旧分支，git 输出 "Already up to date."
       // 假成功（退出码 0）而对方新提交永远拉不进来
+      // Issue #112 跨分支拉取：UI 显式传入 remote+branch 时附加 refspec——远端行
+      // `git pull <remote> <branch>`（fetch+merge）；本地行 remote="."（等价 merge 本地 ref，
+      // 与 pull 同机制，策略/autostash/冲突链全复用），仍不触碰 #6 默认语义
       const args = [...LOW_SPEED_USER, 'pull', '--progress'];
       if (spec.strategy === 'rebase') args.push('--rebase');
       else if (spec.strategy === 'ff-only') args.push('--ff-only');
       if (spec.autostash) args.push('--autostash');
+      if (spec.remote && spec.branch) args.push(spec.remote, spec.branch);
       return [args];
     }
     case 'push': {

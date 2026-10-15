@@ -191,7 +191,8 @@ export function createToolbar(app: App): Toolbar {
 
   // 图标按钮（S4：SVG 线性图标替代 emoji 字符——跨平台渲染一致）
   const fetchBtn = mkBtn('', () => app.runFetch());
-  const pullBtn = mkBtn('', () => app.runPull());
+  // Issue #112：Pull 点击弹 From 选择器（默认预选当前上游，Enter 即拉——跨分支可搜索切换）
+  const pullBtn = mkBtn('', () => app.openPullPicker());
   const pushBtn = mkBtn('', () => app.runPush());
   // 网络互斥（#31）测试锚点：title 会随禁用原因变化，data-kind 恒定
   fetchBtn.dataset.kind = 'fetch';
