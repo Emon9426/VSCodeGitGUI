@@ -4,8 +4,10 @@
  * - checkout 模式（#40 收紧）：只列「能够被检出」的分支——本地没有同名分支的远程分支
  *   （选中即内联输入本地名检出为本地跟踪分支）；本地分支与已有本地对应的远程分支不再出现
  *   （本地分支检出走侧栏）；底部恒有「新建分支」行（checkout -b，基于当前 HEAD），无匹配时成为唯一可选项
- * - pullFrom 模式（Issue #112 跨分支拉取）：本地+远端分支全列，点击/Enter 即拉取到当前分支
- *   （本地行 = git pull . <name>，远端行 = git pull <remote> <短名>）；preselect 预选初始高亮行
+ * - pullFrom 模式（Issue #112 跨分支拉取；#116 收紧）：只列远端分支——当前分支的上游
+ *   远端分支置顶第一行并默认选中（Enter 即拉，直达保持），其余按远端→前缀组排序；
+ *   本地分支隐藏（来源统一为取远端最新）。无上游/预选匹配不上时无高亮，Enter 不执行
+ *   （首行是任意远端分支，误按回车会合并别支，须显式选择）
  * - 搜索结果（#40）：checkout 模式按分组与排序规则渲染——远程分组 → 递归前缀组，
  *   组间按远程序、组内（同叶组）按匹配分降序；filter/pullFrom 模式仍按匹配分平铺
  * 键盘：↑↓ 移动高亮、Enter 确认、Esc 关闭；无查询按分组呈现。
@@ -84,10 +86,10 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout' | 'pullFr
       all.push({ row: { kind: 'scope', mode: m, label, active: !st.filterRef && scope === m }, display: label, sub: '' });
     }
   }
-  // Issue #112：pullFrom 列全部本地分支（含当前——选自己=无害 up-to-date，且作默认高亮的
-  // 安全落点）；filter 模式本地行带过滤态 ✓，pullFrom 不带
-  if (mode !== 'checkout') {
-    for (const b of st.branches) all.push({ row: { kind: 'local', b, active: st.filterRef === b.fullName && mode === 'filter' }, display: b.name, sub: '' });
+  // Issue #116：pullFrom 只收远端分支（本地分支隐藏——来源统一为取远端最新）；
+  // filter 模式本地行带过滤态 ✓
+  if (mode === 'filter') {
+    for (const b of st.branches) all.push({ row: { kind: 'local', b, active: st.filterRef === b.fullName }, display: b.name, sub: '' });
   }
   for (const g of st.remotes) {
     for (const b of g.branches) {
@@ -283,6 +285,19 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout' | 'pullFr
         renderTree(lg.root, 0);
       }
       if (remotes.length) {
+        // Issue #116：pullFrom 当前分支的上游远端分支置顶第一行（默认选中、Enter 即拉），
+        // 其余仍按远端→前缀组排序（上游行不重复出现）
+        let upstreamEntry: { row: Row; display: string; sub: string } | undefined;
+        if (mode === 'pullFrom') {
+          const upstream = st?.branches.find(b => b.isHead)?.upstream;
+          upstreamEntry = upstream
+            ? remotes.find(a => a.row.kind === 'remote' && a.row.b.name === upstream)
+            : undefined;
+          if (upstreamEntry) {
+            list.appendChild(sectionHead(S.t('pickerUpstream')));
+            addRow(upstreamEntry, [], 0);
+          }
+        }
         const byOrigin = new Map<string, { row: Row; display: string; sub: string }[]>();
         for (const a of remotes) {
           const arr = byOrigin.get((a.row as { remote: string }).remote) ?? [];
@@ -290,8 +305,9 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout' | 'pullFr
           byOrigin.set((a.row as { remote: string }).remote, arr);
         }
         for (const [origin, arr] of byOrigin) {
-          list.appendChild(sectionHead(`${S.t('pickerRemotes')} · ${origin}`, arr.length, 1, 'syncFetch'));
-          const rg = buildPrefixTree(arr, a => a.display);
+          const rest = upstreamEntry ? arr.filter(a => a !== upstreamEntry) : arr;
+          list.appendChild(sectionHead(`${S.t('pickerRemotes')} · ${origin}`, rest.length, 1, 'syncFetch'));
+          const rg = buildPrefixTree(rest, a => a.display);
           for (const a of rg.top) addRow(a, [], 0);
           renderTree(rg.root, 0);
         }
@@ -373,9 +389,9 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout' | 'pullFr
       app.setScope(r.mode);
       close();
     } else if (mode === 'pullFrom') {
-      // Issue #112 跨分支拉取：本地行 = 本地 ref 源（git pull . <name>）；远端行 = 取远端最新（git pull <remote> <短名>）
-      if (r.kind === 'local') app.pullFrom('.', r.b.name);
-      else app.pullFrom(r.remote, src.display);
+      // Issue #116：只列远端行——取远端最新合并（git pull <remote> <短名>）；
+      // 本地源（git pull . <name>）随本地行隐藏而移除 UI 入口（runner 能力保留）
+      if (r.kind === 'remote') app.pullFrom(r.remote, src.display);
       close();
     } else if (r.kind === 'local') {
       if (mode === 'checkout') app.checkoutRef(r.b.name);
@@ -409,7 +425,9 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout' | 'pullFr
       e.preventDefault();
       const n = entries.length;
       if (!n) return;
-      active = e.key === 'ArrowDown' ? (active + 1) % n : (active - 1 + n) % n;
+      // Issue #116：pullFrom 无预选初始态 active=-1（无高亮）——任一方向起步都落到首行
+      if (active < 0) active = 0;
+      else active = e.key === 'ArrowDown' ? (active + 1) % n : (active - 1 + n) % n;
       paintActive();
     } else if (e.key === 'Enter') {
       e.preventDefault();
@@ -451,13 +469,15 @@ export function openBranchPicker(app: App, mode: 'filter' | 'checkout' | 'pullFr
   }
 
   render();
-  // Issue #112：pullFrom 初始预选——远端全名（origin/dev）或本地名精确匹配列表行，
-  // 匹配不上维持 active=0（首行=当前分支本地行，Enter 为无害 up-to-date）
-  if (mode === 'pullFrom' && preselect) {
-    const idx = entries.findIndex(e => e.row.kind !== 'create' && (
-      (e.row.kind === 'remote' && e.row.b.name === preselect)
-      || (e.row.kind === 'local' && e.row.b.name === preselect)));
-    if (idx >= 0) { active = idx; paintActive(); }
+  // Issue #116：pullFrom 初始预选——上游/preselect 精确匹配远端行；匹配不上 active=-1
+  // （无高亮、Enter 不执行——首行是任意远端分支，误按回车会合并别支，须显式选择）
+  if (mode === 'pullFrom') {
+    active = -1;
+    if (preselect) {
+      const idx = entries.findIndex(e => e.row.kind === 'remote' && e.row.b.name === preselect);
+      if (idx >= 0) active = idx;
+    }
+    paintActive();
   }
   search.focus();
 }

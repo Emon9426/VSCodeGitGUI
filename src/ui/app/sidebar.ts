@@ -273,9 +273,10 @@ export function createSidebar(app: App): Sidebar {
       e.preventDefault();
       showContextMenu([
         { label: S.t('checkout'), run: () => app.checkoutRef(b.name) },
-        // Issue #112：拉取整合到 From 选择弹窗——右键哪行预选哪行（当前分支行则预选其上游），
-        // 语义所见即所得，消除旧「拉取此分支」在非当前行实际拉当前分支的误导
-        { label: S.t('pullThis'), run: () => app.openPullPicker(b.isHead ? undefined : b.name) },
+        // Issue #112/#116：拉取整合到 From 选择弹窗（只列远端分支）——右键哪行预选该分支的
+        // 上游远端分支（无上游则无预选），语义所见即所得，消除旧「拉取此分支」非当前行
+        // 实际拉当前分支的误导
+        { label: S.t('pullThis'), run: () => app.openPullPicker(b.upstream ?? null) },
         { label: S.t('pushThis'), run: () => app.runPush() },
         { sep: true },
         { label: S.t('copyBranchName'), run: () => app.copy(b.name) },

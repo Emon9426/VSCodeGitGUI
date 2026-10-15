@@ -24,15 +24,15 @@
 <script src="../../out/webview.js"></script>
 <script>
 /**
- * Issue #112 跨分支拉取 From 选择器：
- *  P1 工具栏 Pull → 弹窗打开：hint 带当前分支名与策略、搜索框聚焦
- *  P2 列表分区：当前(main) + 本地(dev) + 远程(origin/main、origin/dev)
- *  P3 预选：无显式 preselect 时默认上游 origin/main 行高亮（.active）
- *  P4 Enter 执行：op:pull {remote:'origin', branch:'main'}（上游名作 refspec，#6 语义）+ 弹窗关闭
- *  P5 搜索 'dev' 点本地行 → op:pull {remote:'.', branch:'dev'}
- *  P6 搜索 'dev' 点远端行 → op:pull {remote:'origin', branch:'dev'}
- *  P7 Esc 关闭不发 rpc
- *  P8 侧栏远端行右键「拉取到当前分支…」→ 同一弹窗且预选该远端行
+ * Issue #112 + #116 跨分支拉取 From 选择器（仅远端分支形态）：
+ *  P1 工具栏 Pull → 弹窗：hint 带当前分支名与策略、搜索框聚焦
+ *  P2 只列远端分支：本地 dev 不出现；远端 main/dev 各一次；其余按前缀分组（feat/ 组头）
+ *  P3 当前上游置顶第一行且默认选中（首个区头=当前上游，rows[0]=origin/main 且 .active）
+ *  P4 Enter 执行预选上游 → op:pull {remote:'origin', branch:'main'} + 弹窗关闭
+ *  P5 搜索 'dev' 只剩 origin/dev → 点击 → op:pull {remote:'origin', branch:'dev'}
+ *  P6 Esc 关闭不发 rpc
+ *  P7 侧栏远端行右键「拉取到当前分支…」→ 同一弹窗且预选该远端行
+ *  P8 侧栏本地行（dev 无上游）右键「拉取此分支」→ 无高亮行，Enter 不发 rpc（安全态）
  */
 (async () => {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -65,8 +65,8 @@
   });
   const commit = (i) => ({
     sha: 'a' + String(i).padStart(2, '0') + 'f'.repeat(37), shortSha: 'a' + String(i).padStart(2, '0') + 'fffff',
-    parents: [], author: { name: 'e2e', email: 'e2e@test', date: '2026-10-15T10:00:00+08:00' },
-    committer: { name: 'e2e', email: 'e2e@test', date: '2026-10-15T10:00:00+08:00' },
+    parents: [], author: { name: 'e2e', email: 'e2e@test', date: '2026-10-16T10:00:00+08:00' },
+    committer: { name: 'e2e', email: 'e2e@test', date: '2026-10-16T10:00:00+08:00' },
     subject: 'C' + i, body: '', refs: [],
   });
   window.__send({
@@ -78,7 +78,7 @@
         { name: 'main', fullName: 'refs/heads/main', sha: 'a' + '0'.repeat(39), isHead: true, subject: 's', upstream: 'origin/main' },
         { name: 'dev', fullName: 'refs/heads/dev', sha: 'a' + '1'.repeat(40 - 2) + '2', isHead: false, subject: 's2' },
       ],
-      remotes: [{ name: 'origin', branches: [rb('main'), rb('dev')] }],
+      remotes: [{ name: 'origin', branches: [rb('main'), rb('dev'), rb('feat/alpha'), rb('feat/beta')] }],
       tags: [],
       status: { dirtyCount: 0 },
       filterRef: null, logFilter: { authors: [], since: '', until: '', noMerges: false },
@@ -97,7 +97,7 @@
     return document.querySelector('.gg-bp');
   };
 
-  // ---------- P1/P2/P3：打开、分区与预选 ----------
+  // ---------- P1/P2/P3：打开、仅远端列表、上游置顶默认选中 ----------
   let bp = await openViaToolbar();
   ok('P1-open', !!bp);
   if (!bp) { finish('FAIL:' + fails.join('|')); return; }
@@ -106,23 +106,25 @@
   ok('P1-hint-strategy', hint.includes('合并'), hint);
   ok('P1-search-focus', document.activeElement?.classList.contains('gg-bp-search'));
   const names = rows().map(rowName);
-  ok('P2-current-main', names.filter(n => n === 'main').length === 2, names.join(','));   // 本地 main + origin/main
-  ok('P2-local-dev', names.includes('dev'), names.join(','));
-  ok('P2-remote-sub', bp.querySelectorAll('.gg-bp-sub').length >= 1);
-  const activeRow = bp.querySelector('.gg-bp-row.active');
-  ok('P3-preselect-upstream', !!activeRow && rowName(activeRow) === 'main' && !!activeRow.querySelector('.gg-bp-sub'),
-    activeRow ? rowName(activeRow) : 'none');
+  const count = (n) => names.filter(x => x === n).length;
+  ok('P2-remote-only', count('dev') === 1 && count('main') === 1, names.join(','));   // 各仅远端行一次（本地 dev 隐藏、main 不在 origin 组重复）
+  ok('P2-prefix-group', [...bp.querySelectorAll('.gg-bp-head.l2')].some(h => (h.textContent || '').includes('feat/')),
+    [...bp.querySelectorAll('.gg-bp-head.l2')].map(h => h.textContent).join(','));
+  const firstHead = bp.querySelector('.gg-bp-head');
+  ok('P3-upstream-head-first', !!firstHead && (firstHead.textContent || '').includes('当前上游'), firstHead?.textContent);
+  const firstRow = rows()[0];
+  ok('P3-upstream-first-row', !!firstRow && rowName(firstRow) === 'main' && !!firstRow.querySelector('.gg-bp-sub'));
+  ok('P3-preselect-active', firstRow?.classList.contains('active'));
 
   // ---------- P4：Enter 执行预选上游 → op:pull origin main ----------
-  const search = bp.querySelector('.gg-bp-search');
-  search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  bp.querySelector('.gg-bp-search').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   await twoFrames(); await sleep(80);
   const p4 = lastPull();
   ok('P4-enter-refspec', !!p4 && p4.args && p4.args.remote === 'origin' && p4.args.branch === 'main'
     && p4.args.strategy === 'merge', JSON.stringify(p4 && p4.args));
   ok('P4-closed', !document.querySelector('.gg-bp'));
 
-  // ---------- P5：搜索 dev 点本地行 → op:pull . dev ----------
+  // ---------- P5：搜索 dev 只剩远端行 → 点击执行 ----------
   bp = await openViaToolbar();
   if (!bp) { finish('FAIL:' + fails.join('|')); return; }
   const s5 = bp.querySelector('.gg-bp-search');
@@ -130,50 +132,57 @@
   s5.dispatchEvent(new Event('input', { bubbles: true }));
   await twoFrames(); await sleep(80);
   const hitNames = rows().map(rowName);
-  ok('P5-filtered', hitNames.includes('dev') && !hitNames.includes('main'), hitNames.join(','));
-  const localDev = rows().find(r => rowName(r) === 'dev' && !r.querySelector('.gg-bp-sub'));
-  localDev?.click();
-  await twoFrames(); await sleep(80);
-  const p5 = lastPull();
-  ok('P5-local-source', !!p5 && p5.args.remote === '.' && p5.args.branch === 'dev', JSON.stringify(p5 && p5.args));
-  ok('P5-closed', !document.querySelector('.gg-bp'));
-
-  // ---------- P6：搜索 dev 点远端行 → op:pull origin dev ----------
-  bp = await openViaToolbar();
-  if (!bp) { finish('FAIL:' + fails.join('|')); return; }
-  const s6 = bp.querySelector('.gg-bp-search');
-  s6.value = 'dev';
-  s6.dispatchEvent(new Event('input', { bubbles: true }));
-  await twoFrames(); await sleep(80);
+  ok('P5-filtered', hitNames.includes('dev') && !hitNames.includes('main') && !hitNames.includes('alpha'), hitNames.join(','));
   const remoteDev = rows().find(r => rowName(r) === 'dev' && !!r.querySelector('.gg-bp-sub'));
   remoteDev?.click();
   await twoFrames(); await sleep(80);
-  const p6 = lastPull();
-  ok('P6-remote-source', !!p6 && p6.args.remote === 'origin' && p6.args.branch === 'dev', JSON.stringify(p6 && p6.args));
+  const p5 = lastPull();
+  ok('P5-remote-source', !!p5 && p5.args.remote === 'origin' && p5.args.branch === 'dev', JSON.stringify(p5 && p5.args));
+  ok('P5-closed', !document.querySelector('.gg-bp'));
 
-  // ---------- P7：Esc 关闭不发 rpc ----------
+  // ---------- P6：Esc 关闭不发 rpc ----------
   const sentBefore = window.__sent.length;
   bp = await openViaToolbar();
   if (!bp) { finish('FAIL:' + fails.join('|')); return; }
   bp.querySelector('.gg-bp-search').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await twoFrames(); await sleep(80);
-  ok('P7-esc-close', !document.querySelector('.gg-bp'));
-  ok('P7-no-rpc', window.__sent.length === sentBefore, String(window.__sent.length - sentBefore));   // 打开/关闭弹窗零 rpc
+  ok('P6-esc-close', !document.querySelector('.gg-bp'));
+  ok('P6-no-rpc', window.__sent.length === sentBefore, String(window.__sent.length - sentBefore));   // 打开/关闭弹窗零 rpc
 
-  // ---------- P8：侧栏远端行右键「拉取到当前分支…」→ 同弹窗预选该行 ----------
+  // ---------- P7：侧栏远端行右键「拉取到当前分支…」→ 同弹窗预选该行 ----------
   const sideRemote = [...document.querySelectorAll('.gg-side-item.remote')].find(r => r.textContent.includes('dev'));
-  ok('P8-side-row', !!sideRemote);
+  ok('P7-side-row', !!sideRemote);
   sideRemote?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 30 }));
   await twoFrames(); await sleep(80);
   const menu = document.querySelector('.gg-menu');
   const item = menu ? [...menu.querySelectorAll('.gg-menu-item')].find(i => i.textContent.includes('拉取到当前分支')) : null;
-  ok('P8-menu-item', !!item, menu?.textContent || 'no menu');
+  ok('P7-menu-item', !!item, menu?.textContent || 'no menu');
   item?.click();
   await twoFrames(); await sleep(80);
   bp = document.querySelector('.gg-bp');
+  ok('P7-open', !!bp);
+  const a7 = bp?.querySelector('.gg-bp-row.active');
+  ok('P7-preselect-remote', !!a7 && rowName(a7) === 'dev' && !!a7.querySelector('.gg-bp-sub'), a7 ? rowName(a7) : 'none');
+  bp?.querySelector('.gg-bp-search')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await twoFrames(); await sleep(60);
+
+  // ---------- P8：侧栏本地行（dev 无上游）右键 → 无高亮、Enter 不发 rpc ----------
+  const sent8 = window.__sent.length;
+  const sideLocal = [...document.querySelectorAll('.gg-side-item.branch')].find(r => r.textContent.includes('dev'));
+  ok('P8-side-row', !!sideLocal);
+  sideLocal?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 30 }));
+  await twoFrames(); await sleep(80);
+  const menu8 = document.querySelector('.gg-menu');
+  const item8 = menu8 ? [...menu8.querySelectorAll('.gg-menu-item')].find(i => i.textContent.includes('拉取此分支')) : null;
+  ok('P8-menu-item', !!item8, menu8?.textContent || 'no menu');
+  item8?.click();
+  await twoFrames(); await sleep(80);
+  bp = document.querySelector('.gg-bp');
   ok('P8-open', !!bp);
-  const a8 = bp?.querySelector('.gg-bp-row.active');
-  ok('P8-preselect-remote', !!a8 && rowName(a8) === 'dev' && !!a8.querySelector('.gg-bp-sub'), a8 ? rowName(a8) : 'none');
+  ok('P8-no-active', !!bp && !bp.querySelector('.gg-bp-row.active'));
+  bp?.querySelector('.gg-bp-search')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await twoFrames(); await sleep(80);
+  ok('P8-enter-no-rpc', window.__sent.length === sent8, String(window.__sent.length - sent8));
 
   finish(fails.length ? 'FAIL:' + fails.join('|') : 'PASS');
 })();
