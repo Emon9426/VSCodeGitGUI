@@ -22,3 +22,4 @@ svg2png.js
 res/screenshots/**
 prototype/**
 e2e-*.png
+.github/**
