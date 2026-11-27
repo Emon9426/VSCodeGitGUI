@@ -12,4 +12,7 @@ Thumbs.db
 # Mimosa 安全扫描会话产物
 .mimosa/
 .playwright-mcp/
-.zcode/
+
+# ZCode 会话产物不入库，只保留可复用的工作流定义
+.zcode/*
+!.zcode/workflows/
